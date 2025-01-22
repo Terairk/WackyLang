@@ -1,0 +1,19 @@
+[package]
+name = "fn_pipe_proc"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "fn_pipe_proc"
+path = "src/lib.rs"
+proc-macro = true
+
+[lints]
+workspace = true
+
+[dependencies]
+extend = "1.2"
+syn = "2.0"
+quote = "1.0"
+proc-macro2 = "1.0"
+darling = "0.20"
