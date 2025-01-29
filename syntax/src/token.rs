@@ -1,8 +1,16 @@
-use crate::ext::ParserExt;
-use crate::{alias, ast, ext::CharExt as _};
+#![allow(clippy::arbitrary_source_item_ordering)]
+
+use crate::ext::ParserExt as _;
+use crate::{alias, ast, ext::CharExt as _, private};
+use chumsky::combinator::MapWith;
+use chumsky::extra::ParserExtra;
+use chumsky::input::MapExtra;
 use chumsky::{error::Rich, input::StrInput, prelude::*, text};
+use extend::ext;
 use internment::ArcIntern;
 use std::fmt;
+use std::fmt::Debug;
+use std::hash::Hash;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
@@ -11,7 +19,6 @@ pub enum Delim {
     Paren = 1,
 }
 
-#[allow(clippy::arbitrary_source_item_ordering)]
 impl Delim {
     /// The current number of variants.
     const NUM_VARIANTS: usize = 2;
@@ -65,7 +72,6 @@ impl Delim {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[allow(clippy::arbitrary_source_item_ordering)]
 pub enum Token {
     // literals
     Ident(ast::Ident),
@@ -200,21 +206,108 @@ impl fmt::Display for Token {
     }
 }
 
-#[allow(clippy::missing_panics_doc, clippy::too_many_lines)]
+/// An intermediary token-type that encodes the corrections made to the grammar, to accommodate for
+/// the mistakes made by the longest-match lexing algorithm
+// #[derive(Clone, PartialEq, Eq)]
+enum LongestMatchCorrectionToken<'src, I: Input<'src>> {
+    Token(Token),
+    NoWhitespacePlusMinusIntLiter(NoWhitespacePlusMinusIntLiter<'src, I>),
+}
+
+// #[derive(Clone, PartialEq, Eq)]
+enum NoWhitespacePlusMinusIntLiter<'src, I: Input<'src>> {
+    Begin {
+        lhs: (Token, I::Span),
+        op: (Token, I::Span),
+        rhs: (Token, I::Span),
+    },
+    Then {
+        lhs: Box<NoWhitespacePlusMinusIntLiter<'src, I>>,
+        op: (Token, I::Span),
+        rhs: (Token, I::Span),
+    },
+}
+
+impl<'src, I: Input<'src>> NoWhitespacePlusMinusIntLiter<'src, I> {
+    #[allow(clippy::single_call_fn)]
+    pub const fn begin(lhs: (Token, I::Span), op: (Token, I::Span), rhs: (Token, I::Span)) -> Self {
+        Self::Begin { lhs, op, rhs }
+    }
+
+    #[allow(clippy::single_call_fn)]
+    pub fn then(lhs: Self, op: (Token, I::Span), rhs: (Token, I::Span)) -> Self {
+        Self::Then {
+            lhs: Box::new(lhs),
+            op,
+            rhs,
+        }
+    }
+
+    pub fn to_vec(&self) -> Vec<(Token, I::Span)>
+    where
+        I::Span: Clone,
+    {
+        // an ugly, and probably not-as-efficient, algorithm to flatten this
+        // structure into a vector, by cloning all of its components
+        let mut vec = Vec::<(Token, I::Span)>::new();
+        let mut not_done = true;
+        let mut left_over = self;
+        while not_done {
+            match *left_over {
+                Self::Begin {
+                    ref lhs,
+                    ref op,
+                    ref rhs,
+                } => {
+                    // append elements back-to-front and terminate iteration
+                    vec.push(rhs.clone());
+                    vec.push(op.clone());
+                    vec.push(lhs.clone());
+                    not_done = false;
+                }
+                Self::Then {
+                    ref lhs,
+                    ref op,
+                    ref rhs,
+                } => {
+                    // append elements back-to-front, and continue iterating
+                    vec.push(rhs.clone());
+                    vec.push(op.clone());
+                    left_over = &**lhs;
+                }
+            }
+        }
+
+        // reverse the vector and return, we are done
+        vec.reverse();
+        vec
+    }
+}
+
+#[allow(
+    clippy::missing_panics_doc,
+    clippy::too_many_lines,
+    clippy::single_call_fn
+)]
 #[inline]
-pub fn lexer<'src, I>() -> impl alias::Parser<'src, I, Vec<(Token, I::Span)>>
+fn unflattened_lexer<'src, I>(
+) -> impl alias::Parser<'src, I, Vec<(LongestMatchCorrectionToken<'src, I>, I::Span)>>
 where
     I: StrInput<'src, Token = char, Slice = &'src str>,
 {
     // TODO: add labels where appropriate
-    // TODO: think more about error handling: in partucular the char/string delimiters
+    // TODO: think more about error handling: in particular the char/string delimiters
 
     // TODO: eventually replace with custom error type with variants and so on,
     // TODO: so it is easier to create type-safe custom errors that can be reported later on
 
     // WACC identifiers are C-style, so we can use the default `text::ident` parser
     let ident = text::ident()
-        .pipe((ast::Ident::from_str, Token::Ident))
+        .pipe((
+            ast::Ident::from_str,
+            Token::Ident,
+            LongestMatchCorrectionToken::Token,
+        ))
         .labelled("<ident>");
 
     // copy the Regex pattern found in the WACC spec verbatim
@@ -227,7 +320,8 @@ where
                 )
             })
         })
-        .map(Token::IntLiter);
+        .map(Token::IntLiter)
+        .labelled("<int-liter>");
 
     // character parser
     let character = choice((
@@ -246,7 +340,8 @@ where
     let char_delim = just('\'');
     let char_liter = character
         .delimited_by(char_delim, char_delim)
-        .map(Token::CharLiter);
+        .pipe((Token::CharLiter, LongestMatchCorrectionToken::Token))
+        .labelled("<char-liter>");
 
     // string literal parser
     let str_delim = just('"');
@@ -254,15 +349,24 @@ where
         .repeated()
         .collect::<String>()
         .delimited_by(str_delim, str_delim)
-        .pipe((ArcIntern::from, Token::StrLiter));
+        .pipe((
+            ArcIntern::from,
+            Token::StrLiter,
+            LongestMatchCorrectionToken::Token,
+        ))
+        .labelled("<str-liter>");
 
     let delim_symbols = choice((
         just('(').to(Token::Open(Delim::Paren)),
         just(')').to(Token::Close(Delim::Paren)),
         just('[').to(Token::Open(Delim::Bracket)),
         just(']').to(Token::Close(Delim::Bracket)),
-    ));
+    ))
+    .map(LongestMatchCorrectionToken::Token);
 
+    // all other symbols parser
+    let plus = just('+').to(Token::Plus);
+    let minus = just('-').to(Token::Minus);
     let other_symbols = choice((
         // if some symbols are ambiguous, make sure to place the more 'long' ones ahead
         just("<=").to(Token::Lte),
@@ -274,8 +378,8 @@ where
         just("==").to(Token::EqualsEquals),
         just('=').to(Token::Equals),
         // symbols without ambiguity
-        just('+').to(Token::Plus),
-        just('-').to(Token::Minus),
+        plus.clone(),
+        minus.clone(),
         just('*').to(Token::Star),
         just('%').to(Token::Percent),
         just('/').to(Token::ForwardSlash),
@@ -283,7 +387,8 @@ where
         just("||").to(Token::Or),
         just(';').to(Token::Semicolon),
         just(',').to(Token::Comma),
-    ));
+    ))
+    .map(LongestMatchCorrectionToken::Token);
 
     let keywords = choice([
         text::keyword("begin").to(Token::Begin),
@@ -318,12 +423,31 @@ where
         text::keyword("null").to(Token::Null),
         text::keyword("true").to(Token::True),
         text::keyword("false").to(Token::False),
-    ]);
+    ])
+    .map(LongestMatchCorrectionToken::Token);
+
+    // if integer literals are separated by plus/minus with no whitespace
+    // then this should be parsed as a separate disambiguation token
+    let spanned_int_liter = int_liter.clone().span_tuple();
+    let plus_or_minus = plus.or(minus).span_tuple();
+    let no_whitespace_plus_minus_int_liter = group((
+        spanned_int_liter.clone(),
+        plus_or_minus.clone(),
+        spanned_int_liter.clone(),
+    ))
+    .map_group(NoWhitespacePlusMinusIntLiter::begin)
+    .foldl(
+        group((plus_or_minus, spanned_int_liter)).repeated(),
+        |lhs, (op, rhs)| NoWhitespacePlusMinusIntLiter::then(lhs, op, rhs),
+    )
+    .map(LongestMatchCorrectionToken::NoWhitespacePlusMinusIntLiter);
 
     let token = choice((
-        // parser literals first, as they have precedence over any other occurrences of symbols
-        // e.g. the literal +14343 should take precedence over the plus symbol '+'
-        int_liter,
+        // parse the exceptions to the "longest match" algorithm first
+        no_whitespace_plus_minus_int_liter,
+        // parse literals before other symbols, as they have precedence over any other occurrences
+        // of symbols e.g. the literal +14343 should take precedence over the plus symbol '+'
+        int_liter.map(LongestMatchCorrectionToken::Token),
         char_liter,
         str_liter,
         // parse symbols
@@ -354,4 +478,51 @@ where
         .collect()
         // We must consume the entire source at the end
         .then_ignore(end())
+}
+
+#[must_use]
+#[inline]
+pub fn lexer<'src, I>() -> impl alias::Parser<'src, I, Vec<(Token, I::Span)>>
+where
+    I: StrInput<'src, Token = char, Slice = &'src str>,
+    I::Span: Clone,
+{
+    let lexer = unflattened_lexer::<'src, I>();
+
+    lexer.map(|tokens| {
+        // create new flattened vector
+        let mut vec = Vec::<(Token, I::Span)>::with_capacity(tokens.len());
+
+        // iterate through the tokens and either add them directly to the new
+        // vector, or flatten them first and then append them
+        for (t, s) in tokens {
+            match t {
+                LongestMatchCorrectionToken::Token(t) => {
+                    vec.push((t, s));
+                }
+                LongestMatchCorrectionToken::NoWhitespacePlusMinusIntLiter(t) => {
+                    vec.append(&mut t.to_vec());
+                }
+            }
+        }
+
+        // we are done flattening, return the result
+        vec
+    })
+}
+
+/// An extension trait for [Parser] local to this file, for convenient dot-syntax utility methods
+#[ext(name = LocalParserExt, supertraits = Sized + private::Sealed)]
+impl<'src, I, O, E, T> T
+where
+    I: Input<'src>,
+    E: ParserExtra<'src, I>,
+    T: Parser<'src, I, O, E>,
+{
+    /// Convenience method to wrap items in span-tuple type.
+    #[allow(clippy::type_complexity)]
+    #[inline]
+    fn span_tuple(self) -> MapWith<Self, O, fn(O, &mut MapExtra<'src, '_, I, E>) -> (O, I::Span)> {
+        self.map_with(|t, e| (t, e.span()))
+    }
 }

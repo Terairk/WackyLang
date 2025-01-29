@@ -19,20 +19,16 @@ const TEST_EXPR: &str = r#"
 const TEST_TYPE: &str = r#"pair(int, pair(pair,string)[][][])[][]"#;
 
 #[allow(dead_code)]
-const TEST_PROGRAM: &str = r#"# printing the contents of a char[] is possible via an intermediate variable
+const TEST_PROGRAM: &str = r#"# subtraction expressions should not be whitespace sensitive
 
 # Output:
-# hi!
+# -1
 #
-
-# Exit:
-# 0
 
 # Program:
 
 begin
-  char[] s = ['h','i','!'];
-  println s
+  println 1-2
 end
 "#;
 
