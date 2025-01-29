@@ -19,89 +19,22 @@ const TEST_EXPR: &str = r#"
 const TEST_TYPE: &str = r#"pair(int, pair(pair,string)[][][])[][]"#;
 
 #[allow(dead_code)]
-const TEST_PROGRAM: &str = r#"
-# The program reads n (number of integers), then n integers. After each input,
-# it insert the integer into a binary search tree. At the end, it prints out
-# the content in the binary search tree so that we have a sorted list of
-# integer.
+const TEST_PROGRAM: &str = r#"# printing the contents of a char[] is possible via an intermediate variable
+
+# Output:
+# hi!
 #
-# We represent a node in the binary search tree using two pair elements. The
-# first element has a type <int, pair>, the int is the integer stored in the
-# node, the pair is the pointer to the second pair element. The second pair
-# element has a type <pair, pair> which is the pointer to the two children
-# nodes in the binary search tree.
+
+# Exit:
+# 0
+
+# Program:
 
 begin
-
-  # Create a new node of a binary search tree having the given integer value
-  # and points to the two given pairs.
-  pair(int, pair) createNewNode(int value, pair(int, pair) left, pair(int, pair) right) is
-    pair(pair, pair) p = newpair(left, right) ;
-    pair(int, pair) q = newpair(value, p) ;
-    return q
-  end
-
-  # Given a root of a binary search tree and an integer to insert, the function
-  # inserts the integer into the tree and returns the new root of the tree.
-  pair(int, pair) insert(pair(int, pair) root, int n) is
-    if root == null then
-      root = call createNewNode(n, null, null)
-    else
-      pair(pair, pair) p = snd root ;
-      int current = fst root ;
-      pair(int, pair) q = null ;
-      if n < current then
-      	q = fst p ;
-        fst p = call insert(q, n)
-      else
-      	q = snd p ;
-        snd p = call insert(q, n)
-      fi
-    fi ;
-    return root
-  end
-
-  # Print the integers in the binary search tree in the increasing order.
-  int printTree(pair(int, pair) root) is
-    if root == null then
-      return 0
-    else
-      pair(pair, pair) body = snd root ;
-      pair(int, pair) p = fst body ;
-      int temp = call printTree(p) ;
-      temp = fst root ;
-      print temp ;
-      print ' ' ;
-      p = snd body ;
-      temp = call printTree(p) ;
-      return 0
-    fi
-  end
-
-  # The main function
-  int n = 0 ;
-  print "Please enter the number of integers to insert: " ;
-  read n ;
-  print "There are " ;
-  print n ;
-  println " integers." ;
-  int i = 0 ;
-  pair(int, pair) root = null ;
-  while i < n do
-    int x = 0 ;
-    print "Please enter the number at position " ;
-    print i + 1 ;
-    print " : " ;
-    read x ;
-    root = call insert(root, x) ;
-    i = i + 1
-  done ;
-  print "Here are the numbers sorted: " ;
-  i = call printTree(root) ;
-  println "\t\n\0\f\r"
+  char[] s = ['h','i','!'];
+  println s
 end
-
-# this should be EOF comment"#;
+"#;
 
 fn main() {
     let source = TEST_PROGRAM;
@@ -191,10 +124,10 @@ impl<T: fmt::Display> fmt::Display for DisplayVec<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-    use std::path::{Path, PathBuf};
     use chumsky::input::{Input, WithContext};
     use chumsky::Parser;
+    use std::fs;
+    use std::path::{Path, PathBuf};
     use wacc_syntax::parser::program_parser;
     use wacc_syntax::source::{SourcedSpan, StrSourceId};
     use wacc_syntax::token::{lexer, Token};
@@ -213,7 +146,7 @@ mod tests {
                     match run_single_test(&test_file) {
                         Ok(_) => {
                             println!("Test failed: error not detected in {}", test_name)
-                        },
+                        }
                         Err(error_msg) => {
                             if error_msg == "Syntax error(s) found!" {
                                 println!("Test passed: {}", test_name);
@@ -221,7 +154,7 @@ mod tests {
                             } else {
                                 println!("Test failed: {} with cause {error_msg}", test_name)
                             }
-                        },
+                        }
                     }
                     total_count += 1;
                 }
@@ -247,10 +180,10 @@ mod tests {
                         Ok(_) => {
                             passed_count += 1;
                             println!("Test passed: {}", test_name)
-                        },
+                        }
                         Err(error_msg) => {
                             println!("Test failed: {} with cause {error_msg}", test_name)
-                        },
+                        }
                     }
                     total_count += 1;
                 }
@@ -284,7 +217,6 @@ mod tests {
 
     /// Runs a single test case by lexing the input file and checking for errors.
     fn run_single_test(path: &Path) -> Result<String, String> {
-
         let source = match fs::read_to_string(path) {
             Ok(content) => content,
             Err(e) => {
@@ -300,13 +232,12 @@ mod tests {
             &lexer::<WithContext<SourcedSpan, &str>>(),
             source.with_context((source_id.clone(), ())),
         )
-            .into_output_errors();
+        .into_output_errors();
 
         if let Some(tokens) = tokens {
             #[allow(clippy::pattern_type_mismatch)]
             let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
             let (_parsed, parse_errs) = program_parser().parse(spanned_tokens).into_output_errors();
-
 
             if !parse_errs.is_empty() {
                 return Err(String::from("Syntax error(s) found!"));
@@ -318,7 +249,7 @@ mod tests {
         }
 
         // TODO: semantic analysis
-        let semantic_errors:Vec<i32> = Vec::new();
+        let semantic_errors: Vec<i32> = Vec::new();
 
         if !semantic_errors.is_empty() {
             return Err(String::from("Semantic error(s) found!"));
@@ -328,5 +259,3 @@ mod tests {
         Ok(format!("Test passed: {}", path.display()))
     }
 }
-
-

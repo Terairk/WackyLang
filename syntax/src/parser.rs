@@ -352,11 +352,15 @@ where
 
     // rvalue parser
     let rvalue = choice((
-        expr.clone().map(ast::RValue::Expr),
         array_liter,
         newpair,
         pair_elem.map(ast::RValue::PairElem),
         function_call,
+        // TODO: the expression parser turns errors into error nodes, which makes it
+        //       seem like the parser succeeded even if it failed. This messes with
+        //       backtracking control flow, so until we figure out a way to "propagate"
+        //       the erroneous state of the parser, expressions will have to be parsed last
+        expr.clone().map(ast::RValue::Expr),
     ));
 
     // variable definition parser
