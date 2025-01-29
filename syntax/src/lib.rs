@@ -79,14 +79,18 @@ pub(crate) mod ext {
             match *self {
                 // according to the WACC specification, graphic ASCII characters `g` are those
                 // such that `g >= ' '`, therefore NON-graphic characters range from the
-                // null-terminator `'\0'` and upto-but-excluding space `' '`
-                '\0'..' '
+                // null-terminator `'\x00'` and upto-but-excluding space `'\x20'`
+                '\x00'..'\x20'
 
                 // the WACC specification also explicitly excludes these characters
                 | '\\' | '\'' | '"'  => false,
 
-                // everything else is fine
-                _ => true,
+                // everything else in the ASCII-character range is fine, i.e. from `'\x20'` upto
+                // `'\x7F'` inclusive
+                '\x20'..='\x7F' => true,
+                
+                // all other characters are non-ASCII and should not be accepted
+                _ => false,
             }
         }
 
