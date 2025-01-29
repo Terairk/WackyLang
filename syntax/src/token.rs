@@ -210,76 +210,7 @@ impl fmt::Display for Token {
 /// the mistakes made by the longest-match lexing algorithm
 enum LongestMatchCorrectionToken<'src, I: Input<'src>> {
     Token(Token),
-    NoWhitespacePlusMinusIntLiter(NoWhitespacePlusMinusIntLiter<'src, I>),
-}
-
-enum NoWhitespacePlusMinusIntLiter<'src, I: Input<'src>> {
-    Begin {
-        lhs: (Token, I::Span),
-        op: (Token, I::Span),
-        rhs: (Token, I::Span),
-    },
-    Then {
-        lhs: Box<NoWhitespacePlusMinusIntLiter<'src, I>>,
-        op: (Token, I::Span),
-        rhs: (Token, I::Span),
-    },
-}
-
-impl<'src, I: Input<'src>> NoWhitespacePlusMinusIntLiter<'src, I> {
-    #[allow(clippy::single_call_fn)]
-    pub const fn begin(lhs: (Token, I::Span), op: (Token, I::Span), rhs: (Token, I::Span)) -> Self {
-        Self::Begin { lhs, op, rhs }
-    }
-
-    #[allow(clippy::single_call_fn)]
-    pub fn then(lhs: Self, op: (Token, I::Span), rhs: (Token, I::Span)) -> Self {
-        Self::Then {
-            lhs: Box::new(lhs),
-            op,
-            rhs,
-        }
-    }
-
-    pub fn to_vec(&self) -> Vec<(Token, I::Span)>
-    where
-        I::Span: Clone,
-    {
-        // an ugly, and probably not-as-efficient, algorithm to flatten this
-        // structure into a vector, by cloning all of its components
-        let mut vec = Vec::<(Token, I::Span)>::new();
-        let mut not_done = true;
-        let mut left_over = self;
-        while not_done {
-            match *left_over {
-                Self::Begin {
-                    ref lhs,
-                    ref op,
-                    ref rhs,
-                } => {
-                    // append elements back-to-front and terminate iteration
-                    vec.push(rhs.clone());
-                    vec.push(op.clone());
-                    vec.push(lhs.clone());
-                    not_done = false;
-                }
-                Self::Then {
-                    ref lhs,
-                    ref op,
-                    ref rhs,
-                } => {
-                    // append elements back-to-front, and continue iterating
-                    vec.push(rhs.clone());
-                    vec.push(op.clone());
-                    left_over = &**lhs;
-                }
-            }
-        }
-
-        // reverse the vector and return, we are done
-        vec.reverse();
-        vec
-    }
+    NoWhitespacePlusMinusIntLiter(Vec<(Token, I::Span)>),
 }
 
 #[allow(
@@ -433,10 +364,14 @@ where
         plus_or_minus.clone(),
         spanned_int_liter.clone(),
     ))
-    .map_group(NoWhitespacePlusMinusIntLiter::begin)
+    .map(|(lhs, op, rhs)| vec![lhs, op, rhs])
     .foldl(
         group((plus_or_minus, spanned_int_liter)).repeated(),
-        |lhs, (op, rhs)| NoWhitespacePlusMinusIntLiter::then(lhs, op, rhs),
+        |mut lhs, (op, rhs)| {
+            lhs.push(op);
+            lhs.push(rhs);
+            lhs
+        },
     )
     .map(LongestMatchCorrectionToken::NoWhitespacePlusMinusIntLiter);
 
@@ -498,8 +433,8 @@ where
                 LongestMatchCorrectionToken::Token(t) => {
                     vec.push((t, s));
                 }
-                LongestMatchCorrectionToken::NoWhitespacePlusMinusIntLiter(t) => {
-                    vec.append(&mut t.to_vec());
+                LongestMatchCorrectionToken::NoWhitespacePlusMinusIntLiter(mut t) => {
+                    vec.append(&mut t);
                 }
             }
         }
