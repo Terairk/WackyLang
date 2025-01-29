@@ -208,13 +208,11 @@ impl fmt::Display for Token {
 
 /// An intermediary token-type that encodes the corrections made to the grammar, to accommodate for
 /// the mistakes made by the longest-match lexing algorithm
-// #[derive(Clone, PartialEq, Eq)]
 enum LongestMatchCorrectionToken<'src, I: Input<'src>> {
     Token(Token),
     NoWhitespacePlusMinusIntLiter(NoWhitespacePlusMinusIntLiter<'src, I>),
 }
 
-// #[derive(Clone, PartialEq, Eq)]
 enum NoWhitespacePlusMinusIntLiter<'src, I: Input<'src>> {
     Begin {
         lhs: (Token, I::Span),
@@ -290,7 +288,7 @@ impl<'src, I: Input<'src>> NoWhitespacePlusMinusIntLiter<'src, I> {
     clippy::single_call_fn
 )]
 #[inline]
-fn unflattened_lexer<'src, I>(
+fn unflattened_token_lexer<'src, I>(
 ) -> impl alias::Parser<'src, I, Vec<(LongestMatchCorrectionToken<'src, I>, I::Span)>>
 where
     I: StrInput<'src, Token = char, Slice = &'src str>,
@@ -487,7 +485,7 @@ where
     I: StrInput<'src, Token = char, Slice = &'src str>,
     I::Span: Clone,
 {
-    let lexer = unflattened_lexer::<'src, I>();
+    let lexer = unflattened_token_lexer::<'src, I>();
 
     lexer.map(|tokens| {
         // create new flattened vector
