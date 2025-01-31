@@ -1,2 +1,4 @@
 /target
 compile
+.idea/
+.git/
