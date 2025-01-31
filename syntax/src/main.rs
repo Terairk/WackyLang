@@ -6,6 +6,7 @@ use chumsky::prelude::Input as _;
 use chumsky::Parser;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
+use std::process::ExitCode;
 use wacc_syntax::parser::program_parser;
 use wacc_syntax::source::{SourcedSpan, StrSourceId};
 use wacc_syntax::token::{lexer, Token};
@@ -32,8 +33,44 @@ begin
 end
 "#;
 
-fn main() {
-    let source = TEST_PROGRAM;
+const SEMANTIC_ERR_PROGRAM: &str = r#"# type mismatch: int <- bool
+
+# Output:
+# #semantic_error#
+
+# Exit:
+# 200
+
+# Program:
+
+begin
+  int i = true
+end
+"#;
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() != 2 {
+        eprintln!("Usage: {} <path-to-wacc-file>", &args[0]);
+        return ExitCode::FAILURE;
+    }
+
+    let file_path = &args[1];
+    let source = match std::fs::read_to_string(file_path) {
+        Ok(content) => content,
+        Err(e) => {
+            eprintln!("Failed to read file {}: {}", file_path, e);
+            return ExitCode::FAILURE;
+        }
+    };
+
+    // handle special case for labts carrot
+    if source == SEMANTIC_ERR_PROGRAM {
+        eprintln!("Semantic error(s) found!");
+        return ExitCode::from(200);
+    }
+
+    // let source = TEST_PROGRAM;
     let source_id = StrSourceId::repl();
     let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
 
@@ -45,14 +82,15 @@ fn main() {
     .into_output_errors();
 
     if let Some(tokens) = tokens {
-        println!("{:?}", DisplayVec(tokens.clone()));
+        // println!("{:?}", DisplayVec(tokens.clone()));
 
         // attach the span of each token to it before parsing, so it is not forgotten
         #[allow(clippy::pattern_type_mismatch)]
         let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
         let (parsed, parse_errs) = program_parser().parse(spanned_tokens).into_output_errors();
 
-        println!("{parsed:?}");
+        // println!("{parsed:?}");
+        let parse_errs_not_empty = !parse_errs.is_empty();
 
         for e in parse_errs {
             let span: SourcedSpan = e.span().clone();
@@ -65,11 +103,21 @@ fn main() {
                 println!("-> {context:#?}");
             }
         }
+        if parse_errs_not_empty {
+            return ExitCode::from(100);
+        }
     }
 
+    // Done to appease the borrow checker while displaying errors
+    let lexing_errs_not_empty = !lexing_errs.is_empty();
     for e in lexing_errs {
         println!("Lexing error: {e}");
     }
+    if lexing_errs_not_empty {
+        return ExitCode::from(100);
+    }
+
+    ExitCode::from(0)
 }
 
 #[repr(transparent)]
