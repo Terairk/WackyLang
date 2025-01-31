@@ -1,0 +1,93 @@
+[workspace]
+resolver = "2"
+members = [
+    "fn_pipe_proc",
+    "fn_pipe",
+    "syntax",
+]
+
+[profile.dev]
+opt-level = 2
+
+# Clippy's lint category level configurations;
+# every member crate needs to inherit these by adding
+#
+#     ```toml
+#     [lints]
+#     workspace = true
+#     ```
+#
+# to their `Cargo.toml` files
+[workspace.lints.clippy]
+# Clippy lint categories meant to be enabled all at once
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+
+# Individual Clippy lints from the `restriction` category
+arbitrary_source_item_ordering = "warn"
+arithmetic_side_effects = "warn"
+as_conversions = "warn"
+assertions_on_result_states = "warn"
+clone_on_ref_ptr = "warn"
+decimal_literal_representation = "warn"
+default_union_representation = "warn"
+deref_by_slicing = "warn"
+disallowed_script_idents = "deny"
+else_if_without_else = "warn"
+empty_enum_variants_with_brackets = "warn"
+empty_structs_with_brackets = "warn"
+error_impl_error = "warn"
+exit = "deny"
+expect_used = "warn"
+float_cmp_const = "warn"
+get_unwrap = "warn"
+if_then_some_else_none = "warn"
+impl_trait_in_params = "warn"
+indexing_slicing = "warn"
+infinite_loop = "warn"
+let_underscore_must_use = "warn"
+let_underscore_untyped = "warn"
+lossy_float_literal = "warn"
+mem_forget = "warn"
+missing_inline_in_public_items = "warn"
+multiple_inherent_impl = "warn"
+multiple_unsafe_ops_per_block = "warn"
+mutex_atomic = "warn"
+non_zero_suggestions = "warn"
+panic = "warn"
+partial_pub_fields = "warn"
+pattern_type_mismatch = "warn"
+pub_without_shorthand = "warn"
+rc_buffer = "warn"
+rc_mutex = "warn"
+redundant_type_annotations = "warn"
+renamed_function_params = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+same_name_method = "warn"
+self_named_module_files = "deny"
+semicolon_inside_block = "warn"
+shadow_same = "warn"
+shadow_unrelated = "warn"
+single_call_fn = "warn"
+str_to_string = "warn"
+string_add = "warn"
+string_lit_chars_any = "warn"
+string_to_string = "warn"
+tests_outside_test_module = "warn"
+todo = "warn"
+try_err = "warn"
+undocumented_unsafe_blocks = "warn"
+unnecessary_safety_comment = "warn"
+unnecessary_safety_doc = "warn"
+unneeded_field_pattern = "warn"
+unseparated_literal_suffix = "warn"
+unused_result_ok = "warn"
+unused_trait_names = "warn"
+unwrap_used = "warn"
+verbose_file_reads = "warn"

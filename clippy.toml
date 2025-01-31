@@ -1,0 +1,3 @@
+# the `hashbrown` dependency clash in `wacc_syntax` crate is caused by its dependencies
+# so the resulting linting error is a false positve and has to be manually excluded
+allowed-duplicate-crates = ["hashbrown"]

@@ -1,4 +1,4 @@
-.metals/
-.bsp/
-.scala-build/
-.vscode/
+/target
+compile
+.idea/
+.git/

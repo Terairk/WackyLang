@@ -1,0 +1,11 @@
+[package]
+name = "fn_pipe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+fn_pipe_proc = { path = "../fn_pipe_proc" }
