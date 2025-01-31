@@ -127,7 +127,6 @@ mod tests {
     use wacc_syntax::parser::program_parser;
     use wacc_syntax::source::{SourcedSpan, StrSourceId};
     use wacc_syntax::token::{lexer, Token};
-
     #[test]
     fn run_failed_syntax_tests() {
         let tests_dir = Path::new("../test_cases/invalid/syntaxErr");
@@ -229,26 +228,26 @@ mod tests {
             source.with_context((source_id.clone(), ())),
         )
         .into_output_errors();
-
+        let syntax_err_str = String::from("Syntax error(s) found!");
         if let Some(tokens) = tokens {
             #[allow(clippy::pattern_type_mismatch)]
             let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
             let (_parsed, parse_errs) = program_parser().parse(spanned_tokens).into_output_errors();
 
             if !parse_errs.is_empty() {
-                return Err(String::from("Syntax error(s) found!"));
+                return Err(syntax_err_str);
             }
         }
         // If there are syntax errors, return an appropriate result
         if !lexing_errs.is_empty() {
-            return Err(String::from("Syntax error(s) found!"));
+            return Err(syntax_err_str);
         }
 
         // TODO: semantic analysis
         let semantic_errors: Vec<i32> = Vec::new();
 
         if !semantic_errors.is_empty() {
-            return Err(String::from("Semantic error(s) found!"));
+            return Err(syntax_err_str);
         }
 
         // If both syntax and semantic analysis succeed, return success
