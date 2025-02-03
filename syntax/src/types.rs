@@ -10,6 +10,8 @@ pub enum SemanticType {
     String,
     Array(Box<SemanticType>),
     Pair(Box<SemanticType>, Box<SemanticType>),
+    ErasedPair,
+    Unknown,
     Error(SourcedSpan), // For invalid types
 }
 
