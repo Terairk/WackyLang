@@ -1,11 +1,12 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
+use ariadne::{Color, ColorGenerator, Label, Report, Source};
 use chumsky::error::RichReason;
 use chumsky::input::WithContext;
 use chumsky::prelude::Input as _;
 use chumsky::Parser;
 use std::fmt;
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref, DerefMut, Range};
 use std::process::ExitCode;
 use wacc_syntax::parser::program_parser;
 use wacc_syntax::source::{SourcedSpan, StrSourceId};
@@ -93,15 +94,19 @@ fn main() -> ExitCode {
         let parse_errs_not_empty = !parse_errs.is_empty();
 
         for e in parse_errs {
-            let span: SourcedSpan = e.span().clone();
-            let reason: RichReason<_> = e.reason().clone();
-            let contexts = e.contexts();
-            println!("Parse error at {span:?}");
-            println!("Reason:\n{reason:#?}");
-            println!("Contexts:\n");
-            for context in contexts {
-                println!("-> {context:#?}");
-            }
+            let mut colors = ColorGenerator::new();
+
+            Report::build(ariadne::ReportKind::Error, (file_path, e.span().as_range()))
+                .with_message("Syntax error")
+                .with_code(69)
+                .with_label(
+                    Label::new((file_path, e.span().as_range()))
+                        .with_color(colors.next())
+                        .with_message(e.reason()),
+                )
+                .finish()
+                .print((file_path, Source::from(&source)))
+                .unwrap();
         }
         if parse_errs_not_empty {
             return ExitCode::from(100);
