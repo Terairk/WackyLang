@@ -8,6 +8,7 @@ use crate::{
     source::{SourcedNode, SourcedSpan},
     token::Delim,
     token::Token,
+    types,
 };
 use chumsky::pratt::right;
 use chumsky::{
@@ -212,17 +213,17 @@ where
 
 #[must_use]
 #[inline]
-pub fn type_parser<'src, I>() -> impl alias::Parser<'src, I, ast::Type>
+pub fn type_parser<'src, I>() -> impl alias::Parser<'src, I, types::Type>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan> + ValueInput<'src>,
 {
     recursive(|r#type| {
         // base types have no recursion
         let base_type = choice((
-            just(Token::Int).to(ast::BaseType::Int),
-            just(Token::Bool).to(ast::BaseType::Bool),
-            just(Token::Char).to(ast::BaseType::Char),
-            just(Token::String).to(ast::BaseType::String),
+            just(Token::Int).to(types::BaseType::Int),
+            just(Token::Bool).to(types::BaseType::Bool),
+            just(Token::Char).to(types::BaseType::Char),
+            just(Token::String).to(types::BaseType::String),
         ))
         .sn()
         .labelled("<base-type>");
@@ -242,14 +243,14 @@ where
                 .ignored()
                 .repeated(),
                 |ty, (), extra| {
-                    ast::Type::ArrayType(SN::new(ast::ArrayType::new(ty), extra.span()))
+                    types::Type::ArrayType(SN::new(types::ArrayType::new(ty), extra.span()))
                 },
             )
             // as explained above, in order to get the parser to consume tokens correctly, we have
             // to allow the possibility that at this point, this isn't even an ArrayType, so we are
             // filtering only for array types at this point
             .select_output(|ty, _| match ty {
-                ast::Type::ArrayType(ty) => Some(ty),
+                types::Type::ArrayType(ty) => Some(ty),
                 _ => None,
             })
             .memoized()
@@ -259,9 +260,9 @@ where
         // an array type and all other types look the same until the very last, so we should
         // give precedence to array types to make sure they are not incorrectly missed
         let pair_elem_type = choice((
-            array_type.clone().map(ast::PairElemType::ArrayType),
-            base_type.clone().map(ast::PairElemType::BaseType),
-            just(Token::Pair).to_span().map(ast::PairElemType::Pair),
+            array_type.clone().map(types::PairElemType::ArrayType),
+            base_type.clone().map(types::PairElemType::BaseType),
+            just(Token::Pair).to_span().map(types::PairElemType::Pair),
         ))
         .labelled("<pair-elem-type>");
         let pair_type = just(Token::Pair)
@@ -270,10 +271,10 @@ where
                     pair_elem_type.clone().then_ignore(just(Token::Comma)),
                     pair_elem_type,
                 ))
-                .map_group(ast::Type::PairType)
+                .map_group(types::Type::PairType)
                 .delim_by(Delim::Paren)
                 // Attempt to recover anything that looks like a (parenthesised) pair type but contains errors
-                .recover_with_delim(Delim::Paren, ast::Type::Error),
+                .recover_with_delim(Delim::Paren, types::Type::Error),
             )
             .labelled("<pair-type>");
 
@@ -282,8 +283,8 @@ where
         // give precedence to array types to make sure they are not incorrectly missed
         #[allow(clippy::shadow_unrelated)]
         let r#type = choice((
-            array_type.map(ast::Type::ArrayType),
-            base_type.map(ast::Type::BaseType),
+            array_type.map(types::Type::ArrayType),
+            base_type.map(types::Type::BaseType),
             pair_type,
         ))
         .labelled("<type>");

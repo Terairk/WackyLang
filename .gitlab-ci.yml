@@ -1,17 +1,31 @@
 stages:
   - build
+  - test
 
-rust-latest:
-  stage: build
-  image: rust:latest
-  script:
-    - cargo build --verbose
-    - cargo test --verbose
+# Cache configuration to speed up builds
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - target/
+    - .cargo/registry
+    - .cargo/git
 
-rust-nightly:
+# Build stage
+build:
   stage: build
-  image: rustlang/rust:nightly
   script:
+    - rustup override set nightly
     - cargo build --verbose
+  artifacts:
+    paths:
+      - target/debug/
+    expire_in: 1 week
+
+# Test stage
+test:
+  stage: test
+  script:
+    - rustup override set nightly
     - cargo test --verbose
-  allow_failure: true
+  dependencies:
+    - build
