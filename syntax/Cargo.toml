@@ -22,6 +22,12 @@ thiserror = "2"
 internment = { version = "0.8.6", features = ["arc"] }
 
 # parsing and error reporting
-chumsky = { features = ["std", "stacker", "memoization", "pratt", "regex", "nightly"], git = "https://github.com/zesterer/chumsky", rev = "282bf5e" } # currently latest chumsky commit
+chumsky = { features = [
+  "std",
+  "stacker",
+  "memoization",
+  "pratt",
+  "regex",
+  "nightly",
+], git = "https://github.com/zesterer/chumsky", rev = "282bf5e" } # currently latest chumsky commit
 ariadne = "0.5.0"
-

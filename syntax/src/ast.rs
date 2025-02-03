@@ -2,6 +2,7 @@
 
 use crate::nonempty::NonemptyArray;
 use crate::source::{SourcedNode, SourcedSpan};
+use crate::types::{SemanticType, Type};
 use delegate::delegate;
 use internment::ArcIntern;
 use std::{fmt, fmt::Debug, ops::Deref};
@@ -9,6 +10,7 @@ use thiserror::Error;
 
 /// A file-local type alias for better readability of type definitions
 type SN<T> = SourcedNode<T>;
+// type UntypedExpr = Expr<()>;
 
 #[derive(Clone, Debug)]
 pub struct Program {
@@ -231,44 +233,6 @@ impl RValue {
 pub enum PairElem {
     Fst(SN<LValue>),
     Snd(SN<LValue>),
-}
-
-#[derive(Clone, Debug)]
-pub enum Type {
-    BaseType(SN<BaseType>),
-    ArrayType(SN<ArrayType>),
-    PairType(PairElemType, PairElemType),
-
-    // Generated only by parser errors.
-    Error(SourcedSpan),
-}
-
-#[derive(Clone, Debug)]
-pub enum BaseType {
-    Int,
-    Bool,
-    Char,
-    String,
-}
-
-#[derive(Clone, Debug)]
-pub struct ArrayType {
-    pub elem_type: Type,
-}
-
-impl ArrayType {
-    #[must_use]
-    #[inline]
-    pub const fn new(elem_type: Type) -> Self {
-        Self { elem_type }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum PairElemType {
-    BaseType(SN<BaseType>),
-    ArrayType(SN<ArrayType>),
-    Pair(SourcedSpan),
 }
 
 #[derive(Clone, Debug)]
