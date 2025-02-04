@@ -1,7 +1,7 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 use std::collections::HashMap;
 
-pub(crate) use crate::ast::{Expr, Func, FuncParam, Ident, Program, StatBlock};
+use crate::ast::{Expr, Func, FuncParam, Ident, Program, Stat, StatBlock};
 use crate::source::{SourcedNode, SourcedSpan};
 use crate::types::{SemanticType, Type};
 use std::hash::{Hash, Hasher};
@@ -31,10 +31,10 @@ impl PartialEq for RenamedName {
 
 impl RenamedName {
     fn new(counter: &mut usize, ident: SN<Ident>) -> Self {
-        counter += 1;
+        *counter += 1;
         Self {
             ident,
-            uuid: counter,
+            uuid: *counter,
         }
     }
 }
@@ -134,7 +134,7 @@ fn resolve_declaration(
     r#type: SN<Type>,
     name: SN<Ident>,
     rvalue: Expr<Ident, ()>,
-) -> Result<(), SemanticError> {
+) -> Result<Stat<RenamedName, ()>, SemanticError> {
     let id_map = &mut context.identifier_map;
     if id_map.contains_key(&name.inner()) {
         return Err(SemanticError::DuplicateIdent(name.clone()));
@@ -145,6 +145,12 @@ fn resolve_declaration(
 
     let unique_name = RenamedName::new(&mut context.counter, name.clone());
     id_map.insert(name.inner().clone(), unique_name);
+
+    Ok(Stat::VarDefinition {
+        r#type: r#type.clone(),
+        name: SN::new(unique_name, name.span()),
+        rvalue: resolved_rvalue,
+    })
 }
 
 // mod fold {
