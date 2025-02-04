@@ -1,5 +1,6 @@
 use crate::source::SourcedNode;
 use crate::source::SourcedSpan;
+use std::cmp::PartialEq;
 type SN<T> = SourcedNode<T>;
 
 #[derive(Clone, Debug)]
@@ -95,3 +96,20 @@ impl PairElemType {
         }
     }
 }
+
+impl PartialEq for SemanticType {
+    fn eq(&self, other: &Self) -> bool {
+        use SemanticType::*;
+        match (self, other) {
+            (Int, Int) | (Bool, Bool) | (Char, Char) | (String, String) => true,
+            (Array(a), Array(b)) => a == b,
+            (Pair(a1, b1), Pair(a2, b2)) => a1 == a2 && b1 == b2,
+            (ErasedPair, ErasedPair) => true,
+            (Unknown, Unknown) => true,
+            (Error(_), Error(_)) => true, // Treat all errors as equal, ignoring SourcedSpan details
+            _ => false,
+        }
+    }
+}
+
+impl Eq for SemanticType {}
