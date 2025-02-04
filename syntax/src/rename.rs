@@ -1,7 +1,7 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 use std::collections::HashMap;
 
-use crate::ast::{Expr, Func, FuncParam, Ident, Program, Stat, StatBlock};
+use crate::ast::{Expr, Func, FuncParam, Ident, Program, RValue, Stat, StatBlock};
 use crate::source::{SourcedNode, SourcedSpan};
 use crate::types::{SemanticType, Type};
 use std::hash::{Hash, Hasher};
@@ -133,25 +133,38 @@ fn resolve_declaration(
     context: &mut RenameContext,
     r#type: SN<Type>,
     name: SN<Ident>,
-    rvalue: Expr<Ident, ()>,
+    rvalue: RValue<Ident, ()>,
 ) -> Result<Stat<RenamedName, ()>, SemanticError> {
-    let id_map = &mut context.identifier_map;
-    if id_map.contains_key(&name.inner()) {
-        return Err(SemanticError::DuplicateIdent(name.clone()));
-    }
     // Evaluate the rhs before creating unique name to not allow int x = x
     // where x is not defined yet
-    let resolved_rvalue = resolve_expr(context, rvalue)?;
+    // resolved_expr returns a new copy of the initializer with any variables renamed
+    let resolved_rvalue = resolve_rvalue(context, rvalue)?;
+
+    // Check for duplicate id after resolving rvalue
+    if context.identifier_map.contains_key(name.inner()) {
+        return Err(SemanticError::DuplicateIdent(name));
+    }
 
     let unique_name = RenamedName::new(&mut context.counter, name.clone());
-    id_map.insert(name.inner().clone(), unique_name);
+    context
+        .identifier_map
+        .insert(name.inner().clone(), unique_name.clone());
 
     Ok(Stat::VarDefinition {
-        r#type: r#type.clone(),
+        r#type,
         name: SN::new(unique_name, name.span()),
         rvalue: resolved_rvalue,
     })
 }
+
+fn resolve_rvalue(
+    context: &RenameContext,
+    rvalue: RValue<Ident, ()>,
+) -> Result<RValue<RenamedName, ()>, SemanticError> {
+    unimplemented!()
+}
+
+// fn resolve_statement()
 
 // mod fold {
 //     use super::*;

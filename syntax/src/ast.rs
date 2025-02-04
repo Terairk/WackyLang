@@ -62,7 +62,7 @@ pub struct FuncParam<N> {
 
 #[derive(Clone, Debug)]
 #[repr(transparent)]
-pub struct StatBlock<N, T>(NonemptyArray<SN<Stat<N, T>>>);
+pub struct StatBlock<N, T>(pub NonemptyArray<SN<Stat<N, T>>>);
 
 #[derive(Error, Debug)]
 #[error("Cannot create to `StatBlock` because the supplied `Vec<Stat>` is empty")]
