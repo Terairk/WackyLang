@@ -263,7 +263,7 @@ pub enum Expr<N, T> {
     ArrayElem(ArrayElem<N, T>, T),
     Unary(SN<UnaryOper>, SN<Self>, T),
     Binary(SN<Self>, SN<BinaryOper>, SN<Self>, T),
-    Paren(SN<Self>),
+    Paren(SN<Self>, T),
 
     // Generated only by parser errors.
     Error(SourcedSpan),
