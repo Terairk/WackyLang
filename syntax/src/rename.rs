@@ -34,6 +34,22 @@ struct RenameContext {
     errors: Vec<SemanticError>,
 }
 
+impl IdFuncTable {
+    fn new() -> Self {
+        Self {
+            functions: HashMap::new(),
+        }
+    }
+}
+
+impl SymbolTable {
+    fn new() -> Self {
+        Self {
+            symbols: HashMap::new(),
+        }
+    }
+}
+
 impl RenameContext {
     fn new() -> Self {
         Self {

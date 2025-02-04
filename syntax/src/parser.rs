@@ -113,7 +113,7 @@ where
             // give them precedence over identifiers
             array_elem.map(|elem| ast::Expr::ArrayElem(elem, ())),
             ident.map(|ident| ast::Expr::Ident(ident, ())),
-            paren_expr.map(|paren| ast::Expr::Paren(paren, ())),
+            paren_expr.map(ast::Expr::Paren),
         ));
 
         // Perform simplistic error recovery on Atom expressions
