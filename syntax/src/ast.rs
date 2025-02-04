@@ -20,12 +20,6 @@ type SN<T> = SourcedNode<T>;
 // Definitions for Names used to parametrise AST
 // Ident on its own will be considered an OriginalName
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct RenamedName {
-    ident: Ident,
-    uuid: u32,
-}
-
 // id_table: Just for RenamedAST
 // id_func_table: HashMap<RenamedName, (ReturnedType, List<ParamType>)
 // symbol_table: HashMap<RenamedName, SemanticType>

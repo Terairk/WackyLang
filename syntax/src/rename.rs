@@ -1,9 +1,43 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 use std::collections::HashMap;
 
-pub(crate) use crate::ast::{Expr, Func, FuncParam, Ident, Program, RenamedName, StatBlock};
+pub(crate) use crate::ast::{Expr, Func, FuncParam, Ident, Program, StatBlock};
 use crate::source::{SourcedNode, SourcedSpan};
 use crate::types::{SemanticType, Type};
+use std::hash::{Hash, Hasher};
+
+// TODO: check if ident can be SN<Ident>, only problem is that
+// Node does't implement Hash
+#[derive(Clone, Debug)]
+pub struct RenamedName {
+    ident: SN<Ident>,
+    uuid: usize,
+}
+
+// Make Hash depend only on the ident and uuid so that we can use it in a HashMap
+// while still keeping the SN for error reporting
+impl Hash for RenamedName {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.ident.hash(state);
+        self.uuid.hash(state);
+    }
+}
+
+impl PartialEq for RenamedName {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident && self.uuid == other.uuid
+    }
+}
+
+impl RenamedName {
+    fn new(counter: &mut usize, ident: SN<Ident>) -> Self {
+        counter += 1;
+        Self {
+            ident,
+            uuid: counter,
+        }
+    }
+}
 
 // A file-local type alias for better readability of type definitions
 type SN<T> = SourcedNode<T>;
@@ -31,7 +65,7 @@ struct SymbolTable {
 
 struct RenameContext {
     id_func_table: IdFuncTable,
-    symbol_table: SymbolTable,
+    identifier_map: HashMap<Ident, RenamedName>,
     counter: usize,
     errors: Vec<SemanticError>,
 }
@@ -56,7 +90,7 @@ impl RenameContext {
     fn new() -> Self {
         Self {
             id_func_table: IdFuncTable::new(),
-            symbol_table: SymbolTable::new(),
+            identifier_map: HashMap::new(),
             counter: 0,
             errors: Vec::new(),
         }
@@ -93,6 +127,24 @@ fn build_func_table(
             .insert(func.name.inner().clone(), (return_type, param_types));
         Ok(())
     })
+}
+
+fn resolve_declaration(
+    context: &mut RenameContext,
+    r#type: SN<Type>,
+    name: SN<Ident>,
+    rvalue: Expr<Ident, ()>,
+) -> Result<(), SemanticError> {
+    let id_map = &mut context.identifier_map;
+    if id_map.contains_key(&name.inner()) {
+        return Err(SemanticError::DuplicateIdent(name.clone()));
+    }
+    // Evaluate the rhs before creating unique name to not allow int x = x
+    // where x is not defined yet
+    let resolved_rvalue = resolve_expr(context, rvalue)?;
+
+    let unique_name = RenamedName::new(&mut context.counter, name.clone());
+    id_map.insert(name.inner().clone(), unique_name);
 }
 
 // mod fold {
