@@ -22,6 +22,7 @@ pub(crate) mod alias {
 
 pub mod ast;
 pub mod types;
+pub mod rename;
 
 /// Namespace for crate-wide extension traits/methods
 pub(crate) mod ext {

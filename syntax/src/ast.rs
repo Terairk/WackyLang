@@ -8,29 +8,42 @@ use internment::ArcIntern;
 use std::{fmt, fmt::Debug, ops::Deref};
 use thiserror::Error;
 
-/// A file-local type alias for better readability of type definitions
+/* File contains the definition for the AST
+ * This AST is generic over a Name (N) and a Type (T)
+ * Example AST is UntypedAST = Program<Ident, ()>
+ * This file contains the definitions first and then the impl blocks
+ */
+
+// A file-local type alias for better readability of type definitions
 type SN<T> = SourcedNode<T>;
-// type UntypedExpr = Expr<()>;
 
 // Definitions for Names used to parametrise AST
-#[derive(Clone, Debug, Hash, PartialEq)]
+// Ident on its own will be considered an OriginalName
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct RenamedName {
     ident: Ident,
     uuid: u32,
 }
 
+// id_table: Just for RenamedAST
+// id_func_table: HashMap<RenamedName, (ReturnedType, List<ParamType>)
+// symbol_table: HashMap<RenamedName, SemanticType>
+
+// rename: ParserAST -> RenamedAST - identifier table
+// symbol table is created
+// type-check: RenamedAST -> maybe id_func_table -> TypedAST
+//
+
+// For the rest of the file
+// N refers to Ident | RenamedName
+// T refers to Type | Semantic Type
+// where Type is really a Syntactic Type
+
 #[derive(Clone, Debug)]
 pub struct Program<N, T> {
     pub funcs: Box<[Func<N, T>]>,
     pub body: SN<StatBlock<N, T>>,
-}
-
-impl<N, T> Program<N, T> {
-    #[must_use]
-    #[inline]
-    pub const fn new(funcs: Box<[Func<N, T>]>, body: SN<StatBlock<N, T>>) -> Self {
-        Self { funcs, body }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -42,6 +55,164 @@ pub struct Func<N, T> {
     pub name: SN<N>,
     pub params: Box<[FuncParam<N>]>,
     pub body: SN<StatBlock<N, T>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct FuncParam<N> {
+    // Leave this as Type to not mess up parametricity
+    // This shouldn't change though you can use the helpers in types.rs
+    // to convert to a SemanticType
+    pub r#type: SN<Type>, // Leave this as Type
+    pub name: SN<N>,
+}
+
+#[derive(Clone, Debug)]
+#[repr(transparent)]
+pub struct StatBlock<N, T>(NonemptyArray<SN<Stat<N, T>>>);
+
+#[derive(Error, Debug)]
+#[error("Cannot create to `StatBlock` because the supplied `Vec<Stat>` is empty")]
+pub struct EmptyStatVecError;
+
+#[derive(Clone, Debug)]
+pub enum Stat<N, T> {
+    Skip,
+    VarDefinition {
+        // Leave this to not mess up parametricity
+        // This shouldn't change though you can use the helpers in types.rs
+        // to convert to a SemanticType
+        r#type: SN<Type>,
+        name: SN<N>,
+        rvalue: RValue<N, T>,
+    },
+    Assignment {
+        lvalue: LValue<N, T>,
+        rvalue: RValue<N, T>,
+    },
+    Read(LValue<N, T>),
+    Free(SN<Expr<N, T>>),
+    Return(SN<Expr<N, T>>),
+    Exit(SN<Expr<N, T>>),
+    Print(SN<Expr<N, T>>),
+    Println(SN<Expr<N, T>>),
+    IfThenElse {
+        if_cond: SN<Expr<N, T>>,
+        then_body: SN<StatBlock<N, T>>,
+        else_body: SN<StatBlock<N, T>>,
+    },
+    WhileDo {
+        while_cond: SN<Expr<N, T>>,
+        body: SN<StatBlock<N, T>>,
+    },
+    Scoped(SN<StatBlock<N, T>>),
+}
+
+#[derive(Clone, Debug)]
+pub enum LValue<N, T> {
+    Ident(SN<N>),
+    ArrayElem(ArrayElem<N, T>, T),
+    PairElem(SN<PairElem<N, T>>, T),
+}
+
+#[derive(Clone, Debug)]
+pub enum RValue<N, T> {
+    Expr(SN<Expr<N, T>>), // Type info already in Expr, TODO: maybe needs a T
+    ArrayLiter(Box<[SN<Expr<N, T>>]>, T), // Array needs a type
+    NewPair(SN<Expr<N, T>>, SN<Expr<N, T>>, T), // Pair needs a type I think
+    PairElem(PairElem<N, T>), // Type info would come from the inner pair
+    Call {
+        func_name: SN<N>,
+        args: Box<[SN<Expr<N, T>>]>,
+        return_type: T, // Add return type here
+    },
+}
+
+#[derive(Clone, Debug)]
+pub enum PairElem<N, T> {
+    Fst(SN<LValue<N, T>>),
+    Snd(SN<LValue<N, T>>),
+}
+
+#[derive(Clone, Debug)]
+pub struct ArrayElem<N, T> {
+    pub array_name: SN<N>,
+    pub indices: NonemptyArray<SN<Expr<N, T>>>,
+}
+
+#[derive(Clone, Debug)]
+pub enum Expr<N, T> {
+    Liter(Liter, T),
+    Ident(Ident, T),
+    ArrayElem(ArrayElem<N, T>, T),
+    Unary(SN<UnaryOper>, SN<Self>, T),
+    Binary(SN<Self>, SN<BinaryOper>, SN<Self>, T),
+    Paren(SN<Self>),
+
+    // Generated only by parser errors.
+    Error(SourcedSpan),
+}
+
+#[derive(Clone, Debug)]
+pub enum Liter {
+    IntLiter(i32),
+    BoolLiter(bool),
+    CharLiter(char),
+    StrLiter(ArcIntern<str>),
+    PairLiter,
+}
+
+#[derive(Clone, Debug)]
+pub enum UnaryOper {
+    Not,
+    Minus,
+    Len,
+    Ord,
+    Chr,
+}
+
+#[derive(Clone, Debug)]
+pub enum BinaryOper {
+    Mul,
+    Div,
+    Mod,
+    Add,
+    Sub,
+    Lte,
+    Lt,
+    Gte,
+    Gt,
+    Eq,
+    Neq,
+    And,
+    Or,
+}
+
+// Currently, these functions are for the parser to use
+// TODO: maybe this will change so edit this if this does
+
+impl BinaryOper {
+    /// The precedence of binary operators in WACC, where lower
+    /// is higher. Source: WACC-language spec, Table 4.
+    #[must_use]
+    #[inline]
+    pub const fn precedence(&self) -> u8 {
+        match *self {
+            Self::Mul | Self::Div | Self::Mod => 1,
+            Self::Add | Self::Sub => 2,
+            Self::Lte | Self::Lt | Self::Gte | Self::Gt => 3,
+            Self::Eq | Self::Neq => 4,
+            Self::And => 5,
+            Self::Or => 6,
+        }
+    }
+}
+
+impl<N, T> Program<N, T> {
+    #[must_use]
+    #[inline]
+    pub const fn new(funcs: Box<[Func<N, T>]>, body: SN<StatBlock<N, T>>) -> Self {
+        Self { funcs, body }
+    }
 }
 
 impl<N, T> Func<N, T> {
@@ -62,15 +233,6 @@ impl<N, T> Func<N, T> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct FuncParam<N> {
-    // Leave this as Type to not mess up parametricity
-    // This shouldn't change though you can use the helpers in types.rs
-    // to convert to a SemanticType
-    pub r#type: SN<Type>, // Leave this as Type
-    pub name: SN<N>,
-}
-
 impl<N> FuncParam<N> {
     #[must_use]
     #[inline]
@@ -78,14 +240,6 @@ impl<N> FuncParam<N> {
         Self { r#type, name }
     }
 }
-
-#[derive(Clone, Debug)]
-#[repr(transparent)]
-pub struct StatBlock<N, T>(NonemptyArray<SN<Stat<N, T>>>);
-
-#[derive(Error, Debug)]
-#[error("Cannot create to `StatBlock` because the supplied `Vec<Stat>` is empty")]
-pub struct EmptyStatVecError;
 
 impl<N, T> StatBlock<N, T> {
     #[must_use]
@@ -145,40 +299,6 @@ impl<N, T> TryFrom<Vec<SN<Stat<N, T>>>> for StatBlock<N, T> {
         Self::try_new(spanned_stats)
     }
 }
-
-#[derive(Clone, Debug)]
-pub enum Stat<N, T> {
-    Skip,
-    VarDefinition {
-        // Leave this to not mess up parametricity
-        // This shouldn't change though you can use the helpers in types.rs
-        // to convert to a SemanticType
-        r#type: SN<Type>,
-        name: SN<N>,
-        rvalue: RValue<N, T>,
-    },
-    Assignment {
-        lvalue: LValue<N, T>,
-        rvalue: RValue<N, T>,
-    },
-    Read(LValue<N, T>),
-    Free(SN<Expr<N, T>>),
-    Return(SN<Expr<N, T>>),
-    Exit(SN<Expr<N, T>>),
-    Print(SN<Expr<N, T>>),
-    Println(SN<Expr<N, T>>),
-    IfThenElse {
-        if_cond: SN<Expr<N, T>>,
-        then_body: SN<StatBlock<N, T>>,
-        else_body: SN<StatBlock<N, T>>,
-    },
-    WhileDo {
-        while_cond: SN<Expr<N, T>>,
-        body: SN<StatBlock<N, T>>,
-    },
-    Scoped(SN<StatBlock<N, T>>),
-}
-
 impl<N, T> Stat<N, T> {
     #[must_use]
     #[inline]
@@ -217,27 +337,6 @@ impl<N, T> Stat<N, T> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum LValue<N, T> {
-    // TODO: Ident maybe doesn't need a T as we look up the type from the symbol table
-    Ident(SN<N>),
-    ArrayElem(ArrayElem<N, T>, T),
-    PairElem(SN<PairElem<N, T>>, T),
-}
-
-#[derive(Clone, Debug)]
-pub enum RValue<N, T> {
-    Expr(SN<Expr<N, T>>), // Type info already in Expr, TODO: maybe needs a T
-    ArrayLiter(Box<[SN<Expr<N, T>>]>, T), // Array needs a type
-    NewPair(SN<Expr<N, T>>, SN<Expr<N, T>>, T), // Pair needs a type I think
-    PairElem(PairElem<N, T>), // Type info would come from the inner pair
-    Call {
-        func_name: SN<N>,
-        args: Box<[SN<Expr<N, T>>]>,
-        return_type: T, // Add return type here
-    },
-}
-
 impl RValue<Ident, ()> {
     #[must_use]
     #[inline]
@@ -246,77 +345,6 @@ impl RValue<Ident, ()> {
             func_name,
             args,
             return_type: (),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum PairElem<N, T> {
-    Fst(SN<LValue<N, T>>),
-    Snd(SN<LValue<N, T>>),
-}
-
-#[derive(Clone, Debug)]
-pub enum Expr<N, T> {
-    Liter(Liter, T),
-    Ident(Ident, T),
-    ArrayElem(ArrayElem<N, T>, T),
-    Unary(SN<UnaryOper>, SN<Self>, T),
-    Binary(SN<Self>, SN<BinaryOper>, SN<Self>, T),
-    Paren(SN<Self>),
-
-    // Generated only by parser errors.
-    Error(SourcedSpan),
-}
-
-#[derive(Clone, Debug)]
-pub enum Liter {
-    IntLiter(i32),
-    BoolLiter(bool),
-    CharLiter(char),
-    StrLiter(ArcIntern<str>),
-    PairLiter,
-}
-
-#[derive(Clone, Debug)]
-pub enum UnaryOper {
-    Not,
-    Minus,
-    Len,
-    Ord,
-    Chr,
-}
-
-#[derive(Clone, Debug)]
-pub enum BinaryOper {
-    Mul,
-    Div,
-    Mod,
-    Add,
-    Sub,
-    Lte,
-    Lt,
-    Gte,
-    Gt,
-    Eq,
-    Neq,
-    And,
-    Or,
-}
-
-impl BinaryOper {
-    /// The precedence of binary operators in WACC, where lower
-    /// is higher. Source: WACC-language spec, Table 4.
-    #[must_use]
-    #[inline]
-    pub const fn precedence(&self) -> u8 {
-        match *self {
-            Self::Mul | Self::Div | Self::Mod => 1,
-            Self::Add | Self::Sub => 2,
-            Self::Lte | Self::Lt | Self::Gte | Self::Gt => 3,
-            Self::Eq | Self::Neq => 4,
-            Self::And => 5,
-            Self::Or => 6,
         }
     }
 }
@@ -361,13 +389,6 @@ impl Deref for Ident {
         self.0.deref()
     }
 }
-
-#[derive(Clone, Debug)]
-pub struct ArrayElem<N, T> {
-    pub array_name: SN<N>,
-    pub indices: NonemptyArray<SN<Expr<N, T>>>,
-}
-
 // TODO: change this to a type alias perhaps
 impl<N, T> ArrayElem<N, T> {
     #[must_use]
