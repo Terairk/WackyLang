@@ -79,7 +79,7 @@ type RenamedAST = Program<RenamedName, ()>;
 // with specifics such as int x = x where x is not defined yet
 // honestly for duplicate Ident, could probably list the other Ident it was duplicating
 // for potentially better errors
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SemanticError {
     ArityMismatch(SN<Ident>, usize, usize),
     DuplicateIdent(SN<Ident>),
@@ -97,10 +97,25 @@ struct SymbolTable {
     symbols: HashMap<RenamedName, SemanticType>,
 }
 
+struct IDMapEntry {
+    renamed_name: SN<RenamedName>,
+    from_current_block: bool,
+}
+
+impl IDMapEntry {
+    fn new(renamed_name: SN<RenamedName>, from_current_block: bool) -> Self {
+        Self {
+            renamed_name,
+            from_current_block,
+        }
+    }
+}
+
 // struct responsible for traversing/folding the AST
 pub struct Renamer {
     id_func_table: IdFuncTable,
-    identifier_map: HashMap<Ident, SN<RenamedName>>,
+    // bool refers to from_current_block used for renaming
+    identifier_map: HashMap<Ident, IDMapEntry>,
     counter: usize,
     errors: Vec<SemanticError>,
 }
@@ -120,6 +135,10 @@ impl Renamer {
     fn add_error(&mut self, error: SemanticError) {
         self.errors.push(error);
     }
+
+    pub fn return_errors(&self) -> Vec<SemanticError> {
+        self.errors.clone()
+    }
 }
 
 impl Folder for Renamer {
@@ -128,6 +147,7 @@ impl Folder for Renamer {
     type OutputN = RenamedName;
     type OutputT = ();
 
+    #[inline]
     fn fold_program(
         &mut self,
         program: Program<Self::N, Self::T>,
@@ -146,19 +166,10 @@ impl Folder for Renamer {
         self.make_program(folded_funcs, folded_body)
     }
 
-    // fn fold_name(&mut self, name: Self::N) -> Self::OutputN {
-    //     if let Some(renamed_name) = self.identifier_map.get(&name) {
-    //         renamed_name.clone()
-    //     } else {
-    //         self.add_error(SemanticError::UndefinedIdent(SN::new(name, name.span())));
-    //         // Return a dummy value so we can maybe maybe very hopefully
-    //         // allow multiple smantic errors
-    //         RenamedName::new(&mut self.counter, SN::new(name, name.span()))
-    //     }
-    // }
-
+    #[inline]
     fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN> {
-        if let Some(renamed_name) = self.identifier_map.get(name.inner()) {
+        if let Some(entry) = self.identifier_map.get(name.inner()) {
+            let renamed_name = &entry.renamed_name;
             renamed_name.clone()
         } else {
             self.add_error(SemanticError::UndefinedIdent(name.clone()));
@@ -168,6 +179,7 @@ impl Folder for Renamer {
         }
     }
 
+    #[inline]
     fn fold_var_definition(
         &mut self,
         r#type: SN<Type>,
@@ -181,7 +193,9 @@ impl Folder for Renamer {
         let resolved_rvalue = self.fold_rvalue(rvalue);
 
         // Check for duplicate id after resolving rvalue
-        if self.identifier_map.contains_key(name.inner()) {
+        if self.identifier_map.contains_key(name.inner())
+            && self.identifier_map[name.inner()].from_current_block
+        {
             self.add_error(SemanticError::DuplicateIdent(name.clone()));
             // return dummy Stat
             return Stat::VarDefinition {
@@ -192,8 +206,8 @@ impl Folder for Renamer {
         }
 
         let unique_name = RenamedName::new_sn(&mut self.counter, name.clone());
-        self.identifier_map
-            .insert(name.inner().clone(), unique_name.clone());
+        let map_entry = IDMapEntry::new(unique_name.clone(), true);
+        self.identifier_map.insert(name.inner().clone(), map_entry);
 
         Stat::VarDefinition {
             r#type,
@@ -202,12 +216,14 @@ impl Folder for Renamer {
         }
     }
 
+    #[inline]
     fn fold_expr_ident(
         &mut self,
         ident: SN<Self::N>,
         r#type: Self::T,
     ) -> Expr<Self::OutputN, Self::OutputT> {
-        if let Some(renamed_name) = self.identifier_map.get(ident.inner()) {
+        if let Some(entry) = self.identifier_map.get(ident.inner()) {
+            let renamed_name = &entry.renamed_name;
             Expr::Ident(renamed_name.clone(), r#type)
         } else {
             self.add_error(SemanticError::UndefinedIdent(ident.clone()));
