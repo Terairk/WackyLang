@@ -12,7 +12,7 @@ use std::hash::{Hash, Hasher};
 // Node does't implement Hash
 #[derive(Clone, Debug)]
 pub struct RenamedName {
-    ident: SN<Ident>,
+    ident: Ident,
     uuid: usize,
 }
 
@@ -35,16 +35,31 @@ impl PartialEq for RenamedName {
 
 impl RenamedName {
     #[inline]
-    const fn new(counter: &mut usize, ident: SN<Ident>) -> Self {
+    fn new_sn(counter: &mut usize, ident: SN<Ident>) -> SN<Self> {
         // would rather crash in debug builds than define a saturating
         // so we can change this to u128
         // though i suspect we'd have bigger problems before then
         #[allow(clippy::arithmetic_side_effects)]
         *counter += 1;
-        Self {
-            ident,
-            uuid: *counter,
-        }
+        SN::new(
+            Self {
+                ident: ident.inner().clone(),
+                uuid: *counter,
+            },
+            ident.span(),
+        )
+    }
+
+    // Function used to create a rogue renamed so we can still build tree
+    // even if we have errors
+    fn new_sn_0(ident: SN<Ident>) -> SN<Self> {
+        SN::new(
+            Self {
+                ident: ident.inner().clone(),
+                uuid: 0,
+            },
+            ident.span(),
+        )
     }
 }
 
@@ -77,7 +92,7 @@ struct SymbolTable {
 // struct responsible for traversing/folding the AST
 struct Renamer {
     id_func_table: IdFuncTable,
-    identifier_map: HashMap<Ident, RenamedName>,
+    identifier_map: HashMap<Ident, SN<RenamedName>>,
     counter: usize,
     errors: Vec<SemanticError>,
 }
@@ -136,15 +151,61 @@ impl Folder for Renamer {
 
     fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN> {
         if let Some(renamed_name) = self.identifier_map.get(name.inner()) {
-            SN::new(renamed_name.clone(), name.span())
+            renamed_name.clone()
         } else {
             self.add_error(SemanticError::UndefinedIdent(name.clone()));
             // Return a dummy value so we can maybe maybe very hopefully
-            // allow multiple smantic errors
-            SN::new(
-                RenamedName::new(&mut self.counter, name.clone()),
-                name.span(),
-            )
+            // allow multiple semantic errors
+            RenamedName::new_sn_0(name)
+        }
+    }
+
+    fn fold_var_definition(
+        &mut self,
+        r#type: SN<Type>,
+        name: SN<Self::N>,
+        rvalue: RValue<Self::N, Self::T>,
+    ) -> Stat<Self::OutputN, Self::OutputT> {
+        // Sorry about the lots of clones here
+        // Evaluate the rhs before creating unique name to not allow int x = x
+        // where x is not defined yet
+        // resolved_expr returns a new copy of the initializer with any variables renamed
+        let resolved_rvalue = self.fold_rvalue(rvalue);
+
+        // Check for duplicate id after resolving rvalue
+        if self.identifier_map.contains_key(name.inner()) {
+            self.add_error(SemanticError::DuplicateIdent(name.clone()));
+            // return dummy Stat
+            return Stat::VarDefinition {
+                r#type,
+                name: RenamedName::new_sn_0(name),
+                rvalue: resolved_rvalue,
+            };
+        }
+
+        let unique_name = RenamedName::new_sn(&mut self.counter, name.clone());
+        self.identifier_map
+            .insert(name.inner().clone(), unique_name.clone());
+
+        Stat::VarDefinition {
+            r#type,
+            name: unique_name,
+            rvalue: resolved_rvalue,
+        }
+    }
+
+    fn fold_expr_ident(
+        &mut self,
+        ident: SN<Self::N>,
+        r#type: Self::T,
+    ) -> Expr<Self::OutputN, Self::OutputT> {
+        if let Some(renamed_name) = self.identifier_map.get(ident.inner()) {
+            Expr::Ident(renamed_name.clone(), r#type)
+        } else {
+            self.add_error(SemanticError::UndefinedIdent(ident.clone()));
+            // Return a dummy value so we can maybe maybe very hopefully
+            // allow multiple semantic errors
+            Expr::Ident(RenamedName::new_sn_0(ident), r#type)
         }
     }
 
@@ -173,58 +234,6 @@ fn build_func_table(
         Ok(())
     })
 }
-
-fn resolve_declaration(
-    context: &mut Renamer,
-    r#type: SN<Type>,
-    name: SN<Ident>,
-    rvalue: RValue<Ident, ()>,
-) -> Result<Stat<RenamedName, ()>, SemanticError> {
-    // Evaluate the rhs before creating unique name to not allow int x = x
-    // where x is not defined yet
-    // resolved_expr returns a new copy of the initializer with any variables renamed
-    let resolved_rvalue = resolve_rvalue(context, rvalue)?;
-
-    // Check for duplicate id after resolving rvalue
-    if context.identifier_map.contains_key(name.inner()) {
-        return Err(SemanticError::DuplicateIdent(name));
-    }
-
-    let unique_name = RenamedName::new(&mut context.counter, name.clone());
-    context
-        .identifier_map
-        .insert(name.inner().clone(), unique_name.clone());
-
-    Ok(Stat::VarDefinition {
-        r#type,
-        name: SN::new(unique_name, name.span()),
-        rvalue: resolved_rvalue,
-    })
-}
-
-fn resolve_rvalue(
-    context: &Renamer,
-    rvalue: RValue<Ident, ()>,
-) -> Result<RValue<RenamedName, ()>, SemanticError> {
-    unimplemented!()
-}
-
-// fn resolve_statement()
-
-// mod fold {
-//     use super::*;
-//
-//     pub trait Folder {
-//         fn fold_program(&mut self, program: UntypedAST) -> RenamedAST;
-//         fn fold_stat_block(
-//             &mut self,
-//             stat_block: StatBlock<Ident, ()>,
-//         ) -> StatBlock<RenamedName, ()>;
-//         fn fold_expr(&mut self, expr: Expr<Ident, ()>) -> Expr<RenamedName, ()>;
-//         fn fold_func(&mut self, func: Func<Ident, ()>) -> Func<RenamedName, ()>;
-//         fn fold_func_param(&mut self, func_param: FuncParam<Ident>) -> FuncParam<RenamedName>;
-//     }
-// }
 
 // TODO: maybe have to return the counter i use so i can use it for IR Generation
 fn rename(program: UntypedAST) -> Result<(RenamedAST, IdFuncTable), Vec<SemanticError>> {

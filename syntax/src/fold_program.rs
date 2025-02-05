@@ -201,7 +201,7 @@ pub trait Folder {
     fn fold_expr(&mut self, expr: Expr<Self::N, Self::T>) -> Expr<Self::OutputN, Self::OutputT> {
         match expr {
             Expr::Liter(lit, ty) => Expr::Liter(lit, self.fold_type(ty)),
-            Expr::Ident(name, ty) => Expr::Ident(self.fold_name_sn(name), self.fold_type(ty)),
+            Expr::Ident(name, ty) => self.fold_expr_ident(name, ty),
             Expr::ArrayElem(array_elem, ty) => {
                 Expr::ArrayElem(self.fold_array_elem(array_elem), self.fold_type(ty))
             }
@@ -219,6 +219,15 @@ pub trait Folder {
         }
     }
 
+    #[inline]
+    fn fold_expr_ident(
+        &mut self,
+        ident: SN<Self::N>,
+        r#type: Self::T,
+    ) -> Expr<Self::OutputN, Self::OutputT> {
+        Expr::Ident(self.fold_name_sn(ident), self.fold_type(r#type))
+    }
+
     // Helper method to fold a expr that is already wrapped in an SN
     #[inline]
     fn fold_expr_sn(
@@ -227,11 +236,6 @@ pub trait Folder {
     ) -> SN<Expr<Self::OutputN, Self::OutputT>> {
         expr.map_inner(|inner| self.fold_expr(inner))
     }
-
-    // #[inline]
-    // fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN> {
-    //     name.map_inner(|inner| self.fold_name(inner))
-    // }
 
     #[inline]
     fn fold_type_sn(&mut self, ty: SN<Self::T>) -> SN<Self::OutputT> {
