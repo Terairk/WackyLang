@@ -1,13 +1,14 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 use std::collections::HashMap;
 
-use crate::ast::{Expr, Ident, Program, RValue, Stat};
-use crate::fold_program::BoxedSliceFold;
+use crate::ast::{Expr, Ident, Program, RValue, Stat, StatBlock};
 use crate::fold_program::Folder;
+use crate::fold_program::{BoxedSliceFold, NonEmptyFold};
 use crate::source::SourcedNode;
 use crate::types::{SemanticType, Type};
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::mem;
 
 // TODO: check if ident can be SN<Ident>, only problem is that
 // Node does't implement Hash
@@ -109,6 +110,13 @@ impl IDMapEntry {
             from_current_block,
         }
     }
+
+    fn create_false(&self) -> Self {
+        Self {
+            renamed_name: self.renamed_name.clone(),
+            from_current_block: false,
+        }
+    }
 }
 
 // struct responsible for traversing/folding the AST
@@ -139,6 +147,24 @@ impl Renamer {
     pub fn return_errors(&self) -> Vec<SemanticError> {
         self.errors.clone()
     }
+
+    fn copy_id_map(&self) -> HashMap<Ident, IDMapEntry> {
+        self.identifier_map
+            .iter()
+            .map(|(k, v)| (k.clone(), v.create_false()))
+            .collect()
+    }
+
+    // fn with_temporary_map<F, R>(&mut self, f: F) -> R
+    // where
+    //     F: FnOnce(&mut Self) -> R,
+    // {
+    //     let new_map = self.copy_id_map();
+    //     let old_id_map = mem::replace(&mut self.identifier_map, new_map);
+    //     let result = f(self);
+    //     self.identifier_map = old_id_map;
+    //     result
+    // }
 }
 
 impl Folder for Renamer {
@@ -164,6 +190,19 @@ impl Folder for Renamer {
         // Return type depends on individual implementation
         // Just make sure make_program returns Self::Output
         self.make_program(folded_funcs, folded_body)
+    }
+
+    #[inline]
+    fn fold_stat_block(
+        &mut self,
+        block: StatBlock<Self::N, Self::T>,
+    ) -> StatBlock<Self::OutputN, Self::OutputT> {
+        // self.with_temporary_map(|slf| StatBlock(block.0.map_with(|stat| slf.fold_stat_sn(stat))))
+        let new_map = self.copy_id_map();
+        let old_id_map = mem::replace(&mut self.identifier_map, new_map);
+        let folded_block = block.0.map_with(|stat| self.fold_stat_sn(stat));
+        self.identifier_map = old_id_map;
+        StatBlock(folded_block)
     }
 
     #[inline]
@@ -193,6 +232,7 @@ impl Folder for Renamer {
         let resolved_rvalue = self.fold_rvalue(rvalue);
 
         // Check for duplicate id after resolving rvalue
+        // shouldn't panic since we check the key exists
         if self.identifier_map.contains_key(name.inner())
             && self.identifier_map[name.inner()].from_current_block
         {
