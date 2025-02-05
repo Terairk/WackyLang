@@ -117,6 +117,7 @@ fn main() -> ExitCode {
         let renamed_ast = renamer.fold_program(parsed.unwrap());
         println!("{renamed_ast:?}");
         println!("{:?}", renamer.return_errors());
+        println!("{:?}", renamer.get_func_table());
     }
 
     // Done to appease the borrow checker while displaying errors

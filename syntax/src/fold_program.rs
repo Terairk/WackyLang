@@ -46,7 +46,7 @@ pub trait Folder {
     fn fold_func(&mut self, func: Func<Self::N, Self::T>) -> Func<Self::OutputN, Self::OutputT> {
         Func {
             return_type: func.return_type, // Type remains unchanged
-            name: self.fold_name_sn(func.name),
+            name: func.name,
             params: func.params.fold_with(|param| self.fold_func_param(param)),
             body: self.fold_stat_block_sn(func.body),
         }

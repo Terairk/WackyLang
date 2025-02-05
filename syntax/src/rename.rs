@@ -90,7 +90,8 @@ pub enum SemanticError {
 }
 
 // We handle functions separately from variables since its easier
-struct IdFuncTable {
+#[derive(Debug)]
+pub struct IdFuncTable {
     functions: HashMap<Ident, (SemanticType, Vec<SemanticType>)>,
 }
 
@@ -146,6 +147,10 @@ impl Renamer {
 
     pub fn return_errors(&self) -> Vec<SemanticError> {
         self.errors.clone()
+    }
+
+    pub fn get_func_table(&self) -> &IdFuncTable {
+        &self.id_func_table
     }
 
     fn copy_id_map(&self) -> HashMap<Ident, IDMapEntry> {
