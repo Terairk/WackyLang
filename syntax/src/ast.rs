@@ -136,7 +136,7 @@ pub struct ArrayElem<N, T> {
 #[derive(Clone, Debug)]
 pub enum Expr<N, T> {
     Liter(Liter, T),
-    Ident(N, T),
+    Ident(SN<N>, T),
     ArrayElem(ArrayElem<N, T>, T),
     Unary(SN<UnaryOper>, SN<Self>, T),
     Binary(SN<Self>, SN<BinaryOper>, SN<Self>, T),

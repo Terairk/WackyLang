@@ -200,16 +200,21 @@ pub trait Folder {
     #[inline]
     fn fold_expr(&mut self, expr: Expr<Self::N, Self::T>) -> Expr<Self::OutputN, Self::OutputT> {
         match expr {
-            Expr::Liter(lit, ty) => Expr::Liter(lit, ty),
-            Expr::Ident(name, ty) => Expr::Ident(self.fold_name_inner(name), ty),
+            Expr::Liter(lit, ty) => Expr::Liter(lit, self.fold_type(ty)),
+            Expr::Ident(name, ty) => Expr::Ident(self.fold_name_sn(name), self.fold_type(ty)),
             Expr::ArrayElem(array_elem, ty) => {
-                Expr::ArrayElem(self.fold_array_elem(array_elem), ty)
+                Expr::ArrayElem(self.fold_array_elem(array_elem), self.fold_type(ty))
             }
-            Expr::Unary(op, expr, ty) => Expr::Unary(op, self.fold_expr_sn(expr), ty),
-            Expr::Binary(lhs, op, rhs, ty) => {
-                Expr::Binary(self.fold_expr_sn(lhs), op, self.fold_expr_sn(rhs), ty)
+            Expr::Unary(op, expr, ty) => {
+                Expr::Unary(op, self.fold_expr_sn(expr), self.fold_type(ty))
             }
-            Expr::Paren(expr, ty) => Expr::Paren(self.fold_expr_sn(expr), ty),
+            Expr::Binary(lhs, op, rhs, ty) => Expr::Binary(
+                self.fold_expr_sn(lhs),
+                op,
+                self.fold_expr_sn(rhs),
+                self.fold_type(ty),
+            ),
+            Expr::Paren(expr, ty) => Expr::Paren(self.fold_expr_sn(expr), self.fold_type(ty)),
             Expr::Error(span) => Expr::Error(span),
         }
     }
@@ -223,10 +228,10 @@ pub trait Folder {
         expr.map_inner(|inner| self.fold_expr(inner))
     }
 
-    #[inline]
-    fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN> {
-        name.map_inner(|inner| self.fold_name(inner))
-    }
+    // #[inline]
+    // fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN> {
+    //     name.map_inner(|inner| self.fold_name(inner))
+    // }
 
     #[inline]
     fn fold_type_sn(&mut self, ty: SN<Self::T>) -> SN<Self::OutputT> {
@@ -263,6 +268,7 @@ pub trait Folder {
         elem.map_inner(|inner| self.fold_pair_elem(inner))
     }
 
+    #[inline]
     fn make_program(
         &mut self,
         funcs: Box<[Func<Self::OutputN, Self::OutputT>]>,
@@ -276,8 +282,7 @@ pub trait Folder {
      * Feel free to modify any of the above  *
      *****************************************/
 
-    // TODO: remove this default implementation
-    fn fold_name(&mut self, name: Self::N) -> Self::OutputN;
+    fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN>;
 
     fn fold_type(&mut self, ty: Self::T) -> Self::OutputT;
 }
@@ -292,6 +297,7 @@ pub trait BoxedSliceFold<T> {
 }
 
 impl<T> BoxedSliceFold<T> for Box<[T]> {
+    #[inline]
     fn fold_with<F, U>(self, f: F) -> Box<[U]>
     where
         F: FnMut(T) -> U,
@@ -311,6 +317,7 @@ pub trait NonEmptyFold<T> {
 }
 
 impl<T> NonEmptyFold<T> for NonemptyArray<T> {
+    #[inline]
     fn map_with<F, U>(self, mut f: F) -> NonemptyArray<U>
     where
         F: FnMut(T) -> U,

@@ -1,7 +1,7 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 use std::collections::HashMap;
 
-use crate::ast::{Expr, Func, Ident, Program, RValue, Stat, StatBlock};
+use crate::ast::{Expr, Ident, Program, RValue, Stat};
 use crate::fold_program::BoxedSliceFold;
 use crate::fold_program::Folder;
 use crate::source::SourcedNode;
@@ -123,22 +123,33 @@ impl Folder for Renamer {
         self.make_program(folded_funcs, folded_body)
     }
 
-    fn fold_name(&mut self, name: Self::N) -> Self::OutputN {
-        if let Some(renamed_name) = self.identifier_map.get(&name) {
-            renamed_name.clone()
+    // fn fold_name(&mut self, name: Self::N) -> Self::OutputN {
+    //     if let Some(renamed_name) = self.identifier_map.get(&name) {
+    //         renamed_name.clone()
+    //     } else {
+    //         self.add_error(SemanticError::UndefinedIdent(SN::new(name, name.span())));
+    //         // Return a dummy value so we can maybe maybe very hopefully
+    //         // allow multiple smantic errors
+    //         RenamedName::new(&mut self.counter, SN::new(name, name.span()))
+    //     }
+    // }
+
+    fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN> {
+        if let Some(renamed_name) = self.identifier_map.get(name.inner()) {
+            SN::new(renamed_name.clone(), name.span())
         } else {
-            self.add_error(SemanticError::UndefinedIdent(SN::new(name, name.span())));
+            self.add_error(SemanticError::UndefinedIdent(name.clone()));
             // Return a dummy value so we can maybe maybe very hopefully
             // allow multiple smantic errors
-            RenamedName::new(&mut self.counter, SN::new(name, name.span()))
+            SN::new(
+                RenamedName::new(&mut self.counter, name.clone()),
+                name.span(),
+            )
         }
-
-        self.identifier_map.get(&name).unwrap().clone()
     }
 
-    fn fold_type(&mut self, ty: Self::T) -> Self::OutputT {
-        ty
-    }
+    // OutputT is a () so return empty value
+    fn fold_type(&mut self, _ty: Self::T) -> Self::OutputT {}
 }
 
 fn build_func_table(
