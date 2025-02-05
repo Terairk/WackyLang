@@ -72,6 +72,7 @@ type RenamedAST = Program<RenamedName, ()>;
 // with specifics such as int x = x where x is not defined yet
 // honestly for duplicate Ident, could probably list the other Ident it was duplicating
 // for potentially better errors
+#[derive(Debug)]
 pub enum SemanticError {
     ArityMismatch(SN<Ident>, usize, usize),
     DuplicateIdent(SN<Ident>),
@@ -90,7 +91,7 @@ struct SymbolTable {
 }
 
 // struct responsible for traversing/folding the AST
-struct Renamer {
+pub struct Renamer {
     id_func_table: IdFuncTable,
     identifier_map: HashMap<Ident, SN<RenamedName>>,
     counter: usize,
@@ -98,7 +99,7 @@ struct Renamer {
 }
 
 impl Renamer {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             id_func_table: IdFuncTable {
                 functions: HashMap::new(),
