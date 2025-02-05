@@ -1,8 +1,8 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 use std::collections::HashMap;
 
-use crate::ast::{Expr, Func, FuncParam, Ident, Program, RValue, Stat, StatBlock};
-use crate::source::{SourcedNode, SourcedSpan};
+use crate::ast::{Expr, Ident, Program, RValue, Stat};
+use crate::source::SourcedNode;
 use crate::types::{SemanticType, Type};
 use std::hash::{Hash, Hasher};
 
@@ -63,33 +63,20 @@ struct SymbolTable {
     symbols: HashMap<RenamedName, SemanticType>,
 }
 
-struct RenameContext {
+// struct responsible for traversing/folding the AST
+struct Renamer {
     id_func_table: IdFuncTable,
     identifier_map: HashMap<Ident, RenamedName>,
     counter: usize,
     errors: Vec<SemanticError>,
 }
 
-impl IdFuncTable {
+impl Renamer {
     fn new() -> Self {
         Self {
-            functions: HashMap::new(),
-        }
-    }
-}
-
-impl SymbolTable {
-    fn new() -> Self {
-        Self {
-            symbols: HashMap::new(),
-        }
-    }
-}
-
-impl RenameContext {
-    fn new() -> Self {
-        Self {
-            id_func_table: IdFuncTable::new(),
+            id_func_table: IdFuncTable {
+                functions: HashMap::new(),
+            },
             identifier_map: HashMap::new(),
             counter: 0,
             errors: Vec::new(),
@@ -101,11 +88,11 @@ impl RenameContext {
     }
 }
 
-mod rename {
-    use super::*;
-
-    // Module contains lots of boiler plate for folding/traversing the tree
-}
+// impl Folder for Renamer {
+//     type N = RenamedName;
+//     type T = ();
+//     type Output =
+// }
 
 fn build_func_table(
     id_func_table: &mut IdFuncTable,
@@ -130,7 +117,7 @@ fn build_func_table(
 }
 
 fn resolve_declaration(
-    context: &mut RenameContext,
+    context: &mut Renamer,
     r#type: SN<Type>,
     name: SN<Ident>,
     rvalue: RValue<Ident, ()>,
@@ -158,7 +145,7 @@ fn resolve_declaration(
 }
 
 fn resolve_rvalue(
-    context: &RenameContext,
+    context: &Renamer,
     rvalue: RValue<Ident, ()>,
 ) -> Result<RValue<RenamedName, ()>, SemanticError> {
     unimplemented!()
@@ -183,7 +170,7 @@ fn resolve_rvalue(
 
 // TODO: maybe have to return the counter i use so i can use it for IR Generation
 fn rename(program: UntypedAST) -> Result<(RenamedAST, IdFuncTable), Vec<SemanticError>> {
-    let mut context = RenameContext::new();
+    let mut context = Renamer::new();
     unimplemented!()
     // // Do stuff
     //

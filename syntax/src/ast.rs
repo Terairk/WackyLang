@@ -2,7 +2,7 @@
 
 use crate::nonempty::NonemptyArray;
 use crate::source::{SourcedNode, SourcedSpan};
-use crate::types::{SemanticType, Type};
+use crate::types::Type;
 use delegate::delegate;
 use internment::ArcIntern;
 use std::{fmt, fmt::Debug, ops::Deref};
@@ -140,7 +140,7 @@ pub enum Expr<N, T> {
     ArrayElem(ArrayElem<N, T>, T),
     Unary(SN<UnaryOper>, SN<Self>, T),
     Binary(SN<Self>, SN<BinaryOper>, SN<Self>, T),
-    Paren(SN<Self>),
+    Paren(SN<Self>, T),
 
     // Generated only by parser errors.
     Error(SourcedSpan),

@@ -200,7 +200,7 @@ pub trait Folder {
                 rhs.map_inner(|inner| self.fold_expr(inner)),
                 t,
             ),
-            Expr::Paren(inner) => Expr::Paren(inner.map_inner(|inner| self.fold_expr(inner))),
+            Expr::Paren(inner, t) => Expr::Paren(inner.map_inner(|inner| self.fold_expr(inner)), t),
             Expr::Error(span) => Expr::Error(span),
         }
     }
