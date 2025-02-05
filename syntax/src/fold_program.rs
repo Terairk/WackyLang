@@ -19,15 +19,9 @@ pub trait Folder {
     // We need the into_vec here so into_iter returns T and not &T
     #[inline]
     fn fold_program(&mut self, program: Program<Self::N, Self::T>) -> Self::Output {
-        let folded_funcs = program
-            .funcs
-            .into_vec()
-            .into_iter()
-            .map(|func| self.fold_func(func))
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
+        let folded_funcs = program.funcs.fold_with(|func| self.fold_func(func));
 
-        let folded_body = self.fold_stat_block(program.body);
+        let folded_body = self.fold_stat_block_sn(program.body);
 
         // Return type depends on individual implementation
         // Just make sure make_program returns Self::Output
@@ -39,14 +33,8 @@ pub trait Folder {
         Func {
             return_type: func.return_type, // Type remains unchanged
             name: self.fold_name(func.name),
-            params: func
-                .params
-                .into_vec()
-                .into_iter()
-                .map(|p| self.fold_func_param(p))
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-            body: self.fold_stat_block(func.body),
+            params: func.params.fold_with(|param| self.fold_func_param(param)),
+            body: self.fold_stat_block_sn(func.body),
         }
     }
 
@@ -57,32 +45,20 @@ pub trait Folder {
             name: self.fold_name(param.name),
         }
     }
-
     #[inline]
     fn fold_stat_block(
         &mut self,
+        block: StatBlock<Self::N, Self::T>,
+    ) -> StatBlock<Self::N, Self::T> {
+        StatBlock(block.0.map_with(|stat| self.fold_stat_sn(stat)))
+    }
+
+    #[inline]
+    fn fold_stat_block_sn(
+        &mut self,
         block: SN<StatBlock<Self::N, Self::T>>,
     ) -> SN<StatBlock<Self::N, Self::T>> {
-        // Fold each statement in the block first
-        let original_span = block.span();
-        let folded_statements: Vec<_> = block
-            .into_inner()
-            .0
-            .into_boxed_slice()
-            .into_vec()
-            .into_iter()
-            .map(|stat| stat.map_inner(|inner| self.fold_stat(inner)))
-            .collect();
-
-        // Since we know the original block was a NonemptyArray,
-        // this conversion should never fail
-        SN::new(
-            StatBlock(
-                NonemptyArray::try_from_boxed_slice(folded_statements.into_boxed_slice())
-                    .expect("Statement block cannot be empty"),
-            ),
-            original_span,
-        )
+        block.map_inner(|inner| self.fold_stat_block(inner))
     }
 
     #[inline]
@@ -99,26 +75,32 @@ pub trait Folder {
                 rvalue: self.fold_rvalue(rvalue),
             },
             Stat::Read(lvalue) => Stat::Read(self.fold_lvalue(lvalue)),
-            Stat::Free(expr) => Stat::Free(expr.map_inner(|inner| self.fold_expr(inner))),
-            Stat::Return(expr) => Stat::Return(expr.map_inner(|inner| self.fold_expr(inner))),
-            Stat::Exit(expr) => Stat::Exit(expr.map_inner(|inner| self.fold_expr(inner))),
-            Stat::Print(expr) => Stat::Print(expr.map_inner(|inner| self.fold_expr(inner))),
-            Stat::Println(expr) => Stat::Println(expr.map_inner(|inner| self.fold_expr(inner))),
+            Stat::Free(expr) => Stat::Free(self.fold_expr_sn(expr)),
+            Stat::Return(expr) => Stat::Return(self.fold_expr_sn(expr)),
+            Stat::Exit(expr) => Stat::Exit(self.fold_expr_sn(expr)),
+            Stat::Print(expr) => Stat::Print(self.fold_expr_sn(expr)),
+            Stat::Println(expr) => Stat::Println(self.fold_expr_sn(expr)),
             Stat::IfThenElse {
                 if_cond,
                 then_body,
                 else_body,
             } => Stat::IfThenElse {
-                if_cond: if_cond.map_inner(|inner| self.fold_expr(inner)),
-                then_body: self.fold_stat_block(then_body),
-                else_body: self.fold_stat_block(else_body),
+                if_cond: self.fold_expr_sn(if_cond),
+                then_body: self.fold_stat_block_sn(then_body),
+                else_body: self.fold_stat_block_sn(else_body),
             },
             Stat::WhileDo { while_cond, body } => Stat::WhileDo {
-                while_cond: while_cond.map_inner(|inner| self.fold_expr(inner)),
-                body: self.fold_stat_block(body),
+                while_cond: self.fold_expr_sn(while_cond),
+                body: self.fold_stat_block_sn(body),
             },
-            Stat::Scoped(body) => Stat::Scoped(self.fold_stat_block(body)),
+            Stat::Scoped(body) => Stat::Scoped(self.fold_stat_block_sn(body)),
         }
+    }
+
+    // Helper method to fold a stat that is already wrapped in an SN
+    #[inline]
+    fn fold_stat_sn(&mut self, stat: SN<Stat<Self::N, Self::T>>) -> SN<Stat<Self::N, Self::T>> {
+        stat.map_inner(|inner| self.fold_stat(inner))
     }
 
     // New method specifically for VarDefinition so we can do renaming
@@ -142,31 +124,28 @@ pub trait Folder {
         match lvalue {
             LValue::Ident(name) => LValue::Ident(self.fold_name(name)),
             LValue::ArrayElem(elem, t) => LValue::ArrayElem(self.fold_array_elem(elem), t),
-            LValue::PairElem(elem, t) => {
-                let new_elem = elem.map_inner(|inner| self.fold_pair_elem(inner));
-                LValue::PairElem(new_elem, t)
-            }
+            LValue::PairElem(elem, t) => LValue::PairElem(self.fold_pair_elem_sn(elem), t),
         }
+    }
+
+    #[inline]
+    fn fold_lvalue_sn(
+        &mut self,
+        lvalue: SN<LValue<Self::N, Self::T>>,
+    ) -> SN<LValue<Self::N, Self::T>> {
+        lvalue.map_inner(|inner| self.fold_lvalue(inner))
     }
 
     #[inline]
     fn fold_rvalue(&mut self, rvalue: RValue<Self::N, Self::T>) -> RValue<Self::N, Self::T> {
         match rvalue {
             RValue::Expr(expr) => RValue::Expr(expr.map_inner(|inner| self.fold_expr(inner))),
-            RValue::ArrayLiter(exprs, t) => RValue::ArrayLiter(
-                exprs
-                    .into_vec()
-                    .into_iter()
-                    .map(|e| e.map_inner(|inner| self.fold_expr(inner)))
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-                t,
-            ),
-            RValue::NewPair(fst, snd, t) => RValue::NewPair(
-                fst.map_inner(|inner| self.fold_expr(inner)),
-                snd.map_inner(|inner| self.fold_expr(inner)),
-                t,
-            ),
+            RValue::ArrayLiter(exprs, t) => {
+                RValue::ArrayLiter(exprs.fold_with(|expr| self.fold_expr_sn(expr)), t)
+            }
+            RValue::NewPair(fst, snd, t) => {
+                RValue::NewPair(self.fold_expr_sn(fst), self.fold_expr_sn(snd), t)
+            }
             RValue::PairElem(pair_elem) => RValue::PairElem(self.fold_pair_elem(pair_elem)),
             RValue::Call {
                 func_name,
@@ -174,15 +153,18 @@ pub trait Folder {
                 return_type,
             } => RValue::Call {
                 func_name: self.fold_name(func_name),
-                args: args
-                    .into_vec()
-                    .into_iter()
-                    .map(|e| e.map_inner(|inner| self.fold_expr(inner)))
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
+                args: args.fold_with(|arg| self.fold_expr_sn(arg)),
                 return_type,
             },
         }
+    }
+
+    #[inline]
+    fn fold_value_sn(
+        &mut self,
+        value: SN<RValue<Self::N, Self::T>>,
+    ) -> SN<RValue<Self::N, Self::T>> {
+        value.map_inner(|inner| self.fold_rvalue(inner))
     }
 
     #[inline]
@@ -191,18 +173,19 @@ pub trait Folder {
             Expr::Liter(lit, t) => Expr::Liter(lit, t),
             Expr::Ident(name, t) => Expr::Ident(self.fold_name_inner(name), t),
             Expr::ArrayElem(array_elem, t) => Expr::ArrayElem(self.fold_array_elem(array_elem), t),
-            Expr::Unary(op, inner, t) => {
-                Expr::Unary(op, inner.map_inner(|inner| self.fold_expr(inner)), t)
+            Expr::Unary(op, expr, t) => Expr::Unary(op, self.fold_expr_sn(expr), t),
+            Expr::Binary(lhs, op, rhs, t) => {
+                Expr::Binary(self.fold_expr_sn(lhs), op, self.fold_expr_sn(rhs), t)
             }
-            Expr::Binary(lhs, op, rhs, t) => Expr::Binary(
-                lhs.map_inner(|inner| self.fold_expr(inner)),
-                op,
-                rhs.map_inner(|inner| self.fold_expr(inner)),
-                t,
-            ),
-            Expr::Paren(inner, t) => Expr::Paren(inner.map_inner(|inner| self.fold_expr(inner)), t),
+            Expr::Paren(expr, t) => Expr::Paren(self.fold_expr_sn(expr), t),
             Expr::Error(span) => Expr::Error(span),
         }
+    }
+
+    // Helper method to fold a expr that is already wrapped in an SN
+    #[inline]
+    fn fold_expr_sn(&mut self, expr: SN<Expr<Self::N, Self::T>>) -> SN<Expr<Self::N, Self::T>> {
+        expr.map_inner(|inner| self.fold_expr(inner))
     }
 
     // Helper methods that implementations may want to override
@@ -213,7 +196,7 @@ pub trait Folder {
 
     #[inline]
     fn fold_name(&mut self, name: SN<Self::N>) -> SN<Self::N> {
-        SN::new(self.fold_name_inner(name.inner().clone()), name.span())
+        name.map_inner(|inner| self.fold_name_inner(inner))
     }
 
     #[inline]
@@ -223,39 +206,24 @@ pub trait Folder {
     ) -> ArrayElem<Self::N, Self::T> {
         ArrayElem {
             array_name: self.fold_name(elem.array_name),
-            indices: {
-                let folded_indices: Vec<_> = elem
-                    .indices
-                    .into_boxed_slice()
-                    .into_vec()
-                    .into_iter()
-                    .map(|e| e.map_inner(|inner| self.fold_expr(inner)))
-                    .collect();
-
-                // Since we know the original indices was a NonemptyArray,
-                // this conversion should never fail
-                NonemptyArray::try_from_boxed_slice(folded_indices.into_boxed_slice())
-                    .expect("Folding should preserve non-emptiness")
-            },
+            indices: { elem.indices.map_with(|index| self.fold_expr_sn(index)) },
         }
     }
 
     #[inline]
     fn fold_pair_elem(&mut self, elem: PairElem<Self::N, Self::T>) -> PairElem<Self::N, Self::T> {
         match elem {
-            PairElem::Fst(expr) => {
-                let original_span = expr.span();
-                let folded_lvalue = self.fold_lvalue(expr.into_inner());
-                let sn_wrapped = SN::new(folded_lvalue, original_span);
-                PairElem::Fst(sn_wrapped)
-            }
-            PairElem::Snd(expr) => {
-                let original_span = expr.span();
-                let folded_lvalue = self.fold_lvalue(expr.into_inner());
-                let sn_wrapped = SN::new(folded_lvalue, original_span);
-                PairElem::Snd(sn_wrapped)
-            }
+            PairElem::Fst(expr) => PairElem::Fst(self.fold_lvalue_sn(expr)),
+            PairElem::Snd(expr) => PairElem::Snd(self.fold_lvalue_sn(expr)),
         }
+    }
+
+    #[inline]
+    fn fold_pair_elem_sn(
+        &mut self,
+        elem: SN<PairElem<Self::N, Self::T>>,
+    ) -> SN<PairElem<Self::N, Self::T>> {
+        elem.map_inner(|inner| self.fold_pair_elem(inner))
     }
 
     fn make_program(
@@ -263,4 +231,54 @@ pub trait Folder {
         funcs: Box<[Func<Self::N, Self::T>]>,
         body: SN<StatBlock<Self::N, Self::T>>,
     ) -> Self::Output;
+}
+
+// Helper methods for this file
+
+// This trait is only used so we can call fold_with in a function call chain
+trait BoxedSliceFold<T> {
+    fn fold_with<F>(self, f: F) -> Box<[T]>
+    where
+        F: FnMut(T) -> T;
+}
+
+impl<T> BoxedSliceFold<T> for Box<[T]> {
+    fn fold_with<F>(self, f: F) -> Self
+    where
+        F: FnMut(T) -> T,
+    {
+        self.into_vec()
+            .into_iter()
+            .map(f)
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
+}
+
+trait NonEmptyFold<T> {
+    fn map_with<F>(self, f: F) -> Self
+    where
+        F: FnMut(T) -> T;
+}
+
+impl<T> NonEmptyFold<T> for NonemptyArray<T> {
+    fn map_with<F>(self, mut f: F) -> Self
+    where
+        F: FnMut(T) -> T,
+    {
+        let mut vec = self.into_boxed_slice().into_vec();
+        for item in &mut vec {
+            // SAFETY: This operation is sound because:
+            // 1. `item` is a valid pointer to an initialized T, obtained from a Vec
+            // 2. We immediately consume and replace the read value, preventing double drops
+            // 3. The ownership of T is maintained as we move it through f() and reassign
+            // 4. No references to the value can exist as we have exclusive access to the Vec
+            // 5. Even if f() panics, Vec's drop handler will clean up any remaining elements
+            let old_value = unsafe { std::ptr::read(item) };
+            let new_value = f(old_value);
+            *item = new_value;
+        }
+        NonemptyArray::try_from_boxed_slice(vec.into_boxed_slice())
+            .expect("Map operation should preserve non-emptiness")
+    }
 }
