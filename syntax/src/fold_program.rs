@@ -272,10 +272,10 @@ impl<T> NonEmptyFold<T> for NonemptyArray<T> {
     where
         F: FnMut(T) -> T,
     {
-        let mut vec = self.into_boxed_slice().into_vec();
+        let mut vec = self.into_boxed_slice();
         for item in &mut vec {
             // SAFETY: This operation is sound because:
-            // 1. `item` is a valid pointer to an initialized T, obtained from a Vec
+            // 1. `item` is a valid pointer to an initialized T, obtained from an owned [T]
             // 2. We immediately consume and replace the read value, preventing double drops
             // 3. The ownership of T is maintained as we move it through f() and reassign
             // 4. No references to the value can exist as we have exclusive access to the Vec
@@ -284,7 +284,6 @@ impl<T> NonEmptyFold<T> for NonemptyArray<T> {
             let new_value = f(old_value);
             *item = new_value;
         }
-        NonemptyArray::try_from_boxed_slice(vec.into_boxed_slice())
-            .expect("Map operation should preserve non-emptiness")
+        Self::try_from_boxed_slice(vec).expect("Map operation should preserve non-emptiness")
     }
 }
