@@ -6,14 +6,21 @@ use crate::fold_program::BoxedSliceFold;
 use crate::fold_program::Folder;
 use crate::source::SourcedNode;
 use crate::types::{SemanticType, Type};
+use std::fmt;
 use std::hash::{Hash, Hasher};
 
 // TODO: check if ident can be SN<Ident>, only problem is that
 // Node does't implement Hash
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct RenamedName {
     ident: Ident,
     uuid: usize,
+}
+
+impl fmt::Debug for RenamedName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}@{}", self.ident, self.uuid)
+    }
 }
 
 // Make Hash depend only on the ident and uuid so that we can use it in a HashMap
