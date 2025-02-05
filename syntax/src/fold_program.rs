@@ -14,15 +14,25 @@ pub trait Folder {
     // Generic type parameters for the folder
     type N: Clone;
     type T;
-    type Output;
+    type OutputN;
+    type OutputT;
 
     // Functions ending in _sn are for SN wrapped nodes in the AST
     // It just makes it easier to fold the AST and imo looks cleaner as
     // the ugly map_inner with nested closures is hidden from the user
 
+    /**************************************************************
+     * SEE: bottom of this trait to see methods you must override *
+     * TO USE: basically impl Folder and self.make_program        *
+     * Put any state in the struct you use to implement Folder    *
+     **************************************************************/
+
     // We need the into_vec here so into_iter returns T and not &T
     #[inline]
-    fn fold_program(&mut self, program: Program<Self::N, Self::T>) -> Self::Output {
+    fn fold_program(
+        &mut self,
+        program: Program<Self::N, Self::T>,
+    ) -> Program<Self::OutputN, Self::OutputT> {
         let folded_funcs = program.funcs.fold_with(|func| self.fold_func(func));
 
         let folded_body = self.fold_stat_block_sn(program.body);
@@ -33,27 +43,27 @@ pub trait Folder {
     }
 
     #[inline]
-    fn fold_func(&mut self, func: Func<Self::N, Self::T>) -> Func<Self::N, Self::T> {
+    fn fold_func(&mut self, func: Func<Self::N, Self::T>) -> Func<Self::OutputN, Self::OutputT> {
         Func {
             return_type: func.return_type, // Type remains unchanged
-            name: self.fold_name(func.name),
+            name: self.fold_name_sn(func.name),
             params: func.params.fold_with(|param| self.fold_func_param(param)),
             body: self.fold_stat_block_sn(func.body),
         }
     }
 
     #[inline]
-    fn fold_func_param(&mut self, param: FuncParam<Self::N>) -> FuncParam<Self::N> {
+    fn fold_func_param(&mut self, param: FuncParam<Self::N>) -> FuncParam<Self::OutputN> {
         FuncParam {
             r#type: param.r#type,
-            name: self.fold_name(param.name),
+            name: self.fold_name_sn(param.name),
         }
     }
     #[inline]
     fn fold_stat_block(
         &mut self,
         block: StatBlock<Self::N, Self::T>,
-    ) -> StatBlock<Self::N, Self::T> {
+    ) -> StatBlock<Self::OutputN, Self::OutputT> {
         StatBlock(block.0.map_with(|stat| self.fold_stat_sn(stat)))
     }
 
@@ -61,14 +71,14 @@ pub trait Folder {
     fn fold_stat_block_sn(
         &mut self,
         block: SN<StatBlock<Self::N, Self::T>>,
-    ) -> SN<StatBlock<Self::N, Self::T>> {
+    ) -> SN<StatBlock<Self::OutputN, Self::OutputT>> {
         block.map_inner(|inner| self.fold_stat_block(inner))
     }
 
     #[inline]
-    fn fold_stat(&mut self, stat: Stat<Self::N, Self::T>) -> Stat<Self::N, Self::T> {
+    fn fold_stat(&mut self, stat: Stat<Self::N, Self::T>) -> Stat<Self::OutputN, Self::OutputT> {
         match stat {
-            Stat::Skip => stat,
+            Stat::Skip => Stat::Skip, // need this to avoid type inference error
             Stat::VarDefinition {
                 r#type,
                 name,
@@ -103,7 +113,10 @@ pub trait Folder {
 
     // Helper method to fold a stat that is already wrapped in an SN
     #[inline]
-    fn fold_stat_sn(&mut self, stat: SN<Stat<Self::N, Self::T>>) -> SN<Stat<Self::N, Self::T>> {
+    fn fold_stat_sn(
+        &mut self,
+        stat: SN<Stat<Self::N, Self::T>>,
+    ) -> SN<Stat<Self::OutputN, Self::OutputT>> {
         stat.map_inner(|inner| self.fold_stat(inner))
     }
 
@@ -115,20 +128,27 @@ pub trait Folder {
         r#type: SN<Type>,
         name: SN<Self::N>,
         rvalue: RValue<Self::N, Self::T>,
-    ) -> Stat<Self::N, Self::T> {
+    ) -> Stat<Self::OutputN, Self::OutputT> {
         Stat::VarDefinition {
             r#type,
-            name: self.fold_name(name),
+            name: self.fold_name_sn(name),
             rvalue: self.fold_rvalue(rvalue),
         }
     }
 
     #[inline]
-    fn fold_lvalue(&mut self, lvalue: LValue<Self::N, Self::T>) -> LValue<Self::N, Self::T> {
+    fn fold_lvalue(
+        &mut self,
+        lvalue: LValue<Self::N, Self::T>,
+    ) -> LValue<Self::OutputN, Self::OutputT> {
         match lvalue {
-            LValue::Ident(name) => LValue::Ident(self.fold_name(name)),
-            LValue::ArrayElem(elem, ty) => LValue::ArrayElem(self.fold_array_elem(elem), ty),
-            LValue::PairElem(elem, ty) => LValue::PairElem(self.fold_pair_elem_sn(elem), ty),
+            LValue::Ident(name) => LValue::Ident(self.fold_name_sn(name)),
+            LValue::ArrayElem(elem, ty) => {
+                LValue::ArrayElem(self.fold_array_elem(elem), self.fold_type(ty))
+            }
+            LValue::PairElem(elem, ty) => {
+                LValue::PairElem(self.fold_pair_elem_sn(elem), self.fold_type(ty))
+            }
         }
     }
 
@@ -136,29 +156,35 @@ pub trait Folder {
     fn fold_lvalue_sn(
         &mut self,
         lvalue: SN<LValue<Self::N, Self::T>>,
-    ) -> SN<LValue<Self::N, Self::T>> {
+    ) -> SN<LValue<Self::OutputN, Self::OutputT>> {
         lvalue.map_inner(|inner| self.fold_lvalue(inner))
     }
 
     #[inline]
-    fn fold_rvalue(&mut self, rvalue: RValue<Self::N, Self::T>) -> RValue<Self::N, Self::T> {
+    fn fold_rvalue(
+        &mut self,
+        rvalue: RValue<Self::N, Self::T>,
+    ) -> RValue<Self::OutputN, Self::OutputT> {
         match rvalue {
             RValue::Expr(expr) => RValue::Expr(expr.map_inner(|inner| self.fold_expr(inner))),
-            RValue::ArrayLiter(exprs, ty) => {
-                RValue::ArrayLiter(exprs.fold_with(|expr| self.fold_expr_sn(expr)), ty)
-            }
-            RValue::NewPair(fst, snd, ty) => {
-                RValue::NewPair(self.fold_expr_sn(fst), self.fold_expr_sn(snd), ty)
-            }
+            RValue::ArrayLiter(exprs, ty) => RValue::ArrayLiter(
+                exprs.fold_with(|expr| self.fold_expr_sn(expr)),
+                self.fold_type(ty),
+            ),
+            RValue::NewPair(fst, snd, ty) => RValue::NewPair(
+                self.fold_expr_sn(fst),
+                self.fold_expr_sn(snd),
+                self.fold_type(ty),
+            ),
             RValue::PairElem(pair_elem) => RValue::PairElem(self.fold_pair_elem(pair_elem)),
             RValue::Call {
                 func_name,
                 args,
                 return_type,
             } => RValue::Call {
-                func_name: self.fold_name(func_name),
+                func_name: self.fold_name_sn(func_name),
                 args: args.fold_with(|arg| self.fold_expr_sn(arg)),
-                return_type,
+                return_type: self.fold_type(return_type),
             },
         }
     }
@@ -167,12 +193,12 @@ pub trait Folder {
     fn fold_value_sn(
         &mut self,
         value: SN<RValue<Self::N, Self::T>>,
-    ) -> SN<RValue<Self::N, Self::T>> {
+    ) -> SN<RValue<Self::OutputN, Self::OutputT>> {
         value.map_inner(|inner| self.fold_rvalue(inner))
     }
 
     #[inline]
-    fn fold_expr(&mut self, expr: Expr<Self::N, Self::T>) -> Expr<Self::N, Self::T> {
+    fn fold_expr(&mut self, expr: Expr<Self::N, Self::T>) -> Expr<Self::OutputN, Self::OutputT> {
         match expr {
             Expr::Liter(lit, ty) => Expr::Liter(lit, ty),
             Expr::Ident(name, ty) => Expr::Ident(self.fold_name_inner(name), ty),
@@ -190,34 +216,39 @@ pub trait Folder {
 
     // Helper method to fold a expr that is already wrapped in an SN
     #[inline]
-    fn fold_expr_sn(&mut self, expr: SN<Expr<Self::N, Self::T>>) -> SN<Expr<Self::N, Self::T>> {
+    fn fold_expr_sn(
+        &mut self,
+        expr: SN<Expr<Self::N, Self::T>>,
+    ) -> SN<Expr<Self::OutputN, Self::OutputT>> {
         expr.map_inner(|inner| self.fold_expr(inner))
     }
 
-    // Helper methods that implementations may want to override
     #[inline]
-    fn fold_name_inner(&mut self, name: Self::N) -> Self::N {
-        name
+    fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN> {
+        name.map_inner(|inner| self.fold_name(inner))
     }
 
     #[inline]
-    fn fold_name(&mut self, name: SN<Self::N>) -> SN<Self::N> {
-        name.map_inner(|inner| self.fold_name_inner(inner))
+    fn fold_type_sn(&mut self, ty: SN<Self::T>) -> SN<Self::OutputT> {
+        ty.map_inner(|inner| self.fold_type(inner))
     }
 
     #[inline]
     fn fold_array_elem(
         &mut self,
         elem: ArrayElem<Self::N, Self::T>,
-    ) -> ArrayElem<Self::N, Self::T> {
+    ) -> ArrayElem<Self::OutputN, Self::OutputT> {
         ArrayElem {
-            array_name: self.fold_name(elem.array_name),
+            array_name: self.fold_name_sn(elem.array_name),
             indices: { elem.indices.map_with(|index| self.fold_expr_sn(index)) },
         }
     }
 
     #[inline]
-    fn fold_pair_elem(&mut self, elem: PairElem<Self::N, Self::T>) -> PairElem<Self::N, Self::T> {
+    fn fold_pair_elem(
+        &mut self,
+        elem: PairElem<Self::N, Self::T>,
+    ) -> PairElem<Self::OutputN, Self::OutputT> {
         match elem {
             PairElem::Fst(expr) => PairElem::Fst(self.fold_lvalue_sn(expr)),
             PairElem::Snd(expr) => PairElem::Snd(self.fold_lvalue_sn(expr)),
@@ -228,30 +259,42 @@ pub trait Folder {
     fn fold_pair_elem_sn(
         &mut self,
         elem: SN<PairElem<Self::N, Self::T>>,
-    ) -> SN<PairElem<Self::N, Self::T>> {
+    ) -> SN<PairElem<Self::OutputN, Self::OutputT>> {
         elem.map_inner(|inner| self.fold_pair_elem(inner))
     }
 
     fn make_program(
         &mut self,
-        funcs: Box<[Func<Self::N, Self::T>]>,
-        body: SN<StatBlock<Self::N, Self::T>>,
-    ) -> Self::Output;
+        funcs: Box<[Func<Self::OutputN, Self::OutputT>]>,
+        body: SN<StatBlock<Self::OutputN, Self::OutputT>>,
+    ) -> Program<Self::OutputN, Self::OutputT> {
+        Program { funcs, body }
+    }
+
+    /*****************************************
+     * You must override these methods       *
+     * Feel free to modify any of the above  *
+     *****************************************/
+
+    // TODO: remove this default implementation
+    fn fold_name(&mut self, name: Self::N) -> Self::OutputN;
+
+    fn fold_type(&mut self, ty: Self::T) -> Self::OutputT;
 }
 
-// Helper methods for this file
+// Helper methods + traits for this file
 
 // This trait is only used so we can call fold_with in a function call chain
-trait BoxedSliceFold<T> {
-    fn fold_with<F>(self, f: F) -> Box<[T]>
+pub trait BoxedSliceFold<T> {
+    fn fold_with<F, U>(self, f: F) -> Box<[U]>
     where
-        F: FnMut(T) -> T;
+        F: FnMut(T) -> U;
 }
 
 impl<T> BoxedSliceFold<T> for Box<[T]> {
-    fn fold_with<F>(self, f: F) -> Self
+    fn fold_with<F, U>(self, f: F) -> Box<[U]>
     where
-        F: FnMut(T) -> T,
+        F: FnMut(T) -> U,
     {
         self.into_vec()
             .into_iter()
@@ -261,29 +304,25 @@ impl<T> BoxedSliceFold<T> for Box<[T]> {
     }
 }
 
-trait NonEmptyFold<T> {
-    fn map_with<F>(self, f: F) -> Self
+pub trait NonEmptyFold<T> {
+    fn map_with<F, U>(self, f: F) -> NonemptyArray<U>
     where
-        F: FnMut(T) -> T;
+        F: FnMut(T) -> U;
 }
 
 impl<T> NonEmptyFold<T> for NonemptyArray<T> {
-    fn map_with<F>(self, mut f: F) -> Self
+    fn map_with<F, U>(self, mut f: F) -> NonemptyArray<U>
     where
-        F: FnMut(T) -> T,
+        F: FnMut(T) -> U,
     {
-        let mut vec = self.into_boxed_slice();
-        for item in &mut vec {
-            // SAFETY: This operation is sound because:
-            // 1. `item` is a valid pointer to an initialized T, obtained from an owned [T]
-            // 2. We immediately consume and replace the read value, preventing double drops
-            // 3. The ownership of T is maintained as we move it through f() and reassign
-            // 4. No references to the value can exist as we have exclusive access to the Vec
-            // 5. Even if f() panics, Vec's drop handler will clean up any remaining elements
-            let old_value = unsafe { std::ptr::read(item) };
-            let new_value = f(old_value);
-            *item = new_value;
+        // we can maybe use the map_in_place crate
+        let vec = Vec::from(self.into_boxed_slice());
+        let mut result = Vec::with_capacity(vec.len());
+        for item in vec {
+            result.push(f(item));
         }
-        Self::try_from_boxed_slice(vec).expect("Map operation should preserve non-emptiness")
+
+        NonemptyArray::try_from_boxed_slice(result.into_boxed_slice())
+            .expect("Map operation should preserve non-emptiness")
     }
 }

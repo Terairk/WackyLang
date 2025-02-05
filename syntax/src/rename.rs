@@ -1,7 +1,9 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 use std::collections::HashMap;
 
-use crate::ast::{Expr, Ident, Program, RValue, Stat};
+use crate::ast::{Expr, Func, Ident, Program, RValue, Stat, StatBlock};
+use crate::fold_program::BoxedSliceFold;
+use crate::fold_program::Folder;
 use crate::source::SourcedNode;
 use crate::types::{SemanticType, Type};
 use std::hash::{Hash, Hasher};
@@ -17,6 +19,7 @@ pub struct RenamedName {
 // Make Hash depend only on the ident and uuid so that we can use it in a HashMap
 // while still keeping the SN for error reporting
 impl Hash for RenamedName {
+    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.ident.hash(state);
         self.uuid.hash(state);
@@ -24,13 +27,19 @@ impl Hash for RenamedName {
 }
 
 impl PartialEq for RenamedName {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.ident == other.ident && self.uuid == other.uuid
     }
 }
 
 impl RenamedName {
-    fn new(counter: &mut usize, ident: SN<Ident>) -> Self {
+    #[inline]
+    const fn new(counter: &mut usize, ident: SN<Ident>) -> Self {
+        // would rather crash in debug builds than define a saturating
+        // so we can change this to u128
+        // though i suspect we'd have bigger problems before then
+        #[allow(clippy::arithmetic_side_effects)]
         *counter += 1;
         Self {
             ident,
@@ -46,6 +55,8 @@ type RenamedAST = Program<RenamedName, ()>;
 
 // TODO: UndefinedIdent could be its own enum
 // with specifics such as int x = x where x is not defined yet
+// honestly for duplicate Ident, could probably list the other Ident it was duplicating
+// for potentially better errors
 pub enum SemanticError {
     ArityMismatch(SN<Ident>, usize, usize),
     DuplicateIdent(SN<Ident>),
@@ -88,11 +99,47 @@ impl Renamer {
     }
 }
 
-// impl Folder for Renamer {
-//     type N = RenamedName;
-//     type T = ();
-//     type Output =
-// }
+impl Folder for Renamer {
+    type N = Ident;
+    type T = ();
+    type OutputN = RenamedName;
+    type OutputT = ();
+
+    fn fold_program(
+        &mut self,
+        program: Program<Self::N, Self::T>,
+    ) -> Program<Self::OutputN, Self::OutputT> {
+        // Build function table
+        if let Err(err) = build_func_table(&mut self.id_func_table, &program) {
+            self.add_error(err);
+        }
+
+        let folded_funcs = program.funcs.fold_with(|func| self.fold_func(func));
+
+        let folded_body = self.fold_stat_block_sn(program.body);
+
+        // Return type depends on individual implementation
+        // Just make sure make_program returns Self::Output
+        self.make_program(folded_funcs, folded_body)
+    }
+
+    fn fold_name(&mut self, name: Self::N) -> Self::OutputN {
+        if let Some(renamed_name) = self.identifier_map.get(&name) {
+            renamed_name.clone()
+        } else {
+            self.add_error(SemanticError::UndefinedIdent(SN::new(name, name.span())));
+            // Return a dummy value so we can maybe maybe very hopefully
+            // allow multiple smantic errors
+            RenamedName::new(&mut self.counter, SN::new(name, name.span()))
+        }
+
+        self.identifier_map.get(&name).unwrap().clone()
+    }
+
+    fn fold_type(&mut self, ty: Self::T) -> Self::OutputT {
+        ty
+    }
+}
 
 fn build_func_table(
     id_func_table: &mut IdFuncTable,
