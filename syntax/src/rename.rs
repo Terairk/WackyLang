@@ -70,6 +70,8 @@ pub enum SemanticError {
     TypeMismatch(SourcedSpan, SemanticType, SemanticType),
     SimpleTypeMismatch(SemanticType, SemanticType),
     MismatchedArgCount(usize, usize),
+    InvalidIndexType(SemanticType),
+    InvalidNumberOfIndexes(usize),
     UndefinedIdent(SN<Ident>),
     ReturnInMain,
 }

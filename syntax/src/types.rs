@@ -57,6 +57,19 @@ pub enum PairElemType {
 
 // Helper Functions to convert from syntactic types to semantic types
 // might be useful during type checking
+
+impl BaseType {
+    #[inline]
+    pub fn to_semantic_type(&self) -> SemanticType {
+        match self {
+            Self::Int => SemanticType::Int,
+            Self::Bool => SemanticType::Bool,
+            Self::Char => SemanticType::Char,
+            Self::String => SemanticType::String,
+        }
+    }
+}
+
 impl Type {
     #[inline]
     pub fn to_semantic_type(&self) -> SemanticType {

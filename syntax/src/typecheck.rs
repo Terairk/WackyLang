@@ -1,10 +1,10 @@
 use crate::ast::*;
 use crate::types::{SemanticType, Type};
-use crate::fold_program::{Folder};
+use crate::fold_program::{Folder, NonEmptyFold};
 use crate::source::{SourcedNode, SourcedSpan};
 use crate::fold_program::{BoxedSliceFold, };
 use crate::rename::{RenamedName, SemanticError};
-use crate::rename::SemanticError::{SimpleTypeMismatch, TypeMismatch};
+use crate::rename::SemanticError::{InvalidIndexType, InvalidNumberOfIndexes, SimpleTypeMismatch, TypeMismatch};
 use crate::rename::Renamer;
 
 type SN<T> = SourcedNode<T>;
@@ -43,7 +43,7 @@ impl RValue<RenamedName, SemanticType> {
             RValue::PairElem(pelem) => {
                 pelem.get_type(renamer)
             },
-            RValue::Call {return_type, .. } => return_type.clone(),
+            RValue::Call { return_type, .. } => return_type.clone(),
         }
     }
 }
@@ -304,6 +304,11 @@ impl Folder for TypeResolver {
                 if expected_args_types.len() != resolved_args.len() {
                     self.add_error(SemanticError::MismatchedArgCount(expected_args_types.len(), resolved_args.len()));
                 }
+                for (arg, expected_type) in resolved_args.clone().iter().zip(expected_args_types) {
+                    if arg.get_type(&self.renamer) != expected_type {
+                        self.add_error(TypeMismatch(arg.span(), arg.get_type(&self.renamer), expected_type));
+                    }
+                }
                 RValue::Call {
                     func_name: self.fold_funcname_sn(func_name),
                     args: resolved_args,
@@ -360,7 +365,7 @@ impl Folder for TypeResolver {
                     SemanticType::Int | SemanticType::Char => (),
                     _ => {
                         println!("Type mismatch in Read! {:?}", resolved_lvalue.get_type(&self.renamer));
-                        self.add_error(SimpleTypeMismatch(resolved_lvalue.get_type(&self.renamer), SemanticType::Int)) 
+                        self.add_error(SimpleTypeMismatch(resolved_lvalue.get_type(&self.renamer), SemanticType::Int))
                     }
                 }
                 Stat::Read(resolved_lvalue)
@@ -369,14 +374,20 @@ impl Folder for TypeResolver {
                 let resolved_expr = self.fold_expr_sn(expr);
                 match resolved_expr.get_type(&self.renamer) {
                     SemanticType::Array(_) | SemanticType::Pair(_, _) => (),
-                    _ => self.add_error(TypeMismatch(resolved_expr.span(), 
-                                                     resolved_expr.get_type(&self.renamer), 
+                    _ => self.add_error(TypeMismatch(resolved_expr.span(),
+                                                     resolved_expr.get_type(&self.renamer),
                                                      SemanticType::Array(Box::new(SemanticType::AnyType)))),
                 }
                 Stat::Free(resolved_expr)
             },
             Stat::Return(expr) => Stat::Return(self.fold_expr_sn(expr)),
-            Stat::Exit(expr) => Stat::Exit(self.fold_expr_sn(expr)),
+            Stat::Exit(expr) => {
+                let resolved_expr = self.fold_expr_sn(expr);
+                if resolved_expr.get_type(&self.renamer) != SemanticType::Int {
+                    self.add_error(TypeMismatch(resolved_expr.span(), resolved_expr.get_type(&self.renamer), SemanticType::Int))
+                }
+                Stat::Exit(resolved_expr)
+            },
             Stat::Print(expr) => Stat::Print(self.fold_expr_sn(expr)),
             Stat::Println(expr) => Stat::Println(self.fold_expr_sn(expr)),
             Stat::IfThenElse {
@@ -416,6 +427,23 @@ impl Folder for TypeResolver {
         match elem {
             PairElem::Fst(expr) => PairElem::Fst(self.fold_lvalue_sn(expr)),
             PairElem::Snd(expr) => PairElem::Snd(self.fold_lvalue_sn(expr)),
+        }
+    }
+    #[inline]
+    fn fold_array_elem(
+        &mut self,
+        elem: ArrayElem<Self::N, Self::T>,
+    ) -> ArrayElem<Self::OutputN, Self::OutputT> {
+        let resolved_indices = elem.indices.map_with(|index| self.fold_expr_sn(index));
+        // if resolved_indices.len() != 1 {
+        //     self.add_error(InvalidNumberOfIndexes(resolved_indices.len()));
+        // }
+        if resolved_indices.first().get_type(&self.renamer) != SemanticType::Int {
+            self.add_error(InvalidIndexType(resolved_indices.first().get_type(&self.renamer)));
+        }
+        ArrayElem {
+            array_name: self.fold_name_sn(elem.array_name),
+            indices: { resolved_indices },
         }
     }
 }

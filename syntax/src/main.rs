@@ -81,28 +81,21 @@ end
 
 #[allow(dead_code)]
 const TEST_PROGRAM: &str = r#"
-# detailed battery of character comparison tests
+# basic array declaration and assignment
 
 # Output:
-# false
-# true
-# true
-# true
-# false
-# false
+# 3
+# 3
 #
 
 # Program:
 
 begin
-  char c1 = 'a' ;
-  char c2 = 'z' ;
-  println c1 == c2 ;
-  println c1 != c2 ;
-  println c1 < c2 ;
-  println c1 <= c2 ;
-  println c1 > c2 ;
-  println c1 >= c2
+  int[] a = [1,2,3];
+  int[] b = [3,4];
+  int[][] c = [a,b] ;
+  println c[0][2] ;
+  println c[1][0]
 end
 "#;
 #[allow(dead_code)]
