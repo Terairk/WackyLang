@@ -91,7 +91,7 @@ pub trait Folder {
             },
             Stat::Read(lvalue) => Stat::Read(self.fold_lvalue(lvalue)),
             Stat::Free(expr) => Stat::Free(self.fold_expr_sn(expr)),
-            Stat::Return(expr) => Stat::Return(self.fold_expr_sn(expr)),
+            Stat::Return(expr) => self.fold_stat_return(expr),
             Stat::Exit(expr) => Stat::Exit(self.fold_expr_sn(expr)),
             Stat::Print(expr) => Stat::Print(self.fold_expr_sn(expr)),
             Stat::Println(expr) => Stat::Println(self.fold_expr_sn(expr)),
@@ -135,6 +135,14 @@ pub trait Folder {
             name: self.fold_name_sn(name),
             rvalue: self.fold_rvalue(rvalue),
         }
+    }
+
+    #[inline]
+    fn fold_stat_return(
+        &mut self,
+        expr: SN<Expr<Self::N, Self::T>>,
+    ) -> Stat<Self::OutputN, Self::OutputT> {
+        Stat::Return(self.fold_expr_sn(expr))
     }
 
     #[inline]

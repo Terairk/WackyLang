@@ -69,6 +69,7 @@ pub enum SemanticError {
     // TODO: import strum crate to make it easier to convert this to a string
     TypeMismatch(SN<Expr<RenamedName, SemanticType>>, Type, Type),
     UndefinedIdent(SN<Ident>),
+    ReturnInMain,
 }
 
 // We handle functions separately from variables since its easier
@@ -108,6 +109,7 @@ pub struct Renamer {
     // bool refers to from_current_block used for renaming
     identifier_map: HashMap<Ident, IDMapEntry>,
     counter: usize,
+    in_main: bool,
     errors: Vec<SemanticError>,
 }
 
@@ -119,6 +121,7 @@ impl Renamer {
             },
             identifier_map: HashMap::new(),
             counter: 0,
+            in_main: true,
             errors: Vec::new(),
         }
     }
@@ -131,7 +134,7 @@ impl Renamer {
         self.errors.clone()
     }
 
-    pub fn get_func_table(&self) -> &IdFuncTable {
+    pub const fn get_func_table(&self) -> &IdFuncTable {
         &self.id_func_table
     }
 
@@ -191,11 +194,13 @@ impl Folder for Renamer {
 
     #[inline]
     fn fold_func(&mut self, func: Func<Self::N, Self::T>) -> Func<Self::OutputN, Self::OutputT> {
+        self.in_main = false;
         let new_map = self.copy_id_map_with_false();
         let old_id_map = mem::replace(&mut self.identifier_map, new_map);
         let params = func.params.fold_with(|param| self.fold_func_param(param));
         let body = self.with_temporary_map(|slf| slf.fold_stat_block_sn(func.body));
         self.identifier_map = old_id_map;
+        self.in_main = true;
 
         Func {
             return_type: func.return_type, // Type remains unchanged
@@ -269,6 +274,17 @@ impl Folder for Renamer {
             name: unique_name,
             rvalue: resolved_rvalue,
         }
+    }
+
+    #[inline]
+    fn fold_stat_return(
+        &mut self,
+        expr: SN<Expr<Self::N, Self::T>>,
+    ) -> Stat<Self::OutputN, Self::OutputT> {
+        if self.in_main {
+            self.add_error(SemanticError::ReturnInMain);
+        }
+        Stat::Return(self.fold_expr_sn(expr))
     }
 
     #[inline]
