@@ -347,15 +347,34 @@ impl Folder for TypeResolver {
                 let resolved_rvalue = self.fold_rvalue(rvalue);
                 if resolved_rvalue.get_type(&self.renamer) != resolved_lvalue.get_type(&self.renamer) {
                     println!("Type mismatch in Assignment!");
-                    self.add_error(SimpleTypeMismatch(resolved_lvalue.get_type(&self.renamer), resolved_rvalue.get_type(&self.renamer)))
+                    self.add_error(SimpleTypeMismatch(resolved_lvalue.get_type(&self.renamer), resolved_rvalue.get_type(&self.renamer)));
                 }
                 Stat::Assignment {
                     lvalue: resolved_lvalue,
                     rvalue: resolved_rvalue,
                 }
             },
-            Stat::Read(lvalue) => Stat::Read(self.fold_lvalue(lvalue)),
-            Stat::Free(expr) => Stat::Free(self.fold_expr_sn(expr)),
+            Stat::Read(lvalue) => {
+                let resolved_lvalue = self.fold_lvalue(lvalue);
+                match resolved_lvalue.get_type(&self.renamer) {
+                    SemanticType::Int | SemanticType::Char => (),
+                    _ => {
+                        println!("Type mismatch in Read! {:?}", resolved_lvalue.get_type(&self.renamer));
+                        self.add_error(SimpleTypeMismatch(resolved_lvalue.get_type(&self.renamer), SemanticType::Int)) 
+                    }
+                }
+                Stat::Read(resolved_lvalue)
+            },
+            Stat::Free(expr) => {
+                let resolved_expr = self.fold_expr_sn(expr);
+                match resolved_expr.get_type(&self.renamer) {
+                    SemanticType::Array(_) | SemanticType::Pair(_, _) => (),
+                    _ => self.add_error(TypeMismatch(resolved_expr.span(), 
+                                                     resolved_expr.get_type(&self.renamer), 
+                                                     SemanticType::Array(Box::new(SemanticType::AnyType)))),
+                }
+                Stat::Free(resolved_expr)
+            },
             Stat::Return(expr) => Stat::Return(self.fold_expr_sn(expr)),
             Stat::Exit(expr) => Stat::Exit(self.fold_expr_sn(expr)),
             Stat::Print(expr) => Stat::Print(self.fold_expr_sn(expr)),
