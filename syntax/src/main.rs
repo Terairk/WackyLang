@@ -81,20 +81,28 @@ end
 
 #[allow(dead_code)]
 const TEST_PROGRAM: &str = r#"
-# nested pair assignments are legal as long as the right hand-side type is known
+# detailed battery of character comparison tests
 
 # Output:
-# 7
+# false
+# true
+# true
+# true
+# false
+# false
 #
 
 # Program:
 
 begin
-  pair(int, int) p = newpair(2, 3) ;
-  pair(int, pair) q = newpair(1, p) ;
-  fst snd q = 7 ;
-  int x = fst p ;
-  println x
+  char c1 = 'a' ;
+  char c2 = 'z' ;
+  println c1 == c2 ;
+  println c1 != c2 ;
+  println c1 < c2 ;
+  println c1 <= c2 ;
+  println c1 > c2 ;
+  println c1 >= c2
 end
 "#;
 #[allow(dead_code)]
