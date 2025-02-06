@@ -10,6 +10,7 @@ use std::process::ExitCode;
 use wacc_syntax::fold_program::Folder;
 use wacc_syntax::parser::program_parser;
 use wacc_syntax::rename::{rename, Renamer};
+use wacc_syntax::typecheck::{typecheck, TypeResolver};
 use wacc_syntax::source::{SourcedSpan, StrSourceId};
 use wacc_syntax::token::{lexer, Token};
 
@@ -78,6 +79,24 @@ end
 
 "#;
 
+#[allow(dead_code)]
+const TEST_PROGRAM: &str = r#"
+# program has unacceptable escape character
+
+# Output:
+# #syntax_error#
+
+# Exit:
+# 100
+
+# Program:
+
+begin
+  char a = '\H'
+end
+
+"#;
+#[allow(dead_code)]
 const SEMANTIC_ERR_PROGRAM: &str = r#"# type mismatch: int <- bool
 
 # Output:
@@ -115,7 +134,7 @@ fn main() -> ExitCode {
     //     return ExitCode::from(200);
     // }
 
-    let source = TEST_PAIR_PROGRAM;
+    let source = TEST_PROGRAM;
     let source_id = StrSourceId::repl();
     let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
 
@@ -159,6 +178,11 @@ fn main() -> ExitCode {
         println!("{:?}", renamer.return_errors());
         println!("{:?}", renamer.get_func_table());
         println!("{:?}", renamer.get_symbol_table());
+
+        let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
+
+        println!("{typed_ast:?}");
+        println!("Type Errors: {:?}", type_resolver.type_errors);
     }
 
     // Done to appease the borrow checker while displaying errors
@@ -226,8 +250,43 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use wacc_syntax::parser::program_parser;
+    use wacc_syntax::rename::rename;
     use wacc_syntax::source::{SourcedSpan, StrSourceId};
     use wacc_syntax::token::{lexer, Token};
+    use wacc_syntax::typecheck::typecheck;
+
+    #[test]
+    fn run_failed_semantic_tests() {
+        let tests_dir = Path::new("../test_cases/invalid/semanticErr");
+
+        let mut passed_count = 0;
+        let mut total_count = 0;
+
+        match get_test_files(tests_dir) {
+            Ok(test_files) => {
+                for test_file in test_files {
+                    let test_name = test_file.display();
+                    match run_single_test(&test_file) {
+                        Ok(_) => {
+                            println!("Test failed: error not detected in {}", test_name)
+                        }
+                        Err(error_msg) => {
+                            if error_msg == "Semantic error(s) found!" {
+                                println!("Test passed: {}", test_name);
+                                passed_count += 1;
+                            } else {
+                                println!("Test failed: {} with cause {error_msg}", test_name)
+                            }
+                        }
+                    }
+                    total_count += 1;
+                }
+            }
+            Err(e) => eprintln!("Failed to collect test files: {}", e),
+        }
+        println!("Passed {passed_count} out of {total_count} tests!");
+        assert_eq!(passed_count, total_count);
+    }
     #[test]
     fn run_failed_syntax_tests() {
         let tests_dir = Path::new("../test_cases/invalid/syntaxErr");
@@ -330,24 +389,27 @@ mod tests {
         )
         .into_output_errors();
         let syntax_err_str = String::from("Syntax error(s) found!");
+        let semantic_err_str = String::from("Semantic error(s) found!");
         if let Some(tokens) = tokens {
             #[allow(clippy::pattern_type_mismatch)]
             let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
-            let (_parsed, parse_errs) = program_parser().parse(spanned_tokens).into_output_errors();
+            let (parsed, parse_errs) = program_parser().parse(spanned_tokens).into_output_errors();
 
             if !parse_errs.is_empty() {
                 return Err(syntax_err_str);
             }
+
+            let (renamed_ast, renamer) =
+                rename(parsed.expect("If parse errors are not empty, parsed should be Valid"));
+
+            let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
+
+            if !type_resolver.type_errors.is_empty() || !type_resolver.renamer.return_errors().is_empty() {
+                return Err(semantic_err_str);
+            }
         }
         // If there are syntax errors, return an appropriate result
         if !lexing_errs.is_empty() {
-            return Err(syntax_err_str);
-        }
-
-        // TODO: semantic analysis
-        let semantic_errors: Vec<i32> = Vec::new();
-
-        if !semantic_errors.is_empty() {
             return Err(syntax_err_str);
         }
 

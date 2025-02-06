@@ -95,7 +95,7 @@ impl PairElemType {
                 let elem_type = sn_array.elem_type.to_semantic_type();
                 SemanticType::Array(Box::new(elem_type))
             }
-            PairElemType::Pair(span) => SemanticType::Error(span.clone()),
+            PairElemType::Pair(_span) => SemanticType::ErasedPair,
         }
     }
 }
@@ -105,7 +105,9 @@ impl PartialEq for SemanticType {
         use SemanticType::*;
         match (self, other) {
             (AnyType, _) => true,
+            (Error(_), _) => true,
             (_, AnyType) => true,
+            (_, Error(_)) => true,
             (Int, Int) | (Bool, Bool) | (Char, Char) | (String, String) => true,
             (Array(a), Array(b)) => a == b,
             (Pair(a1, b1), Pair(a2, b2)) => a1 == a2 && b1 == b2,
