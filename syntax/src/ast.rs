@@ -111,10 +111,10 @@ pub enum LValue<N, T> {
 
 #[derive(Clone, Debug)]
 pub enum RValue<N, T> {
-    Expr(SN<Expr<N, T>>, T), // Type info already in Expr
-    ArrayLiter(Box<[SN<Expr<N, T>>]>, T), // Array needs a type
+    Expr(SN<Expr<N, T>>, T),                    // Type info already in Expr
+    ArrayLiter(Box<[SN<Expr<N, T>>]>, T),       // Array needs a type
     NewPair(SN<Expr<N, T>>, SN<Expr<N, T>>, T), // Pair needs a type I think
-    PairElem(PairElem<N, T>), // Type info would come from the inner pair
+    PairElem(PairElem<N, T>),                   // Type info would come from the inner pair
     Call {
         func_name: SN<Ident>,
         args: Box<[SN<Expr<N, T>>]>,
@@ -251,13 +251,14 @@ impl<N, T> StatBlock<N, T> {
             .map_err(|_| EmptyStatVecError)
     }
 
-    /// A block of statements is called ‘returning’ if the last statement in the block is either:
-    ///
-    ///     1. a ‘return’ statement
-    ///     2. an ‘exit’ statement
-    ///     3. an ‘if’ statement with two returning blocks.
-    ///
-    /// All function bodies **MUST** be returning blocks.
+    // A block of statements is called ‘returning’ if the last statement in the block is either:
+    //
+    //     1. a ‘return’ statement
+    //     2. an ‘exit’ statement
+    //     3. an ‘if’ statement with two returning blocks.
+    //
+    // All function bodies **MUST** be returning blocks.
+    #[inline]
     pub fn is_return_block(&self) -> bool {
         match &**self.last() {
             Stat::Return(_) | Stat::Exit(_) => true,
@@ -266,6 +267,7 @@ impl<N, T> StatBlock<N, T> {
                 else_body,
                 ..
             } => then_body.is_return_block() && else_body.is_return_block(),
+            Stat::Scoped(stat_block) => stat_block.is_return_block(),
             _ => false,
         }
     }

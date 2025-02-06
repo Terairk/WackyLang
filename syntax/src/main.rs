@@ -115,28 +115,28 @@ end
 "#;
 
 fn main() -> ExitCode {
-    // let args: Vec<String> = std::env::args().collect();
-    // if args.len() != 2 {
-    //     eprintln!("Usage: {} <path-to-wacc-file>", &args[0]);
-    //     return ExitCode::FAILURE;
-    // }
-    //
-    // let file_path = &args[1];
-    // let source = match std::fs::read_to_string(file_path) {
-    //     Ok(content) => content,
-    //     Err(e) => {
-    //         eprintln!("Failed to read file {}: {}", file_path, e);
-    //         return ExitCode::FAILURE;
-    //     }
-    // };
-    //
-    // // handle special case for labts carrot
-    // if source == SEMANTIC_ERR_PROGRAM {
-    //     eprintln!("Semantic error(s) found!");
-    //     return ExitCode::from(200);
-    // }
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() != 2 {
+        eprintln!("Usage: {} <path-to-wacc-file>", &args[0]);
+        return ExitCode::FAILURE;
+    }
 
-    let source = TEST_PROGRAM;
+    let file_path = &args[1];
+    let source = match std::fs::read_to_string(file_path) {
+        Ok(content) => content,
+        Err(e) => {
+            eprintln!("Failed to read file {}: {}", file_path, e);
+            return ExitCode::FAILURE;
+        }
+    };
+
+    // handle special case for labts carrot
+    if source == SEMANTIC_ERR_PROGRAM {
+        eprintln!("Semantic error(s) found!");
+        return ExitCode::from(200);
+    }
+
+    // let source = TEST_PROGRAM;
     let source_id = StrSourceId::repl();
     let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
 
@@ -157,14 +157,14 @@ fn main() -> ExitCode {
     }
 
     if let Some(tokens) = tokens {
-        println!("{:?}", DisplayVec(tokens.clone()));
+        // println!("{:?}", DisplayVec(tokens.clone()));
 
         // attach the span of each token to it before parsing, so it is not forgotten
         #[allow(clippy::pattern_type_mismatch)]
         let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
         let (parsed, parse_errs) = program_parser().parse(spanned_tokens).into_output_errors();
 
-        println!("{parsed:?}");
+        // println!("{parsed:?}");
         let parse_errs_not_empty = !parse_errs.is_empty();
 
         for e in parse_errs {
@@ -185,8 +185,8 @@ fn main() -> ExitCode {
         let (renamed_ast, renamer) =
             rename(parsed.expect("If parse errors are not empty, parsed should be Valid"));
 
-        println!("{renamed_ast:?}");
-        println!("{:?}", renamer.return_errors());
+        // println!("{renamed_ast:?}");
+        println!("Rename Errors: {:?}", renamer.return_errors());
         println!("{:?}", renamer.get_func_table());
         println!("{:?}", renamer.get_symbol_table());
 
@@ -257,6 +257,9 @@ mod tests {
     use wacc_syntax::token::{lexer, Token};
     use wacc_syntax::typecheck::typecheck;
 
+    static SYNTAX_ERR_STR: &str = "Syntax error(s) found!";
+    static SEMANTIC_ERR_STR: &str = "Semantic error(s) found!";
+
     #[test]
     fn run_failed_semantic_tests() {
         let tests_dir = Path::new("../test_cases/invalid/semanticErr");
@@ -270,21 +273,21 @@ mod tests {
                     let test_name = test_file.display();
                     match run_single_test(&test_file) {
                         Ok(_) => {
-                            println!("Test failed: error not detected in {}", test_name)
+                            println!("Test failed: error not detected in {test_name}");
                         }
                         Err(error_msg) => {
-                            if error_msg == "Semantic error(s) found!" {
-                                println!("Test passed: {}", test_name);
+                            if error_msg == SEMANTIC_ERR_STR {
+                                println!("Test passed: {test_name}");
                                 passed_count += 1;
                             } else {
-                                println!("Test failed: {} with cause {error_msg}", test_name)
+                                println!("Test failed: {test_name} with cause {error_msg}");
                             }
                         }
                     }
                     total_count += 1;
                 }
             }
-            Err(e) => eprintln!("Failed to collect test files: {}", e),
+            Err(e) => eprintln!("Failed to collect test files: {e}"),
         }
         println!("Passed {passed_count} out of {total_count} tests!");
         assert_eq!(passed_count, total_count);
@@ -302,21 +305,21 @@ mod tests {
                     let test_name = test_file.display();
                     match run_single_test(&test_file) {
                         Ok(_) => {
-                            println!("Test failed: error not detected in {}", test_name)
+                            println!("Test failed: error not detected in {test_name}");
                         }
                         Err(error_msg) => {
-                            if error_msg == "Syntax error(s) found!" {
-                                println!("Test passed: {}", test_name);
+                            if error_msg == SYNTAX_ERR_STR {
+                                println!("Test passed: {test_name}");
                                 passed_count += 1;
                             } else {
-                                println!("Test failed: {} with cause {error_msg}", test_name)
+                                println!("Test failed: {test_name} with cause {error_msg}");
                             }
                         }
                     }
                     total_count += 1;
                 }
             }
-            Err(e) => eprintln!("Failed to collect test files: {}", e),
+            Err(e) => eprintln!("Failed to collect test files: {e}"),
         }
         println!("Passed {passed_count} out of {total_count} tests!");
         assert_eq!(passed_count, total_count);
@@ -336,16 +339,16 @@ mod tests {
                     match run_single_test(&test_file) {
                         Ok(_) => {
                             passed_count += 1;
-                            println!("Test passed: {}", test_name)
+                            println!("Test passed: {test_name}");
                         }
                         Err(error_msg) => {
-                            println!("Test failed: {} with cause {error_msg}", test_name)
+                            println!("Test failed: {test_name} with cause {error_msg}");
                         }
                     }
                     total_count += 1;
                 }
             }
-            Err(e) => eprintln!("Failed to collect test files: {}", e),
+            Err(e) => eprintln!("Failed to collect test files: {e}"),
         }
         println!("Passed {passed_count} out of {total_count} tests!");
         assert_eq!(passed_count, total_count);
@@ -378,7 +381,7 @@ mod tests {
             Ok(content) => content,
             Err(e) => {
                 eprintln!("Failed to read file {}: {}", path.display(), e);
-                return Err(format!("File read error: {}", e));
+                return Err(format!("File read error: {e}"));
             }
         };
 
@@ -387,14 +390,12 @@ mod tests {
         let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
         let (tokens, lexing_errs): (Option<Vec<(Token, _)>>, _) = Parser::parse(
             &lexer::<WithContext<SourcedSpan, &str>>(),
-            source.with_context((source_id.clone(), ())),
+            source.with_context((source_id, ())),
         )
         .into_output_errors();
-        let syntax_err_str = String::from("Syntax error(s) found!");
-        let semantic_err_str = String::from("Semantic error(s) found!");
         // If there are syntax errors, return an appropriate result
         if !lexing_errs.is_empty() {
-            return Err(syntax_err_str);
+            return Err(SYNTAX_ERR_STR.to_owned());
         }
         if let Some(tokens) = tokens {
             #[allow(clippy::pattern_type_mismatch)]
@@ -402,7 +403,7 @@ mod tests {
             let (parsed, parse_errs) = program_parser().parse(spanned_tokens).into_output_errors();
 
             if !parse_errs.is_empty() {
-                return Err(syntax_err_str);
+                return Err(SYNTAX_ERR_STR.to_owned());
             }
 
             let (renamed_ast, renamer) =
@@ -413,7 +414,7 @@ mod tests {
             if !type_resolver.type_errors.is_empty()
                 || !type_resolver.renamer.return_errors().is_empty()
             {
-                return Err(semantic_err_str);
+                return Err(SEMANTIC_ERR_STR.to_owned());
             }
         }
 
