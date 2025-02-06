@@ -150,6 +150,33 @@ impl Renamer {
             .collect()
     }
 
+    #[inline]
+    pub fn lookup_symbol_table(&self, ident: &SN<Ident>) -> SemanticType {
+        if let Some(semantic_type) = self.symbol_table.get(ident.inner()) {
+            semantic_type.clone()
+        } else {
+            SemanticType::Error(ident.span())
+        }
+    }
+
+    #[inline]
+    pub fn lookup_func_args(&self, ident: &SN<Ident>) -> Vec<SemanticType> {
+        if let Some((_, args)) = self.id_func_table.functions.get(ident.inner()) {
+            args.clone()
+        } else {
+            Vec::new()
+        }
+    }
+
+    #[inline]
+    pub fn lookup_func_return_type(&self, ident: &SN<Ident>) -> SemanticType {
+        if let Some((return_type, _)) = self.id_func_table.functions.get(ident) {
+            return_type.clone()
+        } else {
+            SemanticType::Error(ident.span())
+        }
+    }
+
     fn with_temporary_map<F, R>(&mut self, f: F) -> R
     where
         F: FnOnce(&mut Self) -> R,
