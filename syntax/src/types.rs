@@ -101,6 +101,15 @@ impl PairElemType {
 }
 
 impl SemanticType {
+    fn pair_inner_erasable(from: &SemanticType, to: &SemanticType) -> bool {
+        use SemanticType::{Pair, ErasedPair};
+        if let Pair(_, _) = from {
+            return *to == ErasedPair;
+        }
+
+        return from == to;
+    }
+
     pub fn can_coerce_into(&self, to: &SemanticType) -> bool {
         use SemanticType::*;
 
@@ -116,8 +125,15 @@ impl SemanticType {
             (_, AnyType) => true,
             (_, Error(_)) => true,
             (Int, Int) | (Bool, Bool) | (Char, Char) | (String, String) => true,
-            (Array(a), Array(b)) => a == b, // arrays are invariant
-            (Pair(a1, b1), Pair(a2, b2)) => a1 == a2 && b1 == b2, // pairs are invariant
+            (Array(a), Array(b)) => {
+                a == b || // arrays are invariant
+                **a == AnyType
+            },
+            (Pair(a1, b1), Pair(a2, b2)) => {
+                (a1 == a2 && b1 == b2) || // pairs are invariant
+                (SemanticType::pair_inner_erasable(a1, a2) && SemanticType::pair_inner_erasable(b1, b2)) ||
+                (**a1 == AnyType && **b1 == AnyType) // unless it's null
+            },
             (ErasedPair, Pair(_, _)) => true,
             (Pair(_, _), ErasedPair) => true,
             (ErasedPair, ErasedPair) => true,

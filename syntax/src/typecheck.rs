@@ -341,11 +341,12 @@ impl Folder for TypeResolver {
         name: SN<Self::N>,
         rvalue: RValue<Self::N, Self::T>,
     ) -> Stat<Self::OutputN, Self::OutputT> {
-        let given_type = r#type.to_semantic_type();
+        let expected_type = r#type.to_semantic_type();
         let resolved_rvalue = self.fold_rvalue(rvalue);
         let resolved_type = resolved_rvalue.get_type(&self.renamer);
-        if given_type != resolved_type {
-            self.add_error(TypeMismatch(name.span(), given_type, resolved_type))
+        if !resolved_type.can_coerce_into(&expected_type) {
+            println!("Type mismatch in var definition: {:?} -> {:?}", resolved_type, expected_type);
+            self.add_error(TypeMismatch(name.span(), expected_type, resolved_type))
         }
         Stat::VarDefinition {
             r#type,
