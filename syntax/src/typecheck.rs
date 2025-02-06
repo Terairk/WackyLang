@@ -397,8 +397,8 @@ impl Folder for TypeResolver {
             Stat::Return(expr) => {
                 let resolved_ret_value = self.fold_expr_sn(expr);
                 if let Some(expected_ret_type) = self.curr_func_ret_type.as_ref() {
-                    if expected_ret_type.to_semantic_type() != resolved_ret_value.get_type() {
-                        self.add_error(SimpleTypeMismatch(expected_ret_type.to_semantic_type(), resolved_ret_value.get_type()))
+                    if expected_ret_type.to_semantic_type() != resolved_ret_value.get_type(&self.renamer) {
+                        self.add_error(SimpleTypeMismatch(expected_ret_type.to_semantic_type(), resolved_ret_value.get_type(&self.renamer)))
                     }
                 } // otherwise we're in the main body, where the renaming stage will have emitted an error if there's a return statement
 
