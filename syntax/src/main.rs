@@ -14,6 +14,7 @@ use wacc_syntax::rename::{rename, Renamer};
 use wacc_syntax::source::{SourcedSpan, StrSourceId};
 use wacc_syntax::token::{lexer, Token};
 use wacc_syntax::typecheck::{typecheck, TypeResolver};
+use wacc_syntax::rename::SemanticError;
 
 #[allow(dead_code)]
 const TEST_EXPR: &str = r#"
@@ -82,25 +83,21 @@ end
 
 #[allow(dead_code)]
 const TEST_PROGRAM: &str = r#"
-# basic array declaration and assignment
+# begin missing closing end
 
 # Output:
-# 3
-# 3
-#
+# #syntax_error#
+
+# Exit:
+# 100
 
 # Program:
 
-begin
-  int[] a = [1,2,3];
-  int[] b = [3,4];
-  int[][] c = [a,b] ;
-  println c[0][2] ;
-  println c[1][0]
-end
+begin skip
 "#;
 #[allow(dead_code)]
-const SEMANTIC_ERR_PROGRAM: &str = r#"# type mismatch: int <- bool
+const SEMANTIC_ERR_PROGRAM: &str = r#"
+# type mismatch: int <- bool
 
 # Output:
 # #semantic_error#
@@ -138,6 +135,7 @@ fn main() -> ExitCode {
     }
 
     // let source = TEST_PROGRAM;
+    // let file_path = "test_cases/invalid/syntaxErr/basic/beginNoend.wacc";
     let source_id = StrSourceId::repl();
     let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
 
@@ -170,7 +168,7 @@ fn main() -> ExitCode {
 
         for e in parse_errs {
             let mut colors = ColorGenerator::new();
-
+            println!("{:?}", file_path);
             Report::build(ariadne::ReportKind::Error, (file_path, e.span().as_range()))
                 .with_message("Syntax error")
                 .with_code(69)
@@ -201,10 +199,35 @@ fn main() -> ExitCode {
         let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
 
         println!("{typed_ast:?}");
-        println!("Type Errors: {:?}", type_resolver.type_errors);
+        println!("Type Errors2: {:?}", type_resolver.type_errors);
+        for e in type_resolver.type_errors {
+            match e {
+                SemanticError::TypeMismatch(span, expected, got) => {
+                    let reason = format!("Type mismatch: expected {}, but recieved {}", expected, got);
+                    build_semantic_report(file_path, span, reason, source.clone())
+                }
+                _ => todo!(),
+            }
+        }
     }
 
     ExitCode::from(0)
+}
+
+pub fn build_semantic_report(file_path: &String, span: SourcedSpan, reason: String, source: String) {
+    let mut colors = ColorGenerator::new();
+    println!("{:?}", span.as_range());
+    Report::build(ariadne::ReportKind::Error, (file_path, span.clone().as_range()))
+        .with_message("Semantic error")
+        .with_code(420)
+        .with_label(
+            Label::new((file_path, span.clone().as_range()))
+                .with_color(colors.next())
+                .with_message(reason),
+        )
+        .finish()
+        .print((file_path, Source::from(source)))
+        .unwrap();
 }
 
 #[repr(transparent)]

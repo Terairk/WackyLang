@@ -1,6 +1,9 @@
 use crate::source::SourcedNode;
 use crate::source::SourcedSpan;
 use std::cmp::PartialEq;
+use std::fmt;
+use std::fmt::{Display, Formatter};
+
 type SN<T> = SourcedNode<T>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -139,6 +142,23 @@ impl SemanticType {
             (ErasedPair, ErasedPair) => true,
             (Unknown, Unknown) => true,
             _ => false,
+        }
+    }
+}
+
+impl Display for SemanticType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SemanticType::Int => write!(f, "int"),
+            SemanticType::Bool => write!(f, "bool"),
+            SemanticType::Char => write!(f, "char"),
+            SemanticType::String => write!(f, "string"),
+            SemanticType::Array(elem) => write!(f, "{}[]", elem),
+            SemanticType::Pair(left, right) => write!(f, "({}, {})", left, right),
+            SemanticType::ErasedPair => write!(f, "pair"),
+            SemanticType::Unknown => write!(f, "unknown"),
+            SemanticType::Error(span) => write!(f, "error at {:?}", span),
+            _ => write!(f, "This should never happen!"),
         }
     }
 }
