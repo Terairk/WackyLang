@@ -80,6 +80,7 @@ impl ArrayElem<RenamedName, SemanticType> {
 pub struct TypeResolver {
     pub type_errors: Vec<SemanticError>,
     pub renamer: Renamer,
+    pub curr_func_ret_type: Option<Type>
 }
 
 impl TypeResolver {
@@ -87,7 +88,8 @@ impl TypeResolver {
     fn new(renamer: Renamer) -> Self {
         TypeResolver{
             type_errors: Vec::new(),
-            renamer
+            renamer,
+            curr_func_ret_type: None
         }
     }
     fn add_error(&mut self, error: SemanticError) {
@@ -130,6 +132,18 @@ impl Folder for TypeResolver {
     fn fold_type(&mut self, _ty: Self::T) -> Self::OutputT {
         println!("fold_type is called, which shouldn't be called!");
         SemanticType::Int
+    }
+
+    fn fold_func(&mut self, func: Func<Self::N, Self::T>) -> Func<Self::OutputN, Self::OutputT> {
+        self.curr_func_ret_type = Some(func.return_type.inner().clone());
+        let func = Func {
+            return_type: func.return_type, // Type remains unchanged
+            name: func.name,
+            params: func.params.fold_with(|param| self.fold_func_param(param)),
+            body: self.fold_stat_block_sn(func.body),
+        };
+        self.curr_func_ret_type = None;
+        return func;
     }
 
     fn fold_funcname_sn(&mut self, name: SN<Ident>) -> SN<Ident> { name }
@@ -380,7 +394,16 @@ impl Folder for TypeResolver {
                 }
                 Stat::Free(resolved_expr)
             },
-            Stat::Return(expr) => Stat::Return(self.fold_expr_sn(expr)),
+            Stat::Return(expr) => {
+                let resolved_ret_value = self.fold_expr_sn(expr);
+                if let Some(expected_ret_type) = self.curr_func_ret_type.as_ref() {
+                    if expected_ret_type.to_semantic_type() != resolved_ret_value.get_type() {
+                        self.add_error(SimpleTypeMismatch(expected_ret_type.to_semantic_type(), resolved_ret_value.get_type()))
+                    }
+                } // otherwise we're in the main body, where the renaming stage will have emitted an error if there's a return statement
+
+                Stat::Return(resolved_ret_value)
+            },
             Stat::Exit(expr) => {
                 let resolved_expr = self.fold_expr_sn(expr);
                 if resolved_expr.get_type(&self.renamer) != SemanticType::Int {
