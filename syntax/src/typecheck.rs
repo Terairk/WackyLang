@@ -40,11 +40,21 @@ impl<N, T: Clone> RValue<N, T> {
             RValue::Expr(_, t) => t.clone(),
             RValue::ArrayLiter(_, t) => t.clone(),
             RValue::NewPair(_, _, t) => t.clone(),
-            RValue::PairElem(pelem) => todo!(),
+            RValue::PairElem(pelem) => {
+                match pelem {
+                    PairElem::Fst(lvalue_sn) => {
+                        lvalue_sn.inner().get_type()
+                    },
+                    PairElem::Snd(lvalue_sn) => {
+                        lvalue_sn.inner().get_type()
+                    },
+                }
+            },
             RValue::Call {return_type, .. } => return_type.clone(),
         }
     }
 }
+
 pub struct TypeResolver {
     pub type_errors: Vec<SemanticError>,
     pub renamer: Renamer,
@@ -92,12 +102,16 @@ impl Folder for TypeResolver {
     type T = ();
     type OutputN = RenamedName;
     type OutputT = SemanticType;
+
     fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN> { name }
+
     fn fold_type(&mut self, _ty: Self::T) -> Self::OutputT {
         println!("fold_type is called, which shouldn't be called!");
         SemanticType::Int
     }
+
     fn fold_funcname_sn(&mut self, name: SN<Ident>) -> SN<Ident> { name }
+
     #[inline]
     fn fold_expr(&mut self, expr: Expr<Self::N, Self::T>) -> Expr<Self::OutputN, Self::OutputT> {
         match expr {
@@ -187,6 +201,7 @@ impl Folder for TypeResolver {
             Expr::Error(span) => Expr::Error(span),
         }
     }
+
     #[inline]
     fn fold_lvalue(
         &mut self,
@@ -230,15 +245,37 @@ impl Folder for TypeResolver {
                 let resolved_type = resolved_expr.get_type();
                 RValue::Expr(resolved_expr, resolved_type)
             },
-            RValue::ArrayLiter(exprs, ty) => RValue::ArrayLiter(
-                exprs.fold_with(|expr| self.fold_expr_sn(expr)),
-                self.fold_type(ty),
-            ),
-            RValue::NewPair(fst, snd, ty) => RValue::NewPair(
-                self.fold_expr_sn(fst),
-                self.fold_expr_sn(snd),
-                self.fold_type(ty),
-            ),
+            RValue::ArrayLiter(exprs, ty) => {
+                let resolved_exprs = exprs.fold_with(|expr| self.fold_expr_sn(expr));
+                if resolved_exprs.is_empty() {
+                    return RValue::ArrayLiter(
+                        resolved_exprs,
+                        // TODO: This should work for now
+                        SemanticType::Array(Box::new(SemanticType::AnyType)),
+                    )
+                }
+                let resolved_type = resolved_exprs.clone()[0].get_type();
+                for expr in resolved_exprs.clone() {
+                    if expr.get_type() != resolved_type {
+                        self.add_error(SimpleTypeMismatch(expr.get_type(), resolved_type.clone()));
+                    }
+                }
+                RValue::ArrayLiter(
+                    resolved_exprs,
+                    SemanticType::Array(Box::new(resolved_type)),
+                )
+            },
+            RValue::NewPair(fst, snd, ty) => {
+                let resolved_fst = self.fold_expr_sn(fst);
+                let resolved_snd = self.fold_expr_sn(snd);
+                let resolved_type = SemanticType::Pair(Box::new(resolved_fst.get_type()), Box::new(resolved_snd.get_type()));
+
+                RValue::NewPair(
+                    resolved_fst,
+                    resolved_snd,
+                    resolved_type,
+                )
+            },
             RValue::PairElem(pair_elem) => RValue::PairElem(self.fold_pair_elem(pair_elem)),
             RValue::Call {
                 func_name,
@@ -259,6 +296,7 @@ impl Folder for TypeResolver {
             },
         }
     }
+
     #[inline]
     fn fold_var_definition(
         &mut self,
@@ -278,6 +316,7 @@ impl Folder for TypeResolver {
             rvalue: resolved_rvalue,
         }
     }
+
     #[inline]
     fn fold_stat(&mut self, stat: Stat<Self::N, Self::T>) -> Stat<Self::OutputN, Self::OutputT> {
         match stat {
@@ -318,6 +357,17 @@ impl Folder for TypeResolver {
                 body: self.fold_stat_block_sn(body),
             },
             Stat::Scoped(body) => Stat::Scoped(self.fold_stat_block_sn(body)),
+        }
+    }
+
+    #[inline]
+    fn fold_pair_elem(
+        &mut self,
+        elem: PairElem<Self::N, Self::T>,
+    ) -> PairElem<Self::OutputN, Self::OutputT> {
+        match elem {
+            PairElem::Fst(expr) => PairElem::Fst(self.fold_lvalue_sn(expr)),
+            PairElem::Snd(expr) => PairElem::Snd(self.fold_lvalue_sn(expr)),
         }
     }
 }

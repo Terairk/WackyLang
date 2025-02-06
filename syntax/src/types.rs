@@ -112,6 +112,8 @@ impl PartialEq for SemanticType {
             (Array(a), Array(b)) => a == b,
             (Pair(a1, b1), Pair(a2, b2)) => a1 == a2 && b1 == b2,
             (ErasedPair, ErasedPair) => true,
+            (ErasedPair, Pair(_, _)) => true,
+            (Pair(_, _), ErasedPair) => true,
             (Unknown, Unknown) => true,
             (Error(_), Error(_)) => true, // Treat all errors as equal, ignoring SourcedSpan details
             _ => false,

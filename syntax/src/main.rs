@@ -81,20 +81,15 @@ end
 
 #[allow(dead_code)]
 const TEST_PROGRAM: &str = r#"
-# program has unacceptable escape character
+# empty array declaration
 
 # Output:
-# #syntax_error#
-
-# Exit:
-# 100
 
 # Program:
 
 begin
-  char a = '\H'
+  int[] a = []
 end
-
 "#;
 #[allow(dead_code)]
 const SEMANTIC_ERR_PROGRAM: &str = r#"# type mismatch: int <- bool
