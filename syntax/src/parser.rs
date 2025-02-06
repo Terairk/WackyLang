@@ -112,6 +112,8 @@ where
             // array elements begin with identifiers, so
             // give them precedence over identifiers
             array_elem.map(|elem| ast::Expr::ArrayElem(elem, ())),
+            // Bootleg approach to get SN<Ident> from Ident parser
+            // TODO: check if this is the correct way to do this
             ident.clone().sn().map(|ident| ast::Expr::Ident(ident, ())),
             paren_expr.map(|paren| ast::Expr::Paren(paren, ())),
         ));
@@ -353,7 +355,7 @@ where
             .clone()
             .sn()
             .map(|elem| ast::LValue::PairElem(elem, ())),
-        ident.clone().map(ast::LValue::Ident),
+        ident.clone().map(|ident| ast::LValue::Ident(ident, ())),
     )));
 
     // rvalue parser

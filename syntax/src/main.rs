@@ -7,7 +7,9 @@ use chumsky::Parser;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::process::ExitCode;
+use wacc_syntax::fold_program::Folder;
 use wacc_syntax::parser::program_parser;
+use wacc_syntax::rename::{rename, Renamer};
 use wacc_syntax::source::{SourcedSpan, StrSourceId};
 use wacc_syntax::token::{lexer, Token};
 
@@ -149,6 +151,14 @@ fn main() -> ExitCode {
         if parse_errs_not_empty {
             return ExitCode::from(100);
         }
+
+        let (renamed_ast, renamer) =
+            rename(parsed.expect("If parse errors are not empty, parsed should be Valid"));
+
+        println!("{renamed_ast:?}");
+        println!("{:?}", renamer.return_errors());
+        println!("{:?}", renamer.get_func_table());
+        println!("{:?}", renamer.get_symbol_table());
     }
 
     // Done to appease the borrow checker while displaying errors

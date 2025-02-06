@@ -1,6 +1,6 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 use crate::ast::{ArrayElem, PairElem};
-use crate::ast::{Expr, Func, FuncParam, LValue, Program, RValue, Stat, StatBlock};
+use crate::ast::{Expr, Func, FuncParam, Ident, LValue, Program, RValue, Stat, StatBlock};
 use crate::source::SourcedNode;
 
 use crate::nonempty::NonemptyArray;
@@ -46,7 +46,7 @@ pub trait Folder {
     fn fold_func(&mut self, func: Func<Self::N, Self::T>) -> Func<Self::OutputN, Self::OutputT> {
         Func {
             return_type: func.return_type, // Type remains unchanged
-            name: self.fold_name_sn(func.name),
+            name: func.name,
             params: func.params.fold_with(|param| self.fold_func_param(param)),
             body: self.fold_stat_block_sn(func.body),
         }
@@ -59,6 +59,7 @@ pub trait Folder {
             name: self.fold_name_sn(param.name),
         }
     }
+
     #[inline]
     fn fold_stat_block(
         &mut self,
@@ -90,7 +91,7 @@ pub trait Folder {
             },
             Stat::Read(lvalue) => Stat::Read(self.fold_lvalue(lvalue)),
             Stat::Free(expr) => Stat::Free(self.fold_expr_sn(expr)),
-            Stat::Return(expr) => Stat::Return(self.fold_expr_sn(expr)),
+            Stat::Return(expr) => self.fold_stat_return(expr),
             Stat::Exit(expr) => Stat::Exit(self.fold_expr_sn(expr)),
             Stat::Print(expr) => Stat::Print(self.fold_expr_sn(expr)),
             Stat::Println(expr) => Stat::Println(self.fold_expr_sn(expr)),
@@ -137,12 +138,20 @@ pub trait Folder {
     }
 
     #[inline]
+    fn fold_stat_return(
+        &mut self,
+        expr: SN<Expr<Self::N, Self::T>>,
+    ) -> Stat<Self::OutputN, Self::OutputT> {
+        Stat::Return(self.fold_expr_sn(expr))
+    }
+
+    #[inline]
     fn fold_lvalue(
         &mut self,
         lvalue: LValue<Self::N, Self::T>,
     ) -> LValue<Self::OutputN, Self::OutputT> {
         match lvalue {
-            LValue::Ident(name) => LValue::Ident(self.fold_name_sn(name)),
+            LValue::Ident(name, ty) => LValue::Ident(self.fold_name_sn(name), self.fold_type(ty)),
             LValue::ArrayElem(elem, ty) => {
                 LValue::ArrayElem(self.fold_array_elem(elem), self.fold_type(ty))
             }
@@ -184,7 +193,7 @@ pub trait Folder {
                 args,
                 return_type,
             } => RValue::Call {
-                func_name: self.fold_name_sn(func_name),
+                func_name: self.fold_funcname_sn(func_name),
                 args: args.fold_with(|arg| self.fold_expr_sn(arg)),
                 return_type: self.fold_type(return_type),
             },
@@ -203,7 +212,7 @@ pub trait Folder {
     fn fold_expr(&mut self, expr: Expr<Self::N, Self::T>) -> Expr<Self::OutputN, Self::OutputT> {
         match expr {
             Expr::Liter(lit, ty) => Expr::Liter(lit, self.fold_type(ty)),
-            Expr::Ident(name, ty) => Expr::Ident(self.fold_name_sn(name), self.fold_type(ty)),
+            Expr::Ident(name, ty) => self.fold_expr_ident(name, ty),
             Expr::ArrayElem(array_elem, ty) => {
                 Expr::ArrayElem(self.fold_array_elem(array_elem), self.fold_type(ty))
             }
@@ -221,6 +230,15 @@ pub trait Folder {
         }
     }
 
+    #[inline]
+    fn fold_expr_ident(
+        &mut self,
+        ident: SN<Self::N>,
+        r#type: Self::T,
+    ) -> Expr<Self::OutputN, Self::OutputT> {
+        Expr::Ident(self.fold_name_sn(ident), self.fold_type(r#type))
+    }
+
     // Helper method to fold a expr that is already wrapped in an SN
     #[inline]
     fn fold_expr_sn(
@@ -229,11 +247,6 @@ pub trait Folder {
     ) -> SN<Expr<Self::OutputN, Self::OutputT>> {
         expr.map_inner(|inner| self.fold_expr(inner))
     }
-
-    // #[inline]
-    // fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN> {
-    //     name.map_inner(|inner| self.fold_name(inner))
-    // }
 
     #[inline]
     fn fold_type_sn(&mut self, ty: SN<Self::T>) -> SN<Self::OutputT> {
@@ -285,6 +298,7 @@ pub trait Folder {
      *****************************************/
 
     fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN>;
+    fn fold_funcname_sn(&mut self, name: SN<Ident>) -> SN<Ident>;
 
     fn fold_type(&mut self, ty: Self::T) -> Self::OutputT;
 }

@@ -45,8 +45,9 @@ pub struct Func<N, T> {
     // Leave this as Type to not mess up parametricity
     // This shouldn't change though you can use the helpers in types.rs
     // to convert to a SemanticType
+    // name is an Ident since functions are not renamed
     pub return_type: SN<Type>,
-    pub name: SN<N>,
+    pub name: SN<Ident>,
     pub params: Box<[FuncParam<N>]>,
     pub body: SN<StatBlock<N, T>>,
 }
@@ -103,7 +104,7 @@ pub enum Stat<N, T> {
 
 #[derive(Clone, Debug)]
 pub enum LValue<N, T> {
-    Ident(SN<N>),
+    Ident(SN<N>, T),
     ArrayElem(ArrayElem<N, T>, T),
     PairElem(SN<PairElem<N, T>>, T),
 }
@@ -115,7 +116,7 @@ pub enum RValue<N, T> {
     NewPair(SN<Expr<N, T>>, SN<Expr<N, T>>, T), // Pair needs a type I think
     PairElem(PairElem<N, T>), // Type info would come from the inner pair
     Call {
-        func_name: SN<N>,
+        func_name: SN<Ident>,
         args: Box<[SN<Expr<N, T>>]>,
         return_type: T, // Add return type here
     },
@@ -214,7 +215,7 @@ impl<N, T> Func<N, T> {
     #[inline]
     pub const fn new(
         return_type: SN<Type>,
-        name: SN<N>,
+        name: SN<Ident>,
         params: Box<[FuncParam<N>]>,
         body: SN<StatBlock<N, T>>,
     ) -> Self {
