@@ -325,7 +325,7 @@ impl Folder for TypeResolver {
                 let expected_args_types = self.renamer.lookup_func_args(&func_name.clone());
                 let resolved_args = args.fold_with(|arg| self.fold_expr_sn(arg));
                 if expected_args_types.len() != resolved_args.len() {
-                    self.add_error(SemanticError::MismatchedArgCount(expected_args_types.len(), resolved_args.len()));
+                    self.add_error(SemanticError::MismatchedArgCount(func_name.span(), expected_args_types.len(), resolved_args.len()));
                 }
                 for (arg, expected_type) in resolved_args.clone().iter().zip(expected_args_types) {
                     if !arg.get_type(&self.renamer).can_coerce_into(&expected_type) {
@@ -405,16 +405,16 @@ impl Folder for TypeResolver {
                 Stat::Free(resolved_expr)
             },
             Stat::Return(expr) => {
-                let resolved_ret_value = self.fold_expr_sn(expr);
+                let resolved_expr = self.fold_expr_sn(expr);
                 if let Some(expected_ret_type) = self.curr_func_ret_type.as_ref() {
-                    let resolved_ret_value = resolved_ret_value.get_type(&self.renamer);
+                    let resolved_ret_value = resolved_expr.get_type(&self.renamer);
                     let expected_ret_type = expected_ret_type.to_semantic_type();
                     if !&resolved_ret_value.can_coerce_into(&expected_ret_type) {
-                        self.add_error(SimpleTypeMismatch(expected_ret_type, resolved_ret_value))
+                        self.add_error(TypeMismatch(resolved_expr.span(), expected_ret_type, resolved_ret_value))
                     }
                 } // otherwise we're in the main body, where the renaming stage will have emitted an error if there's a return statement
 
-                Stat::Return(resolved_ret_value)
+                Stat::Return(resolved_expr)
             },
             Stat::Exit(expr) => {
                 let resolved_expr = self.fold_expr_sn(expr);
@@ -474,7 +474,7 @@ impl Folder for TypeResolver {
         //     self.add_error(InvalidNumberOfIndexes(resolved_indices.len()));
         // }
         if resolved_indices.first().get_type(&self.renamer) != SemanticType::Int {
-            self.add_error(InvalidIndexType(resolved_indices.first().get_type(&self.renamer)));
+            self.add_error(InvalidIndexType(resolved_indices.first().span(), resolved_indices.first().get_type(&self.renamer)));
         }
         ArrayElem {
             array_name: self.fold_name_sn(elem.array_name),

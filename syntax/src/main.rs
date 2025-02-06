@@ -202,8 +202,16 @@ fn main() -> ExitCode {
         println!("Type Errors2: {:?}", type_resolver.type_errors);
         for e in type_resolver.type_errors {
             match e {
-                SemanticError::TypeMismatch(span, expected, got) => {
+                SemanticError::TypeMismatch(span, got, expected) => {
                     let reason = format!("Type mismatch: expected {}, but recieved {}", expected, got);
+                    build_semantic_report(file_path, span, reason, source.clone())
+                }
+                SemanticError::MismatchedArgCount(span, expected, got) => {
+                    let reason = format!("Wrong number of arguments: expected {} arguments, but got {}", expected, got);
+                    build_semantic_report(file_path, span, reason, source.clone())
+                }
+                SemanticError::InvalidIndexType(span, got) => {
+                    let reason = format!("Invalid index type: expected int, but got {}", got);
                     build_semantic_report(file_path, span, reason, source.clone())
                 }
                 _ => todo!(),
