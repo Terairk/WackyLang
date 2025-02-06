@@ -3,7 +3,7 @@ use crate::source::SourcedSpan;
 use std::cmp::PartialEq;
 type SN<T> = SourcedNode<T>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SemanticType {
     Int,
     Bool,
@@ -57,19 +57,6 @@ pub enum PairElemType {
 
 // Helper Functions to convert from syntactic types to semantic types
 // might be useful during type checking
-
-impl BaseType {
-    #[inline]
-    pub fn to_semantic_type(&self) -> SemanticType {
-        match self {
-            Self::Int => SemanticType::Int,
-            Self::Bool => SemanticType::Bool,
-            Self::Char => SemanticType::Char,
-            Self::String => SemanticType::String,
-        }
-    }
-}
-
 impl Type {
     #[inline]
     pub fn to_semantic_type(&self) -> SemanticType {
@@ -113,26 +100,29 @@ impl PairElemType {
     }
 }
 
-impl PartialEq for SemanticType {
-    fn eq(&self, other: &Self) -> bool {
+impl SemanticType {
+    pub fn can_coerce_into(&self, to: &SemanticType) -> bool {
         use SemanticType::*;
-        match (self, other) {
+
+        if to == &SemanticType::String {
+            if let SemanticType::Array(from_inner) = self {
+                return **from_inner == SemanticType::Char;
+            }
+        }
+
+        match (self, to) {
             (AnyType, _) => true,
             (Error(_), _) => true,
             (_, AnyType) => true,
             (_, Error(_)) => true,
             (Int, Int) | (Bool, Bool) | (Char, Char) | (String, String) => true,
-            (Array(a), Array(b)) => a == b,
-            (Pair(a1, b1), Pair(a2, b2)) => a1 == a2 && b1 == b2,
-            (ErasedPair, ErasedPair) => true,
+            (Array(a), Array(b)) => a == b, // arrays are invariant
+            (Pair(a1, b1), Pair(a2, b2)) => a1 == a2 && b1 == b2, // pairs are invariant
             (ErasedPair, Pair(_, _)) => true,
             (Pair(_, _), ErasedPair) => true,
+            (ErasedPair, ErasedPair) => true,
             (Unknown, Unknown) => true,
-            (Error(_), Error(_)) => true, // Treat all errors as equal, ignoring SourcedSpan details
             _ => false,
         }
     }
 }
-
-impl Eq for SemanticType {}
-

@@ -98,7 +98,7 @@ impl TypeResolver {
 
     fn unary_expect(&mut self, expr: SN<Expr<RenamedName, SemanticType>>,
                     expected_type: SemanticType, result_type: SemanticType) -> SemanticType {
-        if expr.get_type(&self.renamer) == expected_type {
+        if expr.get_type(&self.renamer).can_coerce_into(&expected_type) {
             result_type
         } else {
             self.add_error(TypeMismatch(expr.span(), expr.get_type(&self.renamer), expected_type));
@@ -109,10 +109,10 @@ impl TypeResolver {
                      rhs: SN<Expr<RenamedName, SemanticType>>,
                      expected_type: SemanticType,
                      result_type: SemanticType) -> SemanticType {
-        if lhs.get_type(&self.renamer) != expected_type {
+        if !lhs.get_type(&self.renamer).can_coerce_into(&expected_type) {
             self.add_error(TypeMismatch(lhs.span(), lhs.get_type(&self.renamer), expected_type));
             SemanticType::Error(lhs.span())
-        } else if rhs.get_type(&self.renamer) != expected_type {
+        } else if !rhs.get_type(&self.renamer).can_coerce_into(&expected_type) {
             self.add_error(TypeMismatch(rhs.span(), rhs.get_type(&self.renamer), expected_type));
             SemanticType::Error(rhs.span())
         } else {
@@ -219,7 +219,9 @@ impl Folder for TypeResolver {
                     }
                     // Equality ops: (T, T) -> Bool (allow any matching type)
                     BinaryOper::Eq | BinaryOper::Neq => {
-                        if resolved_lhs.get_type(&self.renamer) == resolved_rhs.get_type(&self.renamer) {
+                        let lhs_type = resolved_lhs.get_type(&self.renamer);
+                        let rhs_type = resolved_rhs.get_type(&self.renamer);
+                        if lhs_type.can_coerce_into(&rhs_type) || rhs_type.can_coerce_into(&lhs_type) {
                             SemanticType::Bool
                         } else {
                             self.add_error(TypeMismatch(resolved_lhs.span(), resolved_rhs.get_type(&self.renamer), resolved_lhs.get_type(&self.renamer)));
@@ -364,8 +366,8 @@ impl Folder for TypeResolver {
             Stat::Assignment { lvalue, rvalue } => {
                 let resolved_lvalue = self.fold_lvalue(lvalue);
                 let resolved_rvalue = self.fold_rvalue(rvalue);
-                if resolved_rvalue.get_type(&self.renamer) != resolved_lvalue.get_type(&self.renamer) {
-                    println!("Type mismatch in Assignment!");
+                if !&resolved_rvalue.get_type(&self.renamer).can_coerce_into(&resolved_lvalue.get_type(&self.renamer)) {
+                    println!("Type mismatch in Assignment! from {:?} to {:?}", &resolved_rvalue.get_type(&self.renamer), &resolved_lvalue.get_type(&self.renamer));
                     self.add_error(SimpleTypeMismatch(resolved_lvalue.get_type(&self.renamer), resolved_rvalue.get_type(&self.renamer)));
                 }
                 Stat::Assignment {
@@ -397,8 +399,10 @@ impl Folder for TypeResolver {
             Stat::Return(expr) => {
                 let resolved_ret_value = self.fold_expr_sn(expr);
                 if let Some(expected_ret_type) = self.curr_func_ret_type.as_ref() {
-                    if expected_ret_type.to_semantic_type() != resolved_ret_value.get_type(&self.renamer) {
-                        self.add_error(SimpleTypeMismatch(expected_ret_type.to_semantic_type(), resolved_ret_value.get_type(&self.renamer)))
+                    let resolved_ret_value = resolved_ret_value.get_type(&self.renamer);
+                    let expected_ret_type = expected_ret_type.to_semantic_type();
+                    if !&resolved_ret_value.can_coerce_into(&expected_ret_type) {
+                        self.add_error(SimpleTypeMismatch(expected_ret_type, resolved_ret_value))
                     }
                 } // otherwise we're in the main body, where the renaming stage will have emitted an error if there's a return statement
 
