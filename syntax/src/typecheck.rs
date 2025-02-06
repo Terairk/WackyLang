@@ -1,7 +1,7 @@
 use crate::ast::*;
 use crate::types::{SemanticType, Type};
 use crate::fold_program::{Folder};
-use crate::source::{SourcedNode};
+use crate::source::{SourcedNode, SourcedSpan};
 use crate::fold_program::{BoxedSliceFold, };
 use crate::rename::{RenamedName, SemanticError};
 use crate::rename::SemanticError::{SimpleTypeMismatch, TypeMismatch};
@@ -34,8 +34,8 @@ impl<N, T: Clone> LValue<N, T> {
     }
 }
 
-impl<N, T: Clone> RValue<N, T> {
-    pub fn get_type(&self) -> T {
+impl RValue<RenamedName, SemanticType> {
+    pub fn get_type(&self) -> SemanticType {
         match self {
             RValue::Expr(_, t) => t.clone(),
             RValue::ArrayLiter(_, t) => t.clone(),
@@ -48,10 +48,15 @@ impl<N, T: Clone> RValue<N, T> {
     }
 }
 
-impl<N, T: Clone> PairElem<N, T> {
-    pub fn get_type(&self) -> T {
+impl PairElem<RenamedName, SemanticType> {
+    pub fn get_type(&self) -> SemanticType {
         match self {
-            PairElem::Fst(lvalue_sn) => lvalue_sn.inner().get_type(),
+            PairElem::Fst(lvalue_sn) => {
+                match lvalue_sn.inner().get_type() {
+                    SemanticType::Pair(fst, _) => *fst.clone(),
+                    _ => SemanticType::Int
+                }
+            },
             PairElem::Snd(lvalue_sn) => lvalue_sn.inner().get_type(),
         }
     }
@@ -323,7 +328,7 @@ impl Folder for TypeResolver {
                 let resolved_rvalue = self.fold_rvalue(rvalue);
                 if resolved_rvalue.get_type() != resolved_lvalue.get_type() {
                     println!("Type mismatch in Assignment!");
-                    self.add_error(SimpleTypeMismatch(resolved_rvalue.get_type(), resolved_lvalue.get_type()))
+                    self.add_error(SimpleTypeMismatch(resolved_lvalue.get_type(), resolved_rvalue.get_type()))
                 }
                 Stat::Assignment {
                     lvalue: resolved_lvalue,

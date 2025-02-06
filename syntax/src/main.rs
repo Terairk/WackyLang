@@ -81,29 +81,20 @@ end
 
 #[allow(dead_code)]
 const TEST_PROGRAM: &str = r#"
-# Testing recursive array indexing
+# nested pair assignments are legal as long as the right hand-side type is known
 
 # Output:
-# 6
 # 7
-# 8
 #
 
 # Program:
 
 begin
-    int[] idxs1 = [2, 0, 1] ;
-    int[] idxs2 = [1, 2, 0] ;
-    # idxs1[idxs2[0]] = 0
-    # idxs1[idxs2[1]] = 1
-    # idxs1[idxs2[2]] = 2
-    int[] xs = [5, 6, 7] ;
-    int i = 0 ;
-    while i != 3 do
-        xs[idxs1[idxs2[i]]] = xs[idxs1[idxs2[i]]] + 1 ;
-        println (xs[idxs1[idxs2[i]]]) ;
-        i = i + 1
-    done
+  pair(int, int) p = newpair(2, 3) ;
+  pair(int, pair) q = newpair(1, p) ;
+  fst snd q = 7 ;
+  int x = fst p ;
+  println x
 end
 "#;
 #[allow(dead_code)]
