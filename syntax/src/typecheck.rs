@@ -286,10 +286,17 @@ impl Folder for TypeResolver {
                         SemanticType::Array(Box::new(SemanticType::AnyType)),
                     )
                 }
-                let resolved_type = resolved_exprs.clone()[0].get_type(&self.renamer);
+                let mut resolved_type = resolved_exprs.clone()[0].get_type(&self.renamer);
                 for expr in resolved_exprs.clone() {
-                    if expr.get_type(&self.renamer) != resolved_type {
-                        self.add_error(TypeMismatch(expr.span(), expr.get_type(&self.renamer), resolved_type.clone()));
+                    let curr_expr_type = expr.get_type(&self.renamer);
+                    if curr_expr_type != resolved_type {
+                        if !curr_expr_type.can_coerce_into(&resolved_type) {
+                            if resolved_type.can_coerce_into(&curr_expr_type) {
+                                resolved_type = curr_expr_type;
+                            } else {
+                                self.add_error(TypeMismatch(expr.span(), expr.get_type(&self.renamer), resolved_type.clone()));
+                            }
+                        }
                     }
                 }
                 RValue::ArrayLiter(
