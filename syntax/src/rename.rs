@@ -78,10 +78,6 @@ pub struct IdFuncTable {
     functions: HashMap<Ident, (SemanticType, Vec<SemanticType>)>,
 }
 
-struct SymbolTable {
-    symbols: HashMap<RenamedName, SemanticType>,
-}
-
 struct IDMapEntry {
     renamed_name: SN<RenamedName>,
     from_current_block: bool,
@@ -106,20 +102,22 @@ impl IDMapEntry {
 // struct responsible for traversing/folding the AST
 pub struct Renamer {
     id_func_table: IdFuncTable,
-    // bool refers to from_current_block used for renaming
-    identifier_map: HashMap<Ident, IDMapEntry>,
-    counter: usize,
+    symbol_table: HashMap<Ident, SemanticType>,
     in_main: bool,
     errors: Vec<SemanticError>,
+    counter: usize,
+    identifier_map: HashMap<Ident, IDMapEntry>,
 }
 
 impl Renamer {
+    #[inline]
     pub fn new() -> Self {
         Self {
             id_func_table: IdFuncTable {
                 functions: HashMap::new(),
             },
             identifier_map: HashMap::new(),
+            symbol_table: HashMap::new(),
             counter: 0,
             in_main: true,
             errors: Vec::new(),
@@ -130,12 +128,19 @@ impl Renamer {
         self.errors.push(error);
     }
 
+    #[inline]
     pub fn return_errors(&self) -> Vec<SemanticError> {
         self.errors.clone()
     }
 
+    #[inline]
     pub const fn get_func_table(&self) -> &IdFuncTable {
         &self.id_func_table
+    }
+
+    #[inline]
+    pub const fn get_symbol_table(&self) -> &HashMap<Ident, SemanticType> {
+        &self.symbol_table
     }
 
     fn copy_id_map_with_false(&self) -> HashMap<Ident, IDMapEntry> {
@@ -154,6 +159,12 @@ impl Renamer {
         let result = f(self);
         self.identifier_map = old_id_map;
         result
+    }
+}
+
+impl Default for Renamer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -268,6 +279,8 @@ impl Folder for Renamer {
         let unique_name = RenamedName::new_sn(&mut self.counter, name.clone());
         let map_entry = IDMapEntry::new(unique_name.clone(), true);
         self.identifier_map.insert(name.inner().clone(), map_entry);
+        self.symbol_table
+            .insert(name.inner().clone(), r#type.inner().to_semantic_type());
 
         Stat::VarDefinition {
             r#type,
@@ -305,6 +318,8 @@ impl Folder for Renamer {
         let unique_name = RenamedName::new_sn(&mut self.counter, name.clone());
         let map_entry = IDMapEntry::new(unique_name.clone(), true);
         self.identifier_map.insert(name.inner().clone(), map_entry);
+        self.symbol_table
+            .insert(name.inner().clone(), param.r#type.to_semantic_type());
 
         FuncParam {
             r#type: param.r#type,
@@ -356,15 +371,10 @@ fn build_func_table(
     })
 }
 
-// TODO: maybe have to return the counter i use so i can use it for IR Generation
-fn rename(program: UntypedAST) -> Result<(RenamedAST, IdFuncTable), Vec<SemanticError>> {
-    let mut context = Renamer::new();
-    unimplemented!()
-    // // Do stuff
-    //
-    // // Return the renamed program and the function table
-    // Ok((
-    //     fold::Folder::fold_program(&mut context, program),
-    //     context.id_func_table,
-    // ))
+// We return Renamer here so we can get the errors and some state from it
+#[inline]
+pub fn rename(program: Program<Ident, ()>) -> (RenamedAST, Renamer) {
+    let mut renamer = Renamer::new();
+    let renamed_program = renamer.fold_program(program);
+    (renamed_program, renamer)
 }

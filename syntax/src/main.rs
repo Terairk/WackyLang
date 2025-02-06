@@ -9,7 +9,7 @@ use std::ops::{Deref, DerefMut};
 use std::process::ExitCode;
 use wacc_syntax::fold_program::Folder;
 use wacc_syntax::parser::program_parser;
-use wacc_syntax::rename::Renamer;
+use wacc_syntax::rename::{rename, Renamer};
 use wacc_syntax::source::{SourcedSpan, StrSourceId};
 use wacc_syntax::token::{lexer, Token};
 
@@ -113,11 +113,13 @@ fn main() -> ExitCode {
             return ExitCode::from(100);
         }
 
-        let mut renamer = Renamer::new();
-        let renamed_ast = renamer.fold_program(parsed.unwrap());
+        let (renamed_ast, renamer) =
+            rename(parsed.expect("If parse errors are not empty, parsed should be Valid"));
+
         println!("{renamed_ast:?}");
         println!("{:?}", renamer.return_errors());
         println!("{:?}", renamer.get_func_table());
+        println!("{:?}", renamer.get_symbol_table());
     }
 
     // Done to appease the borrow checker while displaying errors
