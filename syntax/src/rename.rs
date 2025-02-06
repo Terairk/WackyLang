@@ -101,10 +101,10 @@ impl IDMapEntry {
 
 // struct responsible for traversing/folding the AST
 pub struct Renamer {
-    id_func_table: IdFuncTable,
-    symbol_table: HashMap<Ident, SemanticType>,
-    in_main: bool,
+    pub id_func_table: IdFuncTable,
+    pub symbol_table: HashMap<Ident, SemanticType>,
     errors: Vec<SemanticError>,
+    in_main: bool,
     counter: usize,
     identifier_map: HashMap<Ident, IDMapEntry>,
 }

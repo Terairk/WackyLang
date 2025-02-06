@@ -151,7 +151,7 @@ pub trait Folder {
         lvalue: LValue<Self::N, Self::T>,
     ) -> LValue<Self::OutputN, Self::OutputT> {
         match lvalue {
-            LValue::Ident(name) => LValue::Ident(self.fold_name_sn(name)),
+            LValue::Ident(name, ty) => LValue::Ident(self.fold_name_sn(name), self.fold_type(ty)),
             LValue::ArrayElem(elem, ty) => {
                 LValue::ArrayElem(self.fold_array_elem(elem), self.fold_type(ty))
             }

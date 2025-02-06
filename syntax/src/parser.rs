@@ -355,7 +355,7 @@ where
             .clone()
             .sn()
             .map(|elem| ast::LValue::PairElem(elem, ())),
-        ident.clone().map(ast::LValue::Ident),
+        ident.clone().map(|ident| ast::LValue::Ident(ident, ())),
     )));
 
     // rvalue parser

@@ -104,7 +104,7 @@ pub enum Stat<N, T> {
 
 #[derive(Clone, Debug)]
 pub enum LValue<N, T> {
-    Ident(SN<N>),
+    Ident(SN<N>, T),
     ArrayElem(ArrayElem<N, T>, T),
     PairElem(SN<PairElem<N, T>>, T),
 }
