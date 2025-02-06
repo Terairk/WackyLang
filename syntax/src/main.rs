@@ -10,9 +10,9 @@ use std::process::ExitCode;
 use wacc_syntax::fold_program::Folder;
 use wacc_syntax::parser::program_parser;
 use wacc_syntax::rename::{rename, Renamer};
-use wacc_syntax::typecheck::{typecheck, TypeResolver};
 use wacc_syntax::source::{SourcedSpan, StrSourceId};
 use wacc_syntax::token::{lexer, Token};
+use wacc_syntax::typecheck::{typecheck, TypeResolver};
 
 #[allow(dead_code)]
 const TEST_EXPR: &str = r#"
@@ -147,6 +147,15 @@ fn main() -> ExitCode {
     )
     .into_output_errors();
 
+    // Done to appease the borrow checker while displaying errors
+    let lexing_errs_not_empty = !lexing_errs.is_empty();
+    for e in lexing_errs {
+        println!("Lexing error: {e}");
+    }
+    if lexing_errs_not_empty {
+        return ExitCode::from(100);
+    }
+
     if let Some(tokens) = tokens {
         println!("{:?}", DisplayVec(tokens.clone()));
 
@@ -185,15 +194,6 @@ fn main() -> ExitCode {
 
         println!("{typed_ast:?}");
         println!("Type Errors: {:?}", type_resolver.type_errors);
-    }
-
-    // Done to appease the borrow checker while displaying errors
-    let lexing_errs_not_empty = !lexing_errs.is_empty();
-    for e in lexing_errs {
-        println!("Lexing error: {e}");
-    }
-    if lexing_errs_not_empty {
-        return ExitCode::from(100);
     }
 
     ExitCode::from(0)
@@ -392,6 +392,10 @@ mod tests {
         .into_output_errors();
         let syntax_err_str = String::from("Syntax error(s) found!");
         let semantic_err_str = String::from("Semantic error(s) found!");
+        // If there are syntax errors, return an appropriate result
+        if !lexing_errs.is_empty() {
+            return Err(syntax_err_str);
+        }
         if let Some(tokens) = tokens {
             #[allow(clippy::pattern_type_mismatch)]
             let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
@@ -406,13 +410,11 @@ mod tests {
 
             let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
 
-            if !type_resolver.type_errors.is_empty() || !type_resolver.renamer.return_errors().is_empty() {
+            if !type_resolver.type_errors.is_empty()
+                || !type_resolver.renamer.return_errors().is_empty()
+            {
                 return Err(semantic_err_str);
             }
-        }
-        // If there are syntax errors, return an appropriate result
-        if !lexing_errs.is_empty() {
-            return Err(syntax_err_str);
         }
 
         // If both syntax and semantic analysis succeed, return success
