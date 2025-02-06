@@ -321,7 +321,7 @@ impl Folder for TypeResolver {
                     self.add_error(SemanticError::MismatchedArgCount(expected_args_types.len(), resolved_args.len()));
                 }
                 for (arg, expected_type) in resolved_args.clone().iter().zip(expected_args_types) {
-                    if arg.get_type(&self.renamer) != expected_type {
+                    if !arg.get_type(&self.renamer).can_coerce_into(&expected_type) {
                         self.add_error(TypeMismatch(arg.span(), arg.get_type(&self.renamer), expected_type));
                     }
                 }
