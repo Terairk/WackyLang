@@ -13,6 +13,7 @@ pub enum SemanticType {
     Pair(Box<SemanticType>, Box<SemanticType>),
     ErasedPair,
     Unknown,
+    AnyType,
     Error(SourcedSpan), // For invalid types
 }
 
@@ -103,6 +104,8 @@ impl PartialEq for SemanticType {
     fn eq(&self, other: &Self) -> bool {
         use SemanticType::*;
         match (self, other) {
+            (AnyType, _) => true,
+            (_, AnyType) => true,
             (Int, Int) | (Bool, Bool) | (Char, Char) | (String, String) => true,
             (Array(a), Array(b)) => a == b,
             (Pair(a1, b1), Pair(a2, b2)) => a1 == a2 && b1 == b2,

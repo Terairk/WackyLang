@@ -20,21 +20,60 @@ const TEST_EXPR: &str = r#"
 const TEST_TYPE: &str = r#"pair(int, pair(pair,string)[][][])[][]"#;
 
 #[allow(dead_code)]
-const TEST_PROGRAM: &str = r#"
-# simple integer calculation
+const TEST_PAIR_PROGRAM: &str = r#"
+# print pair a null pair
 
 # Output:
-# 72
+# (nil)
 #
 
 # Program:
 
 begin
-  int x = 42 ;
-  int y = 30 ;
-  int z = x + y ;
-  println z
+  pair(pair, pair) p = null ;
+  println p
 end
+"#;
+
+#[allow(dead_code)]
+const TEST_FUNC_PROGRAM: &str = r#"
+# a function with varied inputs
+
+# Output:
+# a is 42
+# b is true
+# c is u
+# d is hello
+# e is #addrs#
+# f is #addrs#
+# answer is g
+#
+
+# Program:
+
+begin
+  char doSomething(int a, bool b, char c, string d, bool[] e, int[] f) is
+    print "a is " ;
+    println a ;
+    print "b is " ;
+    println b ;
+    print "c is " ;
+    println c ;
+    print "d is " ;
+    println d ;
+    print "e is " ;
+    println e ;
+    print "f is " ;
+    println f ;
+    return 'g'
+  end
+  bool[] bools = [ false, true ] ;
+  int[] ints = [ 1, 2 ] ;
+  char answer = call doSomething(42, true, 'u', "hello", bools, ints) ;
+  print "answer is " ;
+  println answer
+end
+
 "#;
 
 const SEMANTIC_ERR_PROGRAM: &str = r#"# type mismatch: int <- bool
@@ -53,28 +92,28 @@ end
 "#;
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: {} <path-to-wacc-file>", &args[0]);
-        return ExitCode::FAILURE;
-    }
+    // let args: Vec<String> = std::env::args().collect();
+    // if args.len() != 2 {
+    //     eprintln!("Usage: {} <path-to-wacc-file>", &args[0]);
+    //     return ExitCode::FAILURE;
+    // }
+    //
+    // let file_path = &args[1];
+    // let source = match std::fs::read_to_string(file_path) {
+    //     Ok(content) => content,
+    //     Err(e) => {
+    //         eprintln!("Failed to read file {}: {}", file_path, e);
+    //         return ExitCode::FAILURE;
+    //     }
+    // };
+    //
+    // // handle special case for labts carrot
+    // if source == SEMANTIC_ERR_PROGRAM {
+    //     eprintln!("Semantic error(s) found!");
+    //     return ExitCode::from(200);
+    // }
 
-    let file_path = &args[1];
-    let source = match std::fs::read_to_string(file_path) {
-        Ok(content) => content,
-        Err(e) => {
-            eprintln!("Failed to read file {}: {}", file_path, e);
-            return ExitCode::FAILURE;
-        }
-    };
-
-    // handle special case for labts carrot
-    if source == SEMANTIC_ERR_PROGRAM {
-        eprintln!("Semantic error(s) found!");
-        return ExitCode::from(200);
-    }
-
-    // let source = TEST_PROGRAM;
+    let source = TEST_PAIR_PROGRAM;
     let source_id = StrSourceId::repl();
     let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
 
@@ -86,14 +125,14 @@ fn main() -> ExitCode {
     .into_output_errors();
 
     if let Some(tokens) = tokens {
-        // println!("{:?}", DisplayVec(tokens.clone()));
+        println!("{:?}", DisplayVec(tokens.clone()));
 
         // attach the span of each token to it before parsing, so it is not forgotten
         #[allow(clippy::pattern_type_mismatch)]
         let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
         let (parsed, parse_errs) = program_parser().parse(spanned_tokens).into_output_errors();
 
-        // println!("{parsed:?}");
+        println!("{parsed:?}");
         let parse_errs_not_empty = !parse_errs.is_empty();
 
         for e in parse_errs {

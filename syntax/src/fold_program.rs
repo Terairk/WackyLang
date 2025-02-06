@@ -4,7 +4,7 @@ use crate::ast::{Expr, Func, FuncParam, LValue, Program, RValue, Stat, StatBlock
 use crate::source::SourcedNode;
 
 use crate::nonempty::NonemptyArray;
-use crate::types::Type;
+use crate::types::{SemanticType, Type};
 
 type SN<T> = SourcedNode<T>;
 
@@ -166,7 +166,9 @@ pub trait Folder {
         rvalue: RValue<Self::N, Self::T>,
     ) -> RValue<Self::OutputN, Self::OutputT> {
         match rvalue {
-            RValue::Expr(expr) => RValue::Expr(expr.map_inner(|inner| self.fold_expr(inner))),
+            RValue::Expr(expr, ty) => { 
+                RValue::Expr(expr.map_inner(|inner| self.fold_expr(inner)), self.fold_type(ty)) 
+            },
             RValue::ArrayLiter(exprs, ty) => RValue::ArrayLiter(
                 exprs.fold_with(|expr| self.fold_expr_sn(expr)),
                 self.fold_type(ty),
@@ -190,7 +192,7 @@ pub trait Folder {
     }
 
     #[inline]
-    fn fold_value_sn(
+    fn fold_rvalue_sn(
         &mut self,
         value: SN<RValue<Self::N, Self::T>>,
     ) -> SN<RValue<Self::OutputN, Self::OutputT>> {

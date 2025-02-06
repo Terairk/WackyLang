@@ -366,7 +366,7 @@ where
         //       seem like the parser succeeded even if it failed. This messes with
         //       backtracking control flow, so until we figure out a way to "propagate"
         //       the erroneous state of the parser, expressions will have to be parsed last
-        expr.clone().map(ast::RValue::Expr),
+        expr.clone().map(|e| ast::RValue::Expr(e, ())),
     ));
 
     // variable definition parser

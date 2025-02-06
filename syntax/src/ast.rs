@@ -110,7 +110,7 @@ pub enum LValue<N, T> {
 
 #[derive(Clone, Debug)]
 pub enum RValue<N, T> {
-    Expr(SN<Expr<N, T>>), // Type info already in Expr, TODO: maybe needs a T
+    Expr(SN<Expr<N, T>>, T), // Type info already in Expr
     ArrayLiter(Box<[SN<Expr<N, T>>]>, T), // Array needs a type
     NewPair(SN<Expr<N, T>>, SN<Expr<N, T>>, T), // Pair needs a type I think
     PairElem(PairElem<N, T>), // Type info would come from the inner pair
