@@ -7,13 +7,13 @@ use crate::fold_program::{BoxedSliceFold as _, NonEmptyFold as _};
 use crate::source::SourcedNode;
 use crate::types::{SemanticType, Type};
 use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::mem;
 
 #[derive(Clone, Hash, PartialEq)]
 pub struct RenamedName {
-    ident: Ident,
-    uuid: usize,
+    pub ident: Ident,
+    pub uuid: usize,
 }
 
 impl fmt::Debug for RenamedName {
@@ -216,6 +216,21 @@ impl Folder for Renamer {
             // allow multiple semantic errors
             RenamedName::new_sn_0(&name)
         }
+    }
+
+    #[inline]
+    fn fold_funcname_sn(&mut self, name: SN<Ident>) -> SN<Ident> {
+        // Use ident part of name and then check if it exists in the function table
+        // return name regardless but add an error if it doesn't exist
+        let ident = name.inner();
+        if self.id_func_table.functions.contains_key(ident) {
+        } else {
+            self.add_error(SemanticError::UndefinedIdent(name.clone()));
+            // Return a dummy value so we can maybe maybe very hopefully
+            // allow multiple semantic errors
+        }
+
+        name
     }
 
     #[inline]

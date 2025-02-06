@@ -1,6 +1,6 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 use crate::ast::{ArrayElem, PairElem};
-use crate::ast::{Expr, Func, FuncParam, LValue, Program, RValue, Stat, StatBlock};
+use crate::ast::{Expr, Func, FuncParam, Ident, LValue, Program, RValue, Stat, StatBlock};
 use crate::source::SourcedNode;
 
 use crate::nonempty::NonemptyArray;
@@ -183,7 +183,7 @@ pub trait Folder {
                 args,
                 return_type,
             } => RValue::Call {
-                func_name: self.fold_name_sn(func_name),
+                func_name: self.fold_funcname_sn(func_name),
                 args: args.fold_with(|arg| self.fold_expr_sn(arg)),
                 return_type: self.fold_type(return_type),
             },
@@ -288,6 +288,7 @@ pub trait Folder {
      *****************************************/
 
     fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN>;
+    fn fold_funcname_sn(&mut self, name: SN<Ident>) -> SN<Ident>;
 
     fn fold_type(&mut self, ty: Self::T) -> Self::OutputT;
 }

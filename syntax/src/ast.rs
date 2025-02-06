@@ -116,7 +116,7 @@ pub enum RValue<N, T> {
     NewPair(SN<Expr<N, T>>, SN<Expr<N, T>>, T), // Pair needs a type I think
     PairElem(PairElem<N, T>), // Type info would come from the inner pair
     Call {
-        func_name: SN<N>,
+        func_name: SN<Ident>,
         args: Box<[SN<Expr<N, T>>]>,
         return_type: T, // Add return type here
     },
