@@ -1,43 +1,25 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 use std::collections::HashMap;
 
-use crate::ast::{Expr, Ident, Program, RValue, Stat, StatBlock};
+use crate::ast::{Expr, Func, FuncParam, Ident, Program, RValue, Stat, StatBlock};
 use crate::fold_program::Folder;
-use crate::fold_program::{BoxedSliceFold, NonEmptyFold};
+use crate::fold_program::{BoxedSliceFold as _, NonEmptyFold as _};
 use crate::source::SourcedNode;
 use crate::types::{SemanticType, Type};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::mem;
 
-// TODO: check if ident can be SN<Ident>, only problem is that
-// Node does't implement Hash
-#[derive(Clone)]
+#[derive(Clone, Hash, PartialEq)]
 pub struct RenamedName {
     ident: Ident,
     uuid: usize,
 }
 
 impl fmt::Debug for RenamedName {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}@{}", self.ident, self.uuid)
-    }
-}
-
-// Make Hash depend only on the ident and uuid so that we can use it in a HashMap
-// while still keeping the SN for error reporting
-impl Hash for RenamedName {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.ident.hash(state);
-        self.uuid.hash(state);
-    }
-}
-
-impl PartialEq for RenamedName {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.ident == other.ident && self.uuid == other.uuid
     }
 }
 
@@ -60,7 +42,7 @@ impl RenamedName {
 
     // Function used to create a rogue renamed so we can still build tree
     // even if we have errors
-    fn new_sn_0(ident: SN<Ident>) -> SN<Self> {
+    fn new_sn_0(ident: &SN<Ident>) -> SN<Self> {
         SN::new(
             Self {
                 ident: ident.inner().clone(),
@@ -153,23 +135,23 @@ impl Renamer {
         &self.id_func_table
     }
 
-    fn copy_id_map(&self) -> HashMap<Ident, IDMapEntry> {
+    fn copy_id_map_with_false(&self) -> HashMap<Ident, IDMapEntry> {
         self.identifier_map
             .iter()
             .map(|(k, v)| (k.clone(), v.create_false()))
             .collect()
     }
 
-    // fn with_temporary_map<F, R>(&mut self, f: F) -> R
-    // where
-    //     F: FnOnce(&mut Self) -> R,
-    // {
-    //     let new_map = self.copy_id_map();
-    //     let old_id_map = mem::replace(&mut self.identifier_map, new_map);
-    //     let result = f(self);
-    //     self.identifier_map = old_id_map;
-    //     result
-    // }
+    fn with_temporary_map<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        let new_map = self.copy_id_map_with_false();
+        let old_id_map = mem::replace(&mut self.identifier_map, new_map);
+        let result = f(self);
+        self.identifier_map = old_id_map;
+        result
+    }
 }
 
 impl Folder for Renamer {
@@ -202,12 +184,25 @@ impl Folder for Renamer {
         &mut self,
         block: StatBlock<Self::N, Self::T>,
     ) -> StatBlock<Self::OutputN, Self::OutputT> {
-        // self.with_temporary_map(|slf| StatBlock(block.0.map_with(|stat| slf.fold_stat_sn(stat))))
-        let new_map = self.copy_id_map();
-        let old_id_map = mem::replace(&mut self.identifier_map, new_map);
-        let folded_block = block.0.map_with(|stat| self.fold_stat_sn(stat));
-        self.identifier_map = old_id_map;
+        let folded_block =
+            self.with_temporary_map(|slf| block.0.map_with(|stat| slf.fold_stat_sn(stat)));
         StatBlock(folded_block)
+    }
+
+    #[inline]
+    fn fold_func(&mut self, func: Func<Self::N, Self::T>) -> Func<Self::OutputN, Self::OutputT> {
+        let new_map = self.copy_id_map_with_false();
+        let old_id_map = mem::replace(&mut self.identifier_map, new_map);
+        let params = func.params.fold_with(|param| self.fold_func_param(param));
+        let body = self.with_temporary_map(|slf| slf.fold_stat_block_sn(func.body));
+        self.identifier_map = old_id_map;
+
+        Func {
+            return_type: func.return_type, // Type remains unchanged
+            name: func.name,
+            params,
+            body,
+        }
     }
 
     #[inline]
@@ -219,7 +214,7 @@ impl Folder for Renamer {
             self.add_error(SemanticError::UndefinedIdent(name.clone()));
             // Return a dummy value so we can maybe maybe very hopefully
             // allow multiple semantic errors
-            RenamedName::new_sn_0(name)
+            RenamedName::new_sn_0(&name)
         }
     }
 
@@ -245,7 +240,7 @@ impl Folder for Renamer {
             // return dummy Stat
             return Stat::VarDefinition {
                 r#type,
-                name: RenamedName::new_sn_0(name),
+                name: RenamedName::new_sn_0(&name),
                 rvalue: resolved_rvalue,
             };
         }
@@ -262,6 +257,31 @@ impl Folder for Renamer {
     }
 
     #[inline]
+    fn fold_func_param(&mut self, param: FuncParam<Self::N>) -> FuncParam<Self::OutputN> {
+        // shouldn't panic since we check the key exists
+        let name = &param.name;
+        if self.identifier_map.contains_key(name.inner())
+            && self.identifier_map[name.inner()].from_current_block
+        {
+            self.add_error(SemanticError::DuplicateIdent(name.clone()));
+            // return dummy Stat
+            return FuncParam {
+                r#type: param.r#type,
+                name: RenamedName::new_sn_0(name),
+            };
+        }
+
+        let unique_name = RenamedName::new_sn(&mut self.counter, name.clone());
+        let map_entry = IDMapEntry::new(unique_name.clone(), true);
+        self.identifier_map.insert(name.inner().clone(), map_entry);
+
+        FuncParam {
+            r#type: param.r#type,
+            name: unique_name,
+        }
+    }
+
+    #[inline]
     fn fold_expr_ident(
         &mut self,
         ident: SN<Self::N>,
@@ -274,11 +294,12 @@ impl Folder for Renamer {
             self.add_error(SemanticError::UndefinedIdent(ident.clone()));
             // Return a dummy value so we can maybe maybe very hopefully
             // allow multiple semantic errors
-            Expr::Ident(RenamedName::new_sn_0(ident), r#type)
+            Expr::Ident(RenamedName::new_sn_0(&ident), r#type)
         }
     }
 
     // OutputT is a () so return empty value
+    #[inline]
     fn fold_type(&mut self, _ty: Self::T) -> Self::OutputT {}
 }
 

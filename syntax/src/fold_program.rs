@@ -59,6 +59,7 @@ pub trait Folder {
             name: self.fold_name_sn(param.name),
         }
     }
+
     #[inline]
     fn fold_stat_block(
         &mut self,
