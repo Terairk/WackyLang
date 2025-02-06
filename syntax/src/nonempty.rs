@@ -38,6 +38,15 @@ impl<T> NonemptyArray<T> {
 
     #[must_use]
     #[inline]
+    pub fn to_vec(&self) -> Vec<T>
+    where
+        T: Clone,
+    {
+        self.0.to_vec()
+    }
+
+    #[must_use]
+    #[inline]
     pub const fn as_slice(&self) -> &[T] {
         &self.0
     }

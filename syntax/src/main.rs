@@ -7,7 +7,9 @@ use chumsky::Parser;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::process::ExitCode;
+use wacc_syntax::fold_program::Folder;
 use wacc_syntax::parser::program_parser;
+use wacc_syntax::rename::{rename, Renamer};
 use wacc_syntax::source::{SourcedSpan, StrSourceId};
 use wacc_syntax::token::{lexer, Token};
 
@@ -20,16 +22,20 @@ const TEST_EXPR: &str = r#"
 const TEST_TYPE: &str = r#"pair(int, pair(pair,string)[][][])[][]"#;
 
 #[allow(dead_code)]
-const TEST_PROGRAM: &str = r#"# subtraction expressions should not be whitespace sensitive
+const TEST_PROGRAM: &str = r#"
+# simple integer calculation
 
 # Output:
-# -1
+# 72
 #
 
 # Program:
 
 begin
-  println 1-2
+  int x = 42 ;
+  int y = 30 ;
+  int z = x + y ;
+  println z
 end
 "#;
 
@@ -106,6 +112,14 @@ fn main() -> ExitCode {
         if parse_errs_not_empty {
             return ExitCode::from(100);
         }
+
+        let (renamed_ast, renamer) =
+            rename(parsed.expect("If parse errors are not empty, parsed should be Valid"));
+
+        println!("{renamed_ast:?}");
+        println!("{:?}", renamer.return_errors());
+        println!("{:?}", renamer.get_func_table());
+        println!("{:?}", renamer.get_symbol_table());
     }
 
     // Done to appease the borrow checker while displaying errors

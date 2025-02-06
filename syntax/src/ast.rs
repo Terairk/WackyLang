@@ -2,247 +2,146 @@
 
 use crate::nonempty::NonemptyArray;
 use crate::source::{SourcedNode, SourcedSpan};
-use crate::types::{SemanticType, Type};
+use crate::types::Type;
 use delegate::delegate;
 use internment::ArcIntern;
 use std::{fmt, fmt::Debug, ops::Deref};
 use thiserror::Error;
 
-/// A file-local type alias for better readability of type definitions
+/* File contains the definition for the AST
+ * This AST is generic over a Name (N) and a Type (T)
+ * Example AST is UntypedAST = Program<Ident, ()>
+ * This file contains the definitions first and then the impl blocks
+ */
+
+// A file-local type alias for better readability of type definitions
 type SN<T> = SourcedNode<T>;
-// type UntypedExpr = Expr<()>;
+
+// Definitions for Names used to parametrise AST
+// Ident on its own will be considered an OriginalName
+
+// id_table: Just for RenamedAST
+// id_func_table: HashMap<RenamedName, (ReturnedType, List<ParamType>)
+// symbol_table: HashMap<RenamedName, SemanticType>
+
+// rename: ParserAST -> RenamedAST - identifier table
+// symbol table is created
+// type-check: RenamedAST -> maybe id_func_table -> TypedAST
+//
+
+// For the rest of the file
+// N refers to Ident | RenamedName
+// T refers to Type | Semantic Type
+// where Type is really a Syntactic Type
 
 #[derive(Clone, Debug)]
-pub struct Program {
-    pub funcs: Box<[Func]>,
-    pub body: SN<StatBlock>,
-}
-
-impl Program {
-    #[must_use]
-    #[inline]
-    pub const fn new(funcs: Box<[Func]>, body: SN<StatBlock>) -> Self {
-        Self { funcs, body }
-    }
+pub struct Program<N, T> {
+    pub funcs: Box<[Func<N, T>]>,
+    pub body: SN<StatBlock<N, T>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Func {
+pub struct Func<N, T> {
+    // Leave this as Type to not mess up parametricity
+    // This shouldn't change though you can use the helpers in types.rs
+    // to convert to a SemanticType
+    // name is an Ident since functions are not renamed
     pub return_type: SN<Type>,
     pub name: SN<Ident>,
-    pub params: Box<[FuncParam]>,
-    pub body: SN<StatBlock>,
-}
-
-impl Func {
-    #[must_use]
-    #[inline]
-    pub const fn new(
-        return_type: SN<Type>,
-        name: SN<Ident>,
-        params: Box<[FuncParam]>,
-        body: SN<StatBlock>,
-    ) -> Self {
-        Self {
-            return_type,
-            name,
-            params,
-            body,
-        }
-    }
+    pub params: Box<[FuncParam<N>]>,
+    pub body: SN<StatBlock<N, T>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct FuncParam {
-    pub r#type: SN<Type>,
-    pub name: SN<Ident>,
-}
-
-impl FuncParam {
-    #[must_use]
-    #[inline]
-    pub const fn new(r#type: SN<Type>, name: SN<Ident>) -> Self {
-        Self { r#type, name }
-    }
+pub struct FuncParam<N> {
+    // Leave this as Type to not mess up parametricity
+    // This shouldn't change though you can use the helpers in types.rs
+    // to convert to a SemanticType
+    pub r#type: SN<Type>, // Leave this as Type
+    pub name: SN<N>,
 }
 
 #[derive(Clone, Debug)]
 #[repr(transparent)]
-pub struct StatBlock(NonemptyArray<SN<Stat>>);
+pub struct StatBlock<N, T>(pub NonemptyArray<SN<Stat<N, T>>>);
 
 #[derive(Error, Debug)]
 #[error("Cannot create to `StatBlock` because the supplied `Vec<Stat>` is empty")]
 pub struct EmptyStatVecError;
 
-impl StatBlock {
-    #[must_use]
-    #[inline]
-    pub fn singleton(spanned_stat: SN<Stat>) -> Self {
-        Self(NonemptyArray::singleton(spanned_stat))
-    }
-
-    #[allow(clippy::missing_errors_doc)]
-    #[inline]
-    pub fn try_new(spanned_stats: Vec<SN<Stat>>) -> Result<Self, EmptyStatVecError> {
-        NonemptyArray::try_from_boxed_slice(spanned_stats)
-            .map(Self)
-            .map_err(|_| EmptyStatVecError)
-    }
-
-    /// A block of statements is called ‘returning’ if the last statement in the block is either:
-    ///
-    ///     1. a ‘return’ statement
-    ///     2. an ‘exit’ statement
-    ///     3. an ‘if’ statement with two returning blocks.
-    ///
-    /// All function bodies **MUST** be returning blocks.
-    pub fn is_return_block(&self) -> bool {
-        match &**self.last() {
-            Stat::Return(_) | Stat::Exit(_) => true,
-            Stat::IfThenElse {
-                then_body,
-                else_body,
-                ..
-            } => then_body.is_return_block() && else_body.is_return_block(),
-            _ => false,
-        }
-    }
-
-    delegate! {
-        to self.0 {
-            #[inline]
-            pub fn first(&self) -> &SN<Stat>;
-            #[inline]
-            pub fn last(&self) -> &SN<Stat>;
-        }
-    }
-}
-
-impl From<SN<Stat>> for StatBlock {
-    #[inline]
-    fn from(spanned_stat: SN<Stat>) -> Self {
-        Self::singleton(spanned_stat)
-    }
-}
-
-impl TryFrom<Vec<SN<Stat>>> for StatBlock {
-    type Error = EmptyStatVecError;
-
-    #[inline]
-    fn try_from(spanned_stats: Vec<SN<Stat>>) -> Result<Self, Self::Error> {
-        Self::try_new(spanned_stats)
-    }
-}
-
 #[derive(Clone, Debug)]
-pub enum Stat {
+pub enum Stat<N, T> {
     Skip,
     VarDefinition {
+        // Leave this to not mess up parametricity
+        // This shouldn't change though you can use the helpers in types.rs
+        // to convert to a SemanticType
         r#type: SN<Type>,
-        name: SN<Ident>,
-        rvalue: RValue,
+        name: SN<N>,
+        rvalue: RValue<N, T>,
     },
     Assignment {
-        lvalue: LValue,
-        rvalue: RValue,
+        lvalue: LValue<N, T>,
+        rvalue: RValue<N, T>,
     },
-    Read(LValue),
-    Free(SN<Expr>),
-    Return(SN<Expr>),
-    Exit(SN<Expr>),
-    Print(SN<Expr>),
-    Println(SN<Expr>),
+    Read(LValue<N, T>),
+    Free(SN<Expr<N, T>>),
+    Return(SN<Expr<N, T>>),
+    Exit(SN<Expr<N, T>>),
+    Print(SN<Expr<N, T>>),
+    Println(SN<Expr<N, T>>),
     IfThenElse {
-        if_cond: SN<Expr>,
-        then_body: SN<StatBlock>,
-        else_body: SN<StatBlock>,
+        if_cond: SN<Expr<N, T>>,
+        then_body: SN<StatBlock<N, T>>,
+        else_body: SN<StatBlock<N, T>>,
     },
     WhileDo {
-        while_cond: SN<Expr>,
-        body: SN<StatBlock>,
+        while_cond: SN<Expr<N, T>>,
+        body: SN<StatBlock<N, T>>,
     },
-    Scoped(SN<StatBlock>),
-}
-
-impl Stat {
-    #[must_use]
-    #[inline]
-    pub const fn var_definition(r#type: SN<Type>, name: SN<Ident>, rvalue: RValue) -> Self {
-        Self::VarDefinition {
-            r#type,
-            name,
-            rvalue,
-        }
-    }
-
-    #[must_use]
-    #[inline]
-    pub const fn assignment(lvalue: LValue, rvalue: RValue) -> Self {
-        Self::Assignment { lvalue, rvalue }
-    }
-
-    #[must_use]
-    #[inline]
-    pub const fn if_then_else(
-        if_cond: SN<Expr>,
-        then_body: SN<StatBlock>,
-        else_body: SN<StatBlock>,
-    ) -> Self {
-        Self::IfThenElse {
-            if_cond,
-            then_body,
-            else_body,
-        }
-    }
-
-    #[must_use]
-    #[inline]
-    pub const fn while_do(while_cond: SN<Expr>, body: SN<StatBlock>) -> Self {
-        Self::WhileDo { while_cond, body }
-    }
+    Scoped(SN<StatBlock<N, T>>),
 }
 
 #[derive(Clone, Debug)]
-pub enum LValue {
-    Ident(SN<Ident>),
-    ArrayElem(ArrayElem),
-    PairElem(SN<PairElem>),
+pub enum LValue<N, T> {
+    Ident(SN<N>, T),
+    ArrayElem(ArrayElem<N, T>, T),
+    PairElem(SN<PairElem<N, T>>, T),
 }
 
 #[derive(Clone, Debug)]
-pub enum RValue {
-    Expr(SN<Expr>),
-    ArrayLiter(Box<[SN<Expr>]>),
-    NewPair(SN<Expr>, SN<Expr>),
-    PairElem(PairElem),
+pub enum RValue<N, T> {
+    Expr(SN<Expr<N, T>>), // Type info already in Expr, TODO: maybe needs a T
+    ArrayLiter(Box<[SN<Expr<N, T>>]>, T), // Array needs a type
+    NewPair(SN<Expr<N, T>>, SN<Expr<N, T>>, T), // Pair needs a type I think
+    PairElem(PairElem<N, T>), // Type info would come from the inner pair
     Call {
         func_name: SN<Ident>,
-        args: Box<[SN<Expr>]>,
+        args: Box<[SN<Expr<N, T>>]>,
+        return_type: T, // Add return type here
     },
 }
 
-impl RValue {
-    #[must_use]
-    #[inline]
-    pub const fn call(func_name: SN<Ident>, args: Box<[SN<Expr>]>) -> Self {
-        Self::Call { func_name, args }
-    }
+#[derive(Clone, Debug)]
+pub enum PairElem<N, T> {
+    Fst(SN<LValue<N, T>>),
+    Snd(SN<LValue<N, T>>),
 }
 
 #[derive(Clone, Debug)]
-pub enum PairElem {
-    Fst(SN<LValue>),
-    Snd(SN<LValue>),
+pub struct ArrayElem<N, T> {
+    pub array_name: SN<N>,
+    pub indices: NonemptyArray<SN<Expr<N, T>>>,
 }
 
 #[derive(Clone, Debug)]
-pub enum Expr {
-    Liter(Liter),
-    Ident(Ident),
-    ArrayElem(ArrayElem),
-    Unary(SN<UnaryOper>, SN<Self>),
-    Binary(SN<Self>, SN<BinaryOper>, SN<Self>),
-    Paren(SN<Self>),
+pub enum Expr<N, T> {
+    Liter(Liter, T),
+    Ident(SN<N>, T),
+    ArrayElem(ArrayElem<N, T>, T),
+    Unary(SN<UnaryOper>, SN<Self>, T),
+    Binary(SN<Self>, SN<BinaryOper>, SN<Self>, T),
+    Paren(SN<Self>, T),
 
     // Generated only by parser errors.
     Error(SourcedSpan),
@@ -283,6 +182,9 @@ pub enum BinaryOper {
     Or,
 }
 
+// Currently, these functions are for the parser to use
+// TODO: maybe this will change so edit this if this does
+
 impl BinaryOper {
     /// The precedence of binary operators in WACC, where lower
     /// is higher. Source: WACC-language spec, Table 4.
@@ -296,6 +198,148 @@ impl BinaryOper {
             Self::Eq | Self::Neq => 4,
             Self::And => 5,
             Self::Or => 6,
+        }
+    }
+}
+
+impl<N, T> Program<N, T> {
+    #[must_use]
+    #[inline]
+    pub const fn new(funcs: Box<[Func<N, T>]>, body: SN<StatBlock<N, T>>) -> Self {
+        Self { funcs, body }
+    }
+}
+
+impl<N, T> Func<N, T> {
+    #[must_use]
+    #[inline]
+    pub const fn new(
+        return_type: SN<Type>,
+        name: SN<Ident>,
+        params: Box<[FuncParam<N>]>,
+        body: SN<StatBlock<N, T>>,
+    ) -> Self {
+        Self {
+            return_type,
+            name,
+            params,
+            body,
+        }
+    }
+}
+
+impl<N> FuncParam<N> {
+    #[must_use]
+    #[inline]
+    pub const fn new(r#type: SN<Type>, name: SN<N>) -> Self {
+        Self { r#type, name }
+    }
+}
+
+impl<N, T> StatBlock<N, T> {
+    #[must_use]
+    #[inline]
+    pub fn singleton(spanned_stat: SN<Stat<N, T>>) -> Self {
+        Self(NonemptyArray::singleton(spanned_stat))
+    }
+
+    #[allow(clippy::missing_errors_doc)]
+    #[inline]
+    pub fn try_new(spanned_stats: Vec<SN<Stat<N, T>>>) -> Result<Self, EmptyStatVecError> {
+        NonemptyArray::try_from_boxed_slice(spanned_stats)
+            .map(Self)
+            .map_err(|_| EmptyStatVecError)
+    }
+
+    /// A block of statements is called ‘returning’ if the last statement in the block is either:
+    ///
+    ///     1. a ‘return’ statement
+    ///     2. an ‘exit’ statement
+    ///     3. an ‘if’ statement with two returning blocks.
+    ///
+    /// All function bodies **MUST** be returning blocks.
+    pub fn is_return_block(&self) -> bool {
+        match &**self.last() {
+            Stat::Return(_) | Stat::Exit(_) => true,
+            Stat::IfThenElse {
+                then_body,
+                else_body,
+                ..
+            } => then_body.is_return_block() && else_body.is_return_block(),
+            _ => false,
+        }
+    }
+
+    delegate! {
+        to self.0 {
+            #[inline]
+            pub fn first(&self) -> &SN<Stat<N, T>>;
+            #[inline]
+            pub fn last(&self) -> &SN<Stat<N, T>>;
+        }
+    }
+}
+
+impl<N, T> From<SN<Stat<N, T>>> for StatBlock<N, T> {
+    #[inline]
+    fn from(spanned_stat: SN<Stat<N, T>>) -> Self {
+        Self::singleton(spanned_stat)
+    }
+}
+impl<N, T> TryFrom<Vec<SN<Stat<N, T>>>> for StatBlock<N, T> {
+    type Error = EmptyStatVecError;
+
+    #[inline]
+    fn try_from(spanned_stats: Vec<SN<Stat<N, T>>>) -> Result<Self, Self::Error> {
+        Self::try_new(spanned_stats)
+    }
+}
+impl<N, T> Stat<N, T> {
+    #[must_use]
+    #[inline]
+    pub const fn var_definition(r#type: SN<Type>, name: SN<N>, rvalue: RValue<N, T>) -> Self {
+        Self::VarDefinition {
+            r#type,
+            name,
+            rvalue,
+        }
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn assignment(lvalue: LValue<N, T>, rvalue: RValue<N, T>) -> Self {
+        Self::Assignment { lvalue, rvalue }
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn if_then_else(
+        if_cond: SN<Expr<N, T>>,
+        then_body: SN<StatBlock<N, T>>,
+        else_body: SN<StatBlock<N, T>>,
+    ) -> Self {
+        Self::IfThenElse {
+            if_cond,
+            then_body,
+            else_body,
+        }
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn while_do(while_cond: SN<Expr<N, T>>, body: SN<StatBlock<N, T>>) -> Self {
+        Self::WhileDo { while_cond, body }
+    }
+}
+
+impl RValue<Ident, ()> {
+    #[must_use]
+    #[inline]
+    pub const fn call(func_name: SN<Ident>, args: Box<[SN<Expr<Ident, ()>>]>) -> Self {
+        Self::Call {
+            func_name,
+            args,
+            return_type: (),
         }
     }
 }
@@ -340,17 +384,11 @@ impl Deref for Ident {
         self.0.deref()
     }
 }
-
-#[derive(Clone, Debug)]
-pub struct ArrayElem {
-    pub array_name: SN<Ident>,
-    pub indices: NonemptyArray<SN<Expr>>,
-}
-
-impl ArrayElem {
+// TODO: change this to a type alias perhaps
+impl<N, T> ArrayElem<N, T> {
     #[must_use]
     #[inline]
-    pub const fn new(array_name: SN<Ident>, indices: NonemptyArray<SN<Expr>>) -> Self {
+    pub const fn new(array_name: SN<N>, indices: NonemptyArray<SN<Expr<N, T>>>) -> Self {
         Self {
             array_name,
             indices,

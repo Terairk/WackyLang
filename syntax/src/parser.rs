@@ -72,11 +72,11 @@ where
 pub fn array_elem_parser<'src, I, Ident, Expr>(
     ident: Ident,
     expr: Expr,
-) -> impl alias::Parser<'src, I, ast::ArrayElem>
+) -> impl alias::Parser<'src, I, ast::ArrayElem<ast::Ident, ()>>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan>,
     Ident: alias::Parser<'src, I, ast::Ident>,
-    Expr: alias::Parser<'src, I, ast::Expr>,
+    Expr: alias::Parser<'src, I, ast::Expr<ast::Ident, ()>>,
 {
     let array_elem_indices = expr
         .delim_by(Delim::Bracket)
@@ -86,7 +86,7 @@ where
         .collect::<Vec<_>>()
         .pipe((NonemptyArray::try_from_boxed_slice, Result::unwrap));
     let array_elem = group((ident.sn(), array_elem_indices))
-        .map_group(ast::ArrayElem::new)
+        .map_group(ast::ArrayElem::<ast::Ident, ()>::new)
         .labelled("<array-elem>");
 
     array_elem
@@ -94,7 +94,7 @@ where
 
 #[must_use]
 #[inline]
-pub fn expr_parser<'src, I>() -> impl alias::Parser<'src, I, ast::Expr>
+pub fn expr_parser<'src, I>() -> impl alias::Parser<'src, I, ast::Expr<ast::Ident, ()>>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan> + ValueInput<'src>,
 {
@@ -108,12 +108,14 @@ where
 
         // 'Atoms' are expressions that contain no ambiguity
         let atom = choice((
-            liter.map(ast::Expr::Liter),
+            liter.map(|lit| ast::Expr::Liter(lit, ())),
             // array elements begin with identifiers, so
             // give them precedence over identifiers
-            array_elem.map(ast::Expr::ArrayElem),
-            ident.map(ast::Expr::Ident),
-            paren_expr.map(ast::Expr::Paren),
+            array_elem.map(|elem| ast::Expr::ArrayElem(elem, ())),
+            // Bootleg approach to get SN<Ident> from Ident parser
+            // TODO: check if this is the correct way to do this
+            ident.clone().sn().map(|ident| ast::Expr::Ident(ident, ())),
+            paren_expr.map(|paren| ast::Expr::Paren(paren, ())),
         ));
 
         // Perform simplistic error recovery on Atom expressions
@@ -171,7 +173,7 @@ where
 
         // procedure to turn patterns into binary expressions
         let binary_create = |lhs, op, rhs, extra: &mut MapExtra<'src, '_, I, _>| {
-            SN::new(ast::Expr::Binary(lhs, op, rhs), extra.span())
+            SN::new(ast::Expr::Binary(lhs, op, rhs, ()), extra.span())
         };
 
         // a PRATT parser for prefix and left-infix operator expressions
@@ -180,7 +182,7 @@ where
             // We want unary operations to happen before any binary ones, so their precedence
             // is set to be the highest. But amongst themselves the precedence is the same.
             prefix(3, unary_oper, |op, rhs, extra| {
-                SN::new(ast::Expr::Unary(op, rhs), extra.span())
+                SN::new(ast::Expr::Unary(op, rhs, ()), extra.span())
             }),
             // Product ops (multiply, divide, and mod) have equal precedence, and the highest
             // binary operator precedence overall
@@ -294,10 +296,12 @@ where
 }
 
 #[inline]
-pub fn stat_parser<'src, I, P>(stat_chain: P) -> impl alias::Parser<'src, I, ast::Stat>
+pub fn stat_parser<'src, I, P>(
+    stat_chain: P,
+) -> impl alias::Parser<'src, I, ast::Stat<ast::Ident, ()>>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan> + ValueInput<'src>,
-    P: alias::Parser<'src, I, ast::StatBlock>,
+    P: alias::Parser<'src, I, ast::StatBlock<ast::Ident, ()>>,
 {
     let ident = ident_parser();
     let expr = expr_parser();
@@ -320,13 +324,13 @@ where
     let array_liter = expr_sequence
         .clone()
         .delim_by(Delim::Bracket)
-        .map(ast::RValue::ArrayLiter);
+        .map(|lit| ast::RValue::ArrayLiter(lit, ()));
 
     // newpair parser
     let newpair = just(Token::Newpair).ignore_then(
         group((expr.clone().then_ignore(just(Token::Comma)), expr.clone()))
             .delim_by(Delim::Paren)
-            .map_group(ast::RValue::NewPair),
+            .map_group(|p1, p2| ast::RValue::NewPair(p1, p2, ())),
     );
 
     // declare the LValue parser
@@ -346,9 +350,12 @@ where
     // define the lvalue parser: array-elem contains identifier within it, so it should be
     // given parsing precedence to disambiguate properly
     lvalue.define(choice((
-        array_elem.map(ast::LValue::ArrayElem),
-        pair_elem.clone().sn().map(ast::LValue::PairElem),
-        ident.clone().map(ast::LValue::Ident),
+        array_elem.map(|elem| ast::LValue::ArrayElem(elem, ())),
+        pair_elem
+            .clone()
+            .sn()
+            .map(|elem| ast::LValue::PairElem(elem, ())),
+        ident.clone().map(|ident| ast::LValue::Ident(ident, ())),
     )));
 
     // rvalue parser
@@ -432,7 +439,7 @@ where
 }
 
 #[inline]
-pub fn program_parser<'src, I>() -> impl alias::Parser<'src, I, ast::Program>
+pub fn program_parser<'src, I>() -> impl alias::Parser<'src, I, ast::Program<ast::Ident, ()>>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan> + ValueInput<'src>,
 {
@@ -482,7 +489,7 @@ where
                     "The body of function {} is not a returning block",
                     func.name
                 ),
-            ))
+            ));
         }
 
         // return func to continue validation of other functions
