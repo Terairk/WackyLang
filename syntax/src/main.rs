@@ -81,14 +81,29 @@ end
 
 #[allow(dead_code)]
 const TEST_PROGRAM: &str = r#"
-# empty array declaration
+# Testing recursive array indexing
 
 # Output:
+# 6
+# 7
+# 8
+#
 
 # Program:
 
 begin
-  int[] a = []
+    int[] idxs1 = [2, 0, 1] ;
+    int[] idxs2 = [1, 2, 0] ;
+    # idxs1[idxs2[0]] = 0
+    # idxs1[idxs2[1]] = 1
+    # idxs1[idxs2[2]] = 2
+    int[] xs = [5, 6, 7] ;
+    int i = 0 ;
+    while i != 3 do
+        xs[idxs1[idxs2[i]]] = xs[idxs1[idxs2[i]]] + 1 ;
+        println (xs[idxs1[idxs2[i]]]) ;
+        i = i + 1
+    done
 end
 "#;
 #[allow(dead_code)]

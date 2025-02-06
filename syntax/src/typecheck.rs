@@ -4,12 +4,12 @@ use crate::fold_program::{Folder};
 use crate::source::{SourcedNode};
 use crate::fold_program::{BoxedSliceFold, };
 use crate::rename::{RenamedName, SemanticError};
-use crate::rename::SemanticError::{SimpleTypeMismatch};
+use crate::rename::SemanticError::{SimpleTypeMismatch, TypeMismatch};
 use crate::rename::Renamer;
 
 type SN<T> = SourcedNode<T>;
-type renamedAST = Program<RenamedName, ()>;
-type typedAST = Program<RenamedName, SemanticType>;
+type RenamedAst = Program<RenamedName, ()>;
+type TypedAst = Program<RenamedName, SemanticType>;
 impl<N, T: Clone> Expr<N, T> {
     pub fn get_type(&self) -> T {
         match self {
@@ -41,16 +41,18 @@ impl<N, T: Clone> RValue<N, T> {
             RValue::ArrayLiter(_, t) => t.clone(),
             RValue::NewPair(_, _, t) => t.clone(),
             RValue::PairElem(pelem) => {
-                match pelem {
-                    PairElem::Fst(lvalue_sn) => {
-                        lvalue_sn.inner().get_type()
-                    },
-                    PairElem::Snd(lvalue_sn) => {
-                        lvalue_sn.inner().get_type()
-                    },
-                }
+                pelem.get_type()
             },
             RValue::Call {return_type, .. } => return_type.clone(),
+        }
+    }
+}
+
+impl<N, T: Clone> PairElem<N, T> {
+    pub fn get_type(&self) -> T {
+        match self {
+            PairElem::Fst(lvalue_sn) => lvalue_sn.inner().get_type(),
+            PairElem::Snd(lvalue_sn) => lvalue_sn.inner().get_type(),
         }
     }
 }
@@ -75,9 +77,9 @@ impl TypeResolver {
     fn unary_expect(&mut self, expr: SN<Expr<RenamedName, SemanticType>>,
                     expected_type: SemanticType, result_type: SemanticType) -> SemanticType {
         if expr.get_type() == expected_type {
-            SemanticType::Int
+            result_type
         } else {
-            self.add_error(SimpleTypeMismatch(expr.get_type(), expected_type));
+            self.add_error(TypeMismatch(expr.span(), expr.get_type(), expected_type));
             SemanticType::Error(expr.span())
         }
     }
@@ -86,10 +88,10 @@ impl TypeResolver {
                      expected_type: SemanticType,
                      result_type: SemanticType) -> SemanticType {
         if lhs.get_type() != expected_type {
-            self.add_error(SimpleTypeMismatch(lhs.get_type(), expected_type));
+            self.add_error(TypeMismatch(lhs.span(), lhs.get_type(), expected_type));
             SemanticType::Error(lhs.span())
         } else if rhs.get_type() != expected_type {
-            self.add_error(SimpleTypeMismatch(rhs.get_type(), expected_type));
+            self.add_error(TypeMismatch(rhs.span(), rhs.get_type(), expected_type));
             SemanticType::Error(rhs.span())
         } else {
             result_type
@@ -150,7 +152,7 @@ impl Folder for TypeResolver {
                         match resolved_expr.get_type() {
                             SemanticType::Array(_) => SemanticType::Int,
                             _ => {
-                                self.add_error(SimpleTypeMismatch(resolved_expr.get_type(), SemanticType::Bool));
+                                self.add_error(TypeMismatch(resolved_expr.span(), resolved_expr.get_type(), SemanticType::Bool));
                                 SemanticType::Error(resolved_expr.span())
                             }
                         }
@@ -182,7 +184,7 @@ impl Folder for TypeResolver {
                         if resolved_lhs.get_type() == resolved_rhs.get_type() {
                             SemanticType::Bool
                         } else {
-                            self.add_error(SimpleTypeMismatch(resolved_rhs.get_type(), resolved_lhs.get_type()));
+                            self.add_error(TypeMismatch(resolved_lhs.span(), resolved_rhs.get_type(), resolved_lhs.get_type()));
                             SemanticType::Error(resolved_lhs.span())
                         }
                     }
@@ -208,28 +210,18 @@ impl Folder for TypeResolver {
         lvalue: LValue<Self::N, Self::T>,
     ) -> LValue<Self::OutputN, Self::OutputT> {
         match lvalue {
-            LValue::Ident(name, ty) => LValue::Ident(self.fold_name_sn(name), self.fold_type(ty)),
+            LValue::Ident(name, _ty) => {
+                let resolved_type = self.renamer.lookup_symbol_table(&name);
+                LValue::Ident(self.fold_name_sn(name), resolved_type)
+            },
             LValue::ArrayElem(elem, _ty) => {
                 let resolved_type = self.renamer.lookup_symbol_table(&elem.array_name);
                 LValue::ArrayElem(self.fold_array_elem(elem), resolved_type)
             }
             LValue::PairElem(elem, ty) => {
-                // TODO: Get type of PairElem?
-                // let resolved_inner = self.fold_pair_elem_sn(elem.clone());
-                //
-                // // Get the pair type
-                // let resolved_type = match resolved_inner.clone().map_inner(|x| x.get_type()) {
-                //     SemanticType::Pair(fst, snd) => {
-                //         match elem.inner() {
-                //             PairElem::Fst(_) => *fst,  // Extract first element type
-                //             PairElem::Snd(_) => *snd,  // Extract second element type
-                //         }
-                //     }
-                //     _ => SemanticType::Error(resolved_inner.span()), // Handle incorrect pair usage
-                // };
-                //
-                // LValue::PairElem(resolved_inner, resolved_type)
-                LValue::PairElem(self.fold_pair_elem_sn(elem), self.fold_type(ty))
+                let resolved_elem = self.fold_pair_elem_sn(elem);
+                let resolved_type = resolved_elem.inner().get_type();
+                LValue::PairElem(resolved_elem, resolved_type)
             }
         }
     }
@@ -257,7 +249,7 @@ impl Folder for TypeResolver {
                 let resolved_type = resolved_exprs.clone()[0].get_type();
                 for expr in resolved_exprs.clone() {
                     if expr.get_type() != resolved_type {
-                        self.add_error(SimpleTypeMismatch(expr.get_type(), resolved_type.clone()));
+                        self.add_error(TypeMismatch(expr.span(), expr.get_type(), resolved_type.clone()));
                     }
                 }
                 RValue::ArrayLiter(
@@ -308,7 +300,7 @@ impl Folder for TypeResolver {
         let resolved_rvalue = self.fold_rvalue(rvalue);
         let resolved_type = resolved_rvalue.get_type();
         if given_type != resolved_type {
-            self.add_error(SimpleTypeMismatch(given_type, resolved_type))
+            self.add_error(TypeMismatch(name.span(), given_type, resolved_type))
         }
         Stat::VarDefinition {
             r#type,
@@ -330,6 +322,7 @@ impl Folder for TypeResolver {
                 let resolved_lvalue = self.fold_lvalue(lvalue);
                 let resolved_rvalue = self.fold_rvalue(rvalue);
                 if resolved_rvalue.get_type() != resolved_lvalue.get_type() {
+                    println!("Type mismatch in Assignment!");
                     self.add_error(SimpleTypeMismatch(resolved_rvalue.get_type(), resolved_lvalue.get_type()))
                 }
                 Stat::Assignment {
@@ -347,14 +340,26 @@ impl Folder for TypeResolver {
                 if_cond,
                 then_body,
                 else_body,
-            } => Stat::IfThenElse {
-                if_cond: self.fold_expr_sn(if_cond),
-                then_body: self.fold_stat_block_sn(then_body),
-                else_body: self.fold_stat_block_sn(else_body),
+            } => {
+                let resolved_if_cond = self.fold_expr_sn(if_cond);
+                if resolved_if_cond.get_type() != SemanticType::Bool {
+                    self.add_error(TypeMismatch(resolved_if_cond.span() ,resolved_if_cond.get_type(), SemanticType::Bool));
+                }
+                Stat::IfThenElse {
+                    if_cond: resolved_if_cond,
+                    then_body: self.fold_stat_block_sn(then_body),
+                    else_body: self.fold_stat_block_sn(else_body),
+                }
             },
-            Stat::WhileDo { while_cond, body } => Stat::WhileDo {
-                while_cond: self.fold_expr_sn(while_cond),
-                body: self.fold_stat_block_sn(body),
+            Stat::WhileDo { while_cond, body } => {
+                let resolved_while_cond = self.fold_expr_sn(while_cond);
+                if resolved_while_cond.get_type() != SemanticType::Bool {
+                    self.add_error(TypeMismatch(resolved_while_cond.span() ,resolved_while_cond.get_type(), SemanticType::Bool));
+                }
+                Stat::WhileDo {
+                    while_cond: resolved_while_cond,
+                    body: self.fold_stat_block_sn(body),
+                }
             },
             Stat::Scoped(body) => Stat::Scoped(self.fold_stat_block_sn(body)),
         }
@@ -372,7 +377,7 @@ impl Folder for TypeResolver {
     }
 }
 
-pub fn typecheck(renamer: Renamer, renamed_ast: renamedAST) -> (typedAST, TypeResolver) {
+pub fn typecheck(renamer: Renamer, renamed_ast: RenamedAst) -> (TypedAst, TypeResolver) {
     let mut type_resolver = TypeResolver::new(renamer);
     let typed_ast = type_resolver.fold_program(renamed_ast);
     (typed_ast, type_resolver)

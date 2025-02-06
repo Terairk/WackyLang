@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::ast::{Expr, Func, FuncParam, Ident, Program, RValue, Stat, StatBlock};
 use crate::fold_program::Folder;
 use crate::fold_program::{BoxedSliceFold as _, NonEmptyFold as _};
-use crate::source::SourcedNode;
+use crate::source::{SourcedNode, SourcedSpan};
 use crate::types::{SemanticType, Type};
 use std::fmt;
 use std::hash::Hash;
@@ -67,7 +67,7 @@ pub enum SemanticError {
     ArityMismatch(SN<Ident>, usize, usize),
     DuplicateIdent(SN<Ident>),
     // TODO: import strum crate to make it easier to convert this to a string
-    TypeMismatch(SN<Expr<RenamedName, SemanticType>>, Type, Type),
+    TypeMismatch(SourcedSpan, SemanticType, SemanticType),
     SimpleTypeMismatch(SemanticType, SemanticType),
     MismatchedArgCount(usize, usize),
     UndefinedIdent(SN<Ident>),
