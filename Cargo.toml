@@ -4,7 +4,6 @@ members = [
     "fn_pipe_proc",
     "fn_pipe",
     "syntax",
-    "test_runner",
 ]
 
 [profile.dev]

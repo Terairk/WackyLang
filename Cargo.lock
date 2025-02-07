@@ -420,14 +420,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "test_runner"
-version = "0.1.0"
-dependencies = [
- "chumsky",
- "syntax",
-]
-
-[[package]]
 name = "thiserror"
 version = "2.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
