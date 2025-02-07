@@ -190,15 +190,15 @@ fn main() -> ExitCode {
 
         // println!("{renamed_ast:?}");
         println!("Rename Errors: {:?}", renamer.return_errors());
-        println!("{:?}", renamer.get_func_table());
+        // println!("{:?}", renamer.get_func_table());
         println!("{:?}", renamer.get_symbol_table());
 
-        println!("{:?}", renamed_ast);
+        // println!("{:?}", renamed_ast);
         println!("typed:");
 
         let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
 
-        println!("{typed_ast:?}");
+        // println!("{typed_ast:?}");
         println!("Type Errors2: {:?}", type_resolver.type_errors);
         for e in type_resolver.type_errors {
             match e {

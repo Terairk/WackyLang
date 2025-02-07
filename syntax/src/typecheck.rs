@@ -125,17 +125,7 @@ impl TypeResolver {
 }
 
 fn err_if_not_pair(resolved_type: &SemanticType, span: &WithSourceId, resolver: &mut TypeResolver) {
-    
-    println!("pair {:?}", resolved_type);
-    if let SemanticType::Pair(_, _) = resolved_type {
-
-    } else if let SemanticType::ErasedPair = resolved_type {
-
-    } else if let SemanticType::Error(_) = resolved_type {
-
-    } else if SemanticType::AnyType == *resolved_type {
-
-    } else {
+    if !matches!(resolved_type, SemanticType::Pair(_, _) | SemanticType::ErasedPair | SemanticType::Error(_) | SemanticType::AnyType) {
         println!("PAIR {:?}", resolved_type);
         resolver.add_error(SemanticError::TypeMismatch(span.clone(), resolved_type.clone(), SemanticType::Pair(Box::new(SemanticType::AnyType), Box::new(SemanticType::AnyType))));
     }
@@ -217,6 +207,7 @@ impl Folder for TypeResolver {
                 Expr::Unary(op, resolved_expr, resolved_type)
             }
             Expr::Binary(lhs, op, rhs, _ty) => {
+                println!("{:?}", lhs);
                 let resolved_lhs = self.fold_expr(lhs);
                 let resolved_rhs = self.fold_expr(rhs);
 
@@ -241,6 +232,7 @@ impl Folder for TypeResolver {
                         if lhs_type.can_coerce_into(&rhs_type) || rhs_type.can_coerce_into(&lhs_type) {
                             SemanticType::Bool
                         } else {
+                            println!("{:?} {:?} {:?} {:?}", lhs_type, rhs_type, resolved_lhs, resolved_rhs);
                             self.add_error(TypeMismatch(resolved_lhs.span(), resolved_rhs.get_type(&self.renamer), resolved_lhs.get_type(&self.renamer)));
                             SemanticType::Error(resolved_lhs.span())
                         }
@@ -519,8 +511,7 @@ impl Folder for TypeResolver {
                 SemanticType::Array(inner) => {
                     curr_arr = *inner;
                 }
-                SemanticType::AnyType => {}
-                SemanticType::Error(_) => {}
+                SemanticType::AnyType | SemanticType::Error(_) => {}
                 _ => {
                     println!("ARRAY {:?}", curr_arr);
                     self.add_error(SemanticError::TypeMismatch(elem.span().clone(), curr_arr.clone(), SemanticType::Array(Box::new(SemanticType::AnyType))));
