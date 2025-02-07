@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::error::SemanticError;
-use crate::error::SemanticError::{InvalidIndexType, SimpleTypeMismatch, TypeMismatch};
+use crate::error::SemanticError::{InvalidIndexType, TypeMismatch};
 use crate::fold_program::BoxedSliceFold;
 use crate::fold_program::{Folder, NonEmptyFold};
 use crate::rename::RenamedName;
@@ -484,7 +484,8 @@ impl Folder for TypeResolver {
                         resolved_lvalue.span(),
                     ));
                 } else if !&resolved_rval_type.can_coerce_into(&resolved_lval_type) {
-                    self.add_error(SimpleTypeMismatch(
+                    self.add_error(TypeMismatch(
+                        resolved_rvalue.span(),
                         resolved_lvalue.get_type(&self.renamer),
                         resolved_rvalue.get_type(&self.renamer),
                     ));
@@ -498,7 +499,8 @@ impl Folder for TypeResolver {
                 let resolved_lvalue = self.fold_lvalue(lvalue);
                 match resolved_lvalue.get_type(&self.renamer) {
                     SemanticType::Int | SemanticType::Char => (),
-                    _ => self.add_error(SimpleTypeMismatch(
+                    _ => self.add_error(TypeMismatch(
+                        resolved_lvalue.span(),
                         resolved_lvalue.get_type(&self.renamer),
                         SemanticType::Int,
                     )),
