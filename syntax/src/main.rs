@@ -173,7 +173,7 @@ fn main() -> ExitCode {
             let sourceid = e.span().source_id();
             let (mut start, mut end) = (range.start, range.end);
             if start > end {
-                std::mem::swap(&mut end, &mut start); // this is a heuristic, the parser probably meant to swap them around
+                end = start;
             }
             let new_span = SourcedSpan::new(sourceid.clone(), (start..end).into());
             build_syntactic_report(new_span, e, source.clone());
