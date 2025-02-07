@@ -11,7 +11,7 @@ use std::fmt;
 use std::hash::Hash;
 use std::mem;
 
-#[derive(Clone, Hash, PartialEq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct RenamedName {
     pub ident: Ident,
     pub uuid: usize,
@@ -29,7 +29,7 @@ impl RenamedName {
     fn new_sn(counter: &mut usize, ident: SN<Ident>) -> SN<Self> {
         // would rather crash in debug builds than define a saturating
         // so we can change this to u128
-        // though i suspect we'd have bigger problems before then
+        // though I suspect we'd have bigger problems before then
         #[allow(clippy::arithmetic_side_effects)]
         *counter += 1;
         SN::new(
@@ -88,8 +88,6 @@ impl IDMapEntry {
 // struct responsible for traversing/folding the AST
 pub struct Renamer {
     pub id_func_table: IdFuncTable,
-    pub symbol_table: HashMap<Ident, SemanticType>,
-    pub symid_table: HashMap<usize, SemanticType>,
     errors: Vec<SemanticError>,
     in_main: bool,
     counter: usize,
@@ -104,8 +102,6 @@ impl Renamer {
                 functions: HashMap::new(),
             },
             identifier_map: HashMap::new(),
-            symbol_table: HashMap::new(),
-            symid_table: HashMap::new(),
             counter: 0,
             in_main: true,
             errors: Vec::new(),
@@ -126,25 +122,11 @@ impl Renamer {
         &self.id_func_table
     }
 
-    #[inline]
-    pub const fn get_symbol_table(&self) -> &HashMap<Ident, SemanticType> {
-        &self.symbol_table
-    }
-
     fn copy_id_map_with_false(&self) -> HashMap<Ident, IDMapEntry> {
         self.identifier_map
             .iter()
             .map(|(k, v)| (k.clone(), v.create_false()))
             .collect()
-    }
-
-    #[inline]
-    pub fn lookup_symbol_table(&self, renamed_name: &SN<RenamedName>) -> SemanticType {
-        if let Some(semantic_type) = self.symid_table.get(&renamed_name.inner().uuid) {
-            semantic_type.clone()
-        } else {
-            SemanticType::Error(renamed_name.span())
-        }
     }
 
     #[inline]
@@ -208,16 +190,6 @@ impl Folder for Renamer {
     }
 
     #[inline]
-    fn fold_stat_block(
-        &mut self,
-        block: StatBlock<Self::N, Self::T>,
-    ) -> StatBlock<Self::OutputN, Self::OutputT> {
-        let folded_block =
-            self.with_temporary_map(|slf| block.0.map_with(|stat| slf.fold_stat_sn(stat)));
-        StatBlock(folded_block)
-    }
-
-    #[inline]
     fn fold_func(&mut self, func: Func<Self::N, Self::T>) -> Func<Self::OutputN, Self::OutputT> {
         self.in_main = false;
         let new_map = self.copy_id_map_with_false();
@@ -236,31 +208,38 @@ impl Folder for Renamer {
     }
 
     #[inline]
-    fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN> {
-        if let Some(entry) = self.identifier_map.get(name.inner()) {
-            let renamed_name = &entry.renamed_name;
-            renamed_name.clone()
-        } else {
-            self.add_error(SemanticError::UndefinedIdent(name.clone()));
-            // Return a dummy value so we can maybe maybe very hopefully
-            // allow multiple semantic errors
-            RenamedName::new_sn_0(&name)
+    fn fold_func_param(&mut self, param: FuncParam<Self::N>) -> FuncParam<Self::OutputN> {
+        // shouldn't panic since we check the key exists
+        let name = &param.name;
+        if self.identifier_map.contains_key(name.inner())
+            && self.identifier_map[name.inner()].from_current_block
+        {
+            self.add_error(SemanticError::DuplicateIdent(name.clone()));
+            // return dummy Stat
+            return FuncParam {
+                r#type: param.r#type,
+                name: RenamedName::new_sn_0(name),
+            };
+        }
+
+        let unique_name = RenamedName::new_sn(&mut self.counter, name.clone());
+        let map_entry = IDMapEntry::new(unique_name.clone(), true);
+        self.identifier_map.insert(name.inner().clone(), map_entry);
+
+        FuncParam {
+            r#type: param.r#type,
+            name: unique_name,
         }
     }
 
     #[inline]
-    fn fold_funcname_sn(&mut self, name: SN<Ident>) -> SN<Ident> {
-        // Use ident part of name and then check if it exists in the function table
-        // return name regardless but add an error if it doesn't exist
-        let ident = name.inner();
-        if self.id_func_table.functions.contains_key(ident) {
-        } else {
-            self.add_error(SemanticError::UndefinedIdent(name.clone()));
-            // Return a dummy value so we can maybe maybe very hopefully
-            // allow multiple semantic errors
-        }
-
-        name
+    fn fold_stat_block(
+        &mut self,
+        block: StatBlock<Self::N, Self::T>,
+    ) -> StatBlock<Self::OutputN, Self::OutputT> {
+        let folded_block =
+            self.with_temporary_map(|slf| block.0.map_with(|stat| slf.fold_stat_sn(stat)));
+        StatBlock(folded_block)
     }
 
     #[inline]
@@ -293,10 +272,6 @@ impl Folder for Renamer {
         let unique_name = RenamedName::new_sn(&mut self.counter, name.clone());
         let map_entry = IDMapEntry::new(unique_name.clone(), true);
         self.identifier_map.insert(name.inner().clone(), map_entry);
-        self.symbol_table
-            .insert(name.inner().clone(), r#type.inner().to_semantic_type());
-        self.symid_table
-            .insert(unique_name.uuid, r#type.inner().to_semantic_type());
 
         Stat::VarDefinition {
             r#type,
@@ -317,35 +292,6 @@ impl Folder for Renamer {
     }
 
     #[inline]
-    fn fold_func_param(&mut self, param: FuncParam<Self::N>) -> FuncParam<Self::OutputN> {
-        // shouldn't panic since we check the key exists
-        let name = &param.name;
-        if self.identifier_map.contains_key(name.inner())
-            && self.identifier_map[name.inner()].from_current_block
-        {
-            self.add_error(SemanticError::DuplicateIdent(name.clone()));
-            // return dummy Stat
-            return FuncParam {
-                r#type: param.r#type,
-                name: RenamedName::new_sn_0(name),
-            };
-        }
-
-        let unique_name = RenamedName::new_sn(&mut self.counter, name.clone());
-        let map_entry = IDMapEntry::new(unique_name.clone(), true);
-        self.identifier_map.insert(name.inner().clone(), map_entry);
-        self.symbol_table
-            .insert(name.inner().clone(), param.r#type.to_semantic_type());
-        self.symid_table
-            .insert(unique_name.uuid, param.r#type.inner().to_semantic_type());
-
-        FuncParam {
-            r#type: param.r#type,
-            name: unique_name,
-        }
-    }
-
-    #[inline]
     fn fold_expr_ident(
         &mut self,
         ident: SN<Self::N>,
@@ -356,10 +302,38 @@ impl Folder for Renamer {
             Expr::Ident(renamed_name.clone(), r#type)
         } else {
             self.add_error(SemanticError::UndefinedIdent(ident.clone()));
-            // Return a dummy value so we can maybe maybe very hopefully
+            // Return a dummy value so we can maybe very hopefully
             // allow multiple semantic errors
             Expr::Ident(RenamedName::new_sn_0(&ident), r#type)
         }
+    }
+
+    #[inline]
+    fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN> {
+        if let Some(entry) = self.identifier_map.get(name.inner()) {
+            let renamed_name = &entry.renamed_name;
+            renamed_name.clone()
+        } else {
+            self.add_error(SemanticError::UndefinedIdent(name.clone()));
+            // Return a dummy value so we can maybe very hopefully
+            // allow multiple semantic errors
+            RenamedName::new_sn_0(&name)
+        }
+    }
+
+    #[inline]
+    fn fold_funcname_sn(&mut self, name: SN<Ident>) -> SN<Ident> {
+        // Use ident part of name and then check if it exists in the function table
+        // return name regardless but add an error if it doesn't exist
+        let ident = name.inner();
+        if self.id_func_table.functions.contains_key(ident) {
+        } else {
+            self.add_error(SemanticError::UndefinedIdent(name.clone()));
+            // Return a dummy value so we can maybe very hopefully
+            // allow multiple semantic errors
+        }
+
+        name
     }
 
     // OutputT is a () so return empty value
