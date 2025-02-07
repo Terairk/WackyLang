@@ -24,6 +24,7 @@ pub mod ast;
 pub mod types;
 pub mod fold_program;
 pub mod rename;
+pub mod error;
 
 /// Namespace for crate-wide extension traits/methods
 pub(crate) mod ext {

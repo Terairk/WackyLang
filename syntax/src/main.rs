@@ -6,15 +6,14 @@ use chumsky::input::WithContext;
 use chumsky::prelude::Input as _;
 use chumsky::Parser;
 use std::fmt;
-use std::ops::{Deref, DerefMut, Range};
+use std::ops::{Deref, DerefMut};
 use std::process::ExitCode;
-use wacc_syntax::fold_program::Folder;
+use wacc_syntax::error::SemanticError;
 use wacc_syntax::parser::program_parser;
-use wacc_syntax::rename::SemanticError;
 use wacc_syntax::rename::{rename, Renamer};
 use wacc_syntax::source::{SourcedSpan, StrSourceId};
 use wacc_syntax::token::{lexer, Token};
-use wacc_syntax::typecheck::{typecheck, TypeResolver};
+use wacc_syntax::typecheck::typecheck;
 
 #[allow(dead_code)]
 const TEST_EXPR: &str = r#"
@@ -221,6 +220,7 @@ pub fn build_semantic_report(
         ariadne::ReportKind::Error,
         (file_path, span.clone().as_range()),
     )
+    .with_config(config)
     .with_message("Semantic error")
     .with_code(420)
     .with_label(Label::new((file_path, span.clone().as_range())).with_message(reason))

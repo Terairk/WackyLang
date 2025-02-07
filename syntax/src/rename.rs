@@ -2,9 +2,10 @@
 use std::collections::HashMap;
 
 use crate::ast::{Expr, Func, FuncParam, Ident, Program, RValue, Stat, StatBlock};
+use crate::error::SemanticError;
 use crate::fold_program::Folder;
 use crate::fold_program::{BoxedSliceFold as _, NonEmptyFold as _};
-use crate::source::{SourcedNode, SourcedSpan};
+use crate::source::SourcedNode;
 use crate::types::{SemanticType, Type};
 use std::fmt;
 use std::hash::Hash;
@@ -55,27 +56,7 @@ impl RenamedName {
 
 // A file-local type alias for better readability of type definitions
 type SN<T> = SourcedNode<T>;
-type UntypedAST = Program<Ident, ()>;
 type RenamedAST = Program<RenamedName, ()>;
-
-// TODO: UndefinedIdent could be its own enum
-// with specifics such as int x = x where x is not defined yet
-// honestly for duplicate Ident, could probably list the other Ident it was duplicating
-// for potentially better errors
-#[derive(Debug, Clone)]
-pub enum SemanticError {
-    ArityMismatch(SN<Ident>, usize, usize),
-    DuplicateIdent(SN<Ident>),
-    // TODO: import strum crate to make it easier to convert this to a string
-    TypeMismatch(SourcedSpan, SemanticType, SemanticType),
-    AssignmentWithBothSidesUnknown(SourcedSpan),
-    SimpleTypeMismatch(SemanticType, SemanticType), // TODO: remove this temp error
-    MismatchedArgCount(SourcedSpan, usize, usize),
-    InvalidIndexType(SourcedSpan, SemanticType),
-    InvalidNumberOfIndexes(usize),
-    UndefinedIdent(SN<Ident>),
-    ReturnInMain,
-}
 
 // We handle functions separately from variables since its easier
 #[derive(Debug)]
