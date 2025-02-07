@@ -1,6 +1,6 @@
 all:
 	cargo build --release
-	cp target/release/wacc_syntax compile
+	cp target/release/syntax compile
 
 clean:
 	cargo clean
