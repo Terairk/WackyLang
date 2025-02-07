@@ -485,12 +485,11 @@ where
     .map_group(ast::Func::new)
     .validate(|func, #[allow(unused)] extra, #[allow(unused)] emitter| {
         if !func.body.is_return_block() {
-            // TODO: come up with custom error types for better more typesafe error reporting
             emitter.emit(Rich::custom(
                 extra.span(),
                 format!(
                     "The body of function {} is not a returning block",
-                    func.name
+                    func.name.inner()
                 ),
             ));
         }
