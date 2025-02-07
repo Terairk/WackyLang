@@ -90,22 +90,22 @@ pub trait Folder {
                 rvalue: self.fold_rvalue(rvalue),
             },
             Stat::Read(lvalue) => Stat::Read(self.fold_lvalue(lvalue)),
-            Stat::Free(expr) => Stat::Free(self.fold_expr_sn(expr)),
+            Stat::Free(expr) => Stat::Free(self.fold_expr(expr)),
             Stat::Return(expr) => self.fold_stat_return(expr),
-            Stat::Exit(expr) => Stat::Exit(self.fold_expr_sn(expr)),
-            Stat::Print(expr) => Stat::Print(self.fold_expr_sn(expr)),
-            Stat::Println(expr) => Stat::Println(self.fold_expr_sn(expr)),
+            Stat::Exit(expr) => Stat::Exit(self.fold_expr(expr)),
+            Stat::Print(expr) => Stat::Print(self.fold_expr(expr)),
+            Stat::Println(expr) => Stat::Println(self.fold_expr(expr)),
             Stat::IfThenElse {
                 if_cond,
                 then_body,
                 else_body,
             } => Stat::IfThenElse {
-                if_cond: self.fold_expr_sn(if_cond),
+                if_cond: self.fold_expr(if_cond),
                 then_body: self.fold_stat_block_sn(then_body),
                 else_body: self.fold_stat_block_sn(else_body),
             },
             Stat::WhileDo { while_cond, body } => Stat::WhileDo {
-                while_cond: self.fold_expr_sn(while_cond),
+                while_cond: self.fold_expr(while_cond),
                 body: self.fold_stat_block_sn(body),
             },
             Stat::Scoped(body) => Stat::Scoped(self.fold_stat_block_sn(body)),
@@ -142,7 +142,7 @@ pub trait Folder {
         &mut self,
         expr: SN<Expr<Self::N, Self::T>>,
     ) -> Stat<Self::OutputN, Self::OutputT> {
-        Stat::Return(self.fold_expr_sn(expr))
+        Stat::Return(self.fold_expr(expr))
     }
 
     #[inline]
@@ -168,16 +168,16 @@ pub trait Folder {
     ) -> SN<RValue<Self::OutputN, Self::OutputT>> {
         value.map_inner(|inner| 
             match inner {
-                RValue::Expr(expr, ty) => { 
-                    RValue::Expr(expr.map_inner(|inner| self.fold_expr(inner)), self.fold_type(ty)) 
+                RValue::Expr(expr, ty) => {
+                    RValue::Expr(self.fold_expr(expr), self.fold_type(ty))
                 },
                 RValue::ArrayLiter(exprs, ty) => RValue::ArrayLiter(
-                    exprs.fold_with(|expr| self.fold_expr_sn(expr)),
+                    exprs.fold_with(|expr| self.fold_expr(expr)),
                     self.fold_type(ty),
                 ),
                 RValue::NewPair(fst, snd, ty) => RValue::NewPair(
-                    self.fold_expr_sn(fst),
-                    self.fold_expr_sn(snd),
+                    self.fold_expr(fst),
+                    self.fold_expr(snd),
                     self.fold_type(ty),
                 ),
                 RValue::PairElem(pair_elem) => RValue::PairElem(self.fold_pair_elem(pair_elem)),
@@ -187,32 +187,10 @@ pub trait Folder {
                     return_type,
                 } => RValue::Call {
                     func_name: self.fold_funcname_sn(func_name),
-                    args: args.fold_with(|arg| self.fold_expr_sn(arg)),
+                    args: args.fold_with(|arg| self.fold_expr(arg)),
                     return_type: self.fold_type(return_type),
                 },
             })
-    }
-
-    #[inline]
-    fn fold_expr(&mut self, expr: Expr<Self::N, Self::T>) -> Expr<Self::OutputN, Self::OutputT> {
-        match expr {
-            Expr::Liter(lit, ty) => Expr::Liter(lit, self.fold_type(ty)),
-            Expr::Ident(name, ty) => self.fold_expr_ident(name, ty),
-            Expr::ArrayElem(array_elem, ty) => {
-                Expr::ArrayElem(self.fold_array_elem(array_elem), self.fold_type(ty))
-            }
-            Expr::Unary(op, expr, ty) => {
-                Expr::Unary(op, self.fold_expr_sn(expr), self.fold_type(ty))
-            }
-            Expr::Binary(lhs, op, rhs, ty) => Expr::Binary(
-                self.fold_expr_sn(lhs),
-                op,
-                self.fold_expr_sn(rhs),
-                self.fold_type(ty),
-            ),
-            Expr::Paren(expr, ty) => Expr::Paren(self.fold_expr_sn(expr), self.fold_type(ty)),
-            Expr::Error(span) => Expr::Error(span),
-        }
     }
 
     #[inline]
@@ -226,11 +204,30 @@ pub trait Folder {
 
     // Helper method to fold a expr that is already wrapped in an SN
     #[inline]
-    fn fold_expr_sn(
+    fn fold_expr(
         &mut self,
         expr: SN<Expr<Self::N, Self::T>>,
     ) -> SN<Expr<Self::OutputN, Self::OutputT>> {
-        expr.map_inner(|inner| self.fold_expr(inner))
+        expr.map_inner(|inner| 
+            match inner {
+                Expr::Liter(lit, ty) => Expr::Liter(lit, self.fold_type(ty)),
+                Expr::Ident(name, ty) => self.fold_expr_ident(name, ty),
+                Expr::ArrayElem(array_elem, ty) => {
+                    Expr::ArrayElem(self.fold_array_elem(array_elem), self.fold_type(ty))
+                }
+                Expr::Unary(op, expr, ty) => {
+                    Expr::Unary(op, self.fold_expr(expr), self.fold_type(ty))
+                }
+                Expr::Binary(lhs, op, rhs, ty) => Expr::Binary(
+                    self.fold_expr(lhs),
+                    op,
+                    self.fold_expr(rhs),
+                    self.fold_type(ty),
+                ),
+                Expr::Paren(expr, ty) => Expr::Paren(self.fold_expr(expr), self.fold_type(ty)),
+                Expr::Error(span) => Expr::Error(span),
+            }
+        )
     }
 
     #[inline]
@@ -245,7 +242,7 @@ pub trait Folder {
     ) -> SN<ArrayElem<Self::OutputN, Self::OutputT>> {
         elem.map_inner(|elem| ArrayElem {
             array_name: self.fold_name_sn(elem.array_name),
-            indices: { elem.indices.map_with(|index| self.fold_expr_sn(index)) },
+            indices: { elem.indices.map_with(|index| self.fold_expr(index)) },
         })
     }
 

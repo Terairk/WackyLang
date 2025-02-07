@@ -328,7 +328,7 @@ impl Folder for Renamer {
         if self.in_main {
             self.add_error(SemanticError::ReturnInMain);
         }
-        Stat::Return(self.fold_expr_sn(expr))
+        Stat::Return(self.fold_expr(expr))
     }
 
     #[inline]

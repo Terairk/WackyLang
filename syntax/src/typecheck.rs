@@ -124,21 +124,6 @@ impl TypeResolver {
     }
 }
 
-
-fn err_if_not_array(resolved_type: &SemanticType, span: &WithSourceId, resolver: &mut TypeResolver) {
-    if let SemanticType::Array(_) = resolved_type {
-
-    } else if let SemanticType::Error(_) = resolved_type {
-
-    } else if SemanticType::AnyType == *resolved_type {
-
-    } else {
-        println!("ARRAY {:?}", resolved_type);
-        resolver.add_error(SemanticError::TypeMismatch(span.clone(), resolved_type.clone(), SemanticType::Array(Box::new(SemanticType::AnyType))));
-    }
-}
-
-
 fn err_if_not_pair(resolved_type: &SemanticType, span: &WithSourceId, resolver: &mut TypeResolver) {
     
     println!("pair {:?}", resolved_type);
@@ -184,8 +169,8 @@ impl Folder for TypeResolver {
     fn fold_funcname_sn(&mut self, name: SN<Ident>) -> SN<Ident> { name }
 
     #[inline]
-    fn fold_expr(&mut self, expr: Expr<Self::N, Self::T>) -> Expr<Self::OutputN, Self::OutputT> {
-        match expr {
+    fn fold_expr(&mut self, expr: SN<Expr<Self::N, Self::T>>) -> SN<Expr<Self::OutputN, Self::OutputT>> {
+        expr.map_inner(|inner| match inner {
             Expr::Liter(lit, _ty) => {
                 let resolved_type = match lit {
                     Liter::IntLiter(_) => SemanticType::Int,
@@ -205,7 +190,7 @@ impl Folder for TypeResolver {
                 Expr::ArrayElem(self.fold_array_elem(array_elem), resolved_type)
             }
             Expr::Unary(op, expr, ty) => {
-                let resolved_expr = self.fold_expr_sn(expr);
+                let resolved_expr = self.fold_expr(expr);
                 let resolved_type = match op.inner() {
                     UnaryOper::Not => {
                         self.unary_expect(resolved_expr.clone(), SemanticType::Bool, SemanticType::Bool)
@@ -232,14 +217,15 @@ impl Folder for TypeResolver {
                 Expr::Unary(op, resolved_expr, resolved_type)
             }
             Expr::Binary(lhs, op, rhs, _ty) => {
-                let resolved_lhs = self.fold_expr_sn(lhs);
-                let resolved_rhs = self.fold_expr_sn(rhs);
+                let resolved_lhs = self.fold_expr(lhs);
+                let resolved_rhs = self.fold_expr(rhs);
 
                 let resolved_type = match op.inner() {
                     // Operations that expect (Int, Int) -> Int
                     BinaryOper::Mul | BinaryOper::Div | BinaryOper::Mod | BinaryOper::Add | BinaryOper::Sub => {
                         self.binary_expect(resolved_lhs.clone(), resolved_rhs.clone(), SemanticType::Int, SemanticType::Int)
                     }
+
                     // Comparison ops (Int, Int) -> Bool or (char, char) -> Bool
                     BinaryOper::Lte | BinaryOper::Lt | BinaryOper::Gte | BinaryOper::Gt => {
                         if resolved_lhs.get_type(&self.renamer) != SemanticType::Int {
@@ -267,12 +253,12 @@ impl Folder for TypeResolver {
                 Expr::Binary(resolved_lhs, op, resolved_rhs, resolved_type)
             },
             Expr::Paren(expr, _ty) => {
-                let resolved_expr = self.fold_expr_sn(expr);
+                let resolved_expr = self.fold_expr(expr);
                 let resolved_type = resolved_expr.get_type(&self.renamer);
                 Expr::Paren(resolved_expr, resolved_type)
             },
             Expr::Error(span) => Expr::Error(span),
-        }
+        })
     }
 
     #[inline]
@@ -308,12 +294,12 @@ impl Folder for TypeResolver {
     ) -> SN<RValue<Self::OutputN, Self::OutputT>> {
         rvalue.map_inner(|inner| match inner {
             RValue::Expr(expr, _ty) => {
-                let resolved_expr = self.fold_expr_sn(expr);
+                let resolved_expr = self.fold_expr(expr);
                 let resolved_type = resolved_expr.get_type(&self.renamer);
                 RValue::Expr(resolved_expr, resolved_type)
             },
             RValue::ArrayLiter(exprs, ty) => {
-                let resolved_exprs = exprs.fold_with(|expr| self.fold_expr_sn(expr));
+                let resolved_exprs = exprs.fold_with(|expr| self.fold_expr(expr));
                 if resolved_exprs.is_empty() {
                     return RValue::ArrayLiter(
                         resolved_exprs,
@@ -340,8 +326,8 @@ impl Folder for TypeResolver {
                 )
             },
             RValue::NewPair(fst, snd, ty) => {
-                let resolved_fst = self.fold_expr_sn(fst);
-                let resolved_snd = self.fold_expr_sn(snd);
+                let resolved_fst = self.fold_expr(fst);
+                let resolved_snd = self.fold_expr(snd);
                 let resolved_type = SemanticType::Pair(Box::new(resolved_fst.get_type(&self.renamer)), Box::new(resolved_snd.get_type(&self.renamer)));
 
                 RValue::NewPair(
@@ -358,7 +344,7 @@ impl Folder for TypeResolver {
             } => {
                 let resolved_return_type = self.renamer.lookup_func_return_type(&func_name.clone());
                 let expected_args_types = self.renamer.lookup_func_args(&func_name.clone());
-                let resolved_args = args.fold_with(|arg| self.fold_expr_sn(arg));
+                let resolved_args = args.fold_with(|arg| self.fold_expr(arg));
                 if expected_args_types.len() != resolved_args.len() {
                     self.add_error(SemanticError::MismatchedArgCount(func_name.span(), expected_args_types.len(), resolved_args.len()));
                 }
@@ -434,7 +420,7 @@ impl Folder for TypeResolver {
                 Stat::Read(resolved_lvalue)
             },
             Stat::Free(expr) => {
-                let resolved_expr = self.fold_expr_sn(expr);
+                let resolved_expr = self.fold_expr(expr);
                 match resolved_expr.get_type(&self.renamer) {
                     SemanticType::Array(_) | SemanticType::Pair(_, _) => (),
                     _ => self.add_error(TypeMismatch(resolved_expr.span(),
@@ -444,7 +430,7 @@ impl Folder for TypeResolver {
                 Stat::Free(resolved_expr)
             },
             Stat::Return(expr) => {
-                let resolved_expr = self.fold_expr_sn(expr);
+                let resolved_expr = self.fold_expr(expr);
                 if let Some(expected_ret_type) = self.curr_func_ret_type.as_ref() {
                     let resolved_ret_value = resolved_expr.get_type(&self.renamer);
                     let expected_ret_type = expected_ret_type.to_semantic_type();
@@ -456,20 +442,20 @@ impl Folder for TypeResolver {
                 Stat::Return(resolved_expr)
             },
             Stat::Exit(expr) => {
-                let resolved_expr = self.fold_expr_sn(expr);
+                let resolved_expr = self.fold_expr(expr);
                 if resolved_expr.get_type(&self.renamer) != SemanticType::Int {
                     self.add_error(TypeMismatch(resolved_expr.span(), resolved_expr.get_type(&self.renamer), SemanticType::Int))
                 }
                 Stat::Exit(resolved_expr)
             },
-            Stat::Print(expr) => Stat::Print(self.fold_expr_sn(expr)),
-            Stat::Println(expr) => Stat::Println(self.fold_expr_sn(expr)),
+            Stat::Print(expr) => Stat::Print(self.fold_expr(expr)),
+            Stat::Println(expr) => Stat::Println(self.fold_expr(expr)),
             Stat::IfThenElse {
                 if_cond,
                 then_body,
                 else_body,
             } => {
-                let resolved_if_cond = self.fold_expr_sn(if_cond);
+                let resolved_if_cond = self.fold_expr(if_cond);
                 if resolved_if_cond.get_type(&self.renamer) != SemanticType::Bool {
                     self.add_error(TypeMismatch(resolved_if_cond.span() ,resolved_if_cond.get_type(&self.renamer), SemanticType::Bool));
                 }
@@ -480,7 +466,7 @@ impl Folder for TypeResolver {
                 }
             },
             Stat::WhileDo { while_cond, body } => {
-                let resolved_while_cond = self.fold_expr_sn(while_cond);
+                let resolved_while_cond = self.fold_expr(while_cond);
                 if resolved_while_cond.get_type(&self.renamer) != SemanticType::Bool {
                     self.add_error(TypeMismatch(resolved_while_cond.span() ,resolved_while_cond.get_type(&self.renamer), SemanticType::Bool));
                 }
@@ -520,15 +506,28 @@ impl Folder for TypeResolver {
         &mut self,
         elem: SN<ArrayElem<Self::N, Self::T>>,
     ) -> SN<ArrayElem<Self::OutputN, Self::OutputT>> {
-        let resolved_indices = (*elem).clone().indices.map_with(|index| self.fold_expr_sn(index));
-        // if resolved_indices.len() != 1 {
-        //     self.add_error(InvalidNumberOfIndexes(resolved_indices.len()));
-        // }
-        if resolved_indices.first().get_type(&self.renamer) != SemanticType::Int {
-            self.add_error(InvalidIndexType(resolved_indices.first().span(), resolved_indices.first().get_type(&self.renamer)));
+        let resolved_indices = (*elem).clone().indices.map_with(|index| self.fold_expr(index));
+        let arr_type = self.renamer.lookup_symbol_table(&elem.array_name);
+
+        let mut curr_arr = arr_type.clone();
+        for i in resolved_indices.iter() {
+            if i.get_type(&self.renamer) != SemanticType::Int {
+                self.add_error(InvalidIndexType(resolved_indices.first().span(), resolved_indices.first().get_type(&self.renamer)));
+            }
+
+            match curr_arr {
+                SemanticType::Array(inner) => {
+                    curr_arr = *inner;
+                }
+                SemanticType::AnyType => {}
+                SemanticType::Error(_) => {}
+                _ => {
+                    println!("ARRAY {:?}", curr_arr);
+                    self.add_error(SemanticError::TypeMismatch(elem.span().clone(), curr_arr.clone(), SemanticType::Array(Box::new(SemanticType::AnyType))));
+                }
+            }
         }
 
-        err_if_not_array(&self.renamer.lookup_symbol_table(&elem.array_name), &elem.span(), self);
         elem.map_inner(|elem| ArrayElem {
             array_name: self.fold_name_sn(elem.array_name),
             indices: { resolved_indices },
