@@ -108,6 +108,7 @@ impl IDMapEntry {
 pub struct Renamer {
     pub id_func_table: IdFuncTable,
     pub symbol_table: HashMap<Ident, SemanticType>,
+    pub symid_table: HashMap<usize, SemanticType>,
     errors: Vec<SemanticError>,
     in_main: bool,
     counter: usize,
@@ -123,6 +124,7 @@ impl Renamer {
             },
             identifier_map: HashMap::new(),
             symbol_table: HashMap::new(),
+            symid_table: HashMap::new(),
             counter: 0,
             in_main: true,
             errors: Vec::new(),
@@ -157,7 +159,7 @@ impl Renamer {
 
     #[inline]
     pub fn lookup_symbol_table(&self, renamed_name: &SN<RenamedName>) -> SemanticType {
-        if let Some(semantic_type) = self.symbol_table.get(&renamed_name.inner().ident) {
+        if let Some(semantic_type) = self.symid_table.get(&renamed_name.inner().uuid) {
             semantic_type.clone()
         } else {
             SemanticType::Error(renamed_name.span())
@@ -312,6 +314,8 @@ impl Folder for Renamer {
         self.identifier_map.insert(name.inner().clone(), map_entry);
         self.symbol_table
             .insert(name.inner().clone(), r#type.inner().to_semantic_type());
+        self.symid_table
+            .insert(unique_name.uuid, r#type.inner().to_semantic_type());
 
         Stat::VarDefinition {
             r#type,
@@ -351,6 +355,8 @@ impl Folder for Renamer {
         self.identifier_map.insert(name.inner().clone(), map_entry);
         self.symbol_table
             .insert(name.inner().clone(), param.r#type.to_semantic_type());
+        self.symid_table
+            .insert(unique_name.uuid, param.r#type.inner().to_semantic_type());
 
         FuncParam {
             r#type: param.r#type,
