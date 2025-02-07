@@ -149,7 +149,7 @@ fn main() -> ExitCode {
     // Done to appease the borrow checker while displaying errors
     let lexing_errs_not_empty = !lexing_errs.is_empty();
     for e in lexing_errs {
-        println!("Lexing error: {e}");
+        build_syntactic_report(&file_path, e.span().clone(), e.reason().to_string(), source.clone());
     }
     if lexing_errs_not_empty {
         return ExitCode::from(100);
@@ -168,18 +168,8 @@ fn main() -> ExitCode {
 
         for e in parse_errs {
             let mut colors = ColorGenerator::new();
-            println!("{:?}", file_path);
-            Report::build(ariadne::ReportKind::Error, (file_path, e.span().as_range()))
-                .with_message("Syntax error")
-                .with_code(69)
-                .with_label(
-                    Label::new((file_path, e.span().as_range()))
-                        .with_color(colors.next())
-                        .with_message(e.reason()),
-                )
-                .finish()
-                .print((file_path, Source::from(&source)))
-                .unwrap();
+            
+            build_syntactic_report(&file_path, e.span().clone(), e.reason().to_string(), source.clone());
         }
         if parse_errs_not_empty {
             return ExitCode::from(100);
@@ -188,18 +178,9 @@ fn main() -> ExitCode {
         let (renamed_ast, renamer) =
             rename(parsed.expect("If parse errors are not empty, parsed should be Valid"));
 
-        // println!("{renamed_ast:?}");
-        println!("Rename Errors: {:?}", renamer.return_errors());
-        // println!("{:?}", renamer.get_func_table());
-        println!("{:?}", renamer.get_symbol_table());
-
-        // println!("{:?}", renamed_ast);
-        println!("typed:");
-
         let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
 
         // println!("{typed_ast:?}");
-        println!("Type Errors2: {:?}", type_resolver.type_errors);
         for e in type_resolver.type_errors {
             match e {
                 SemanticError::TypeMismatch(span, got, expected) => {
@@ -220,6 +201,22 @@ fn main() -> ExitCode {
     }
 
     ExitCode::from(0)
+}
+
+
+pub fn build_syntactic_report(file_path: &String, span: SourcedSpan, reason: String, source: String) {
+    let mut colors = ColorGenerator::new();
+    Report::build(ariadne::ReportKind::Error, (file_path, span.as_range()))
+                .with_message("Syntax error")
+                .with_code(69)
+                .with_label(
+                    Label::new((file_path, span.as_range()))
+                        .with_color(colors.next())
+                        .with_message(reason),
+                )
+                .finish()
+                .print((file_path, Source::from(&source)))
+                .unwrap();
 }
 
 pub fn build_semantic_report(file_path: &String, span: SourcedSpan, reason: String, source: String) {

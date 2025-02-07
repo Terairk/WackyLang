@@ -294,7 +294,7 @@ where
     .try_map_with(|content, e| {
         let ct_len = content.len();
         if ct_len > 2 {
-            Err(Rich::custom(e.span(), "Too many characters you mf"))
+            Err(Rich::custom(e.span(), "Char literals should only have one character"))
         } else if ct_len == 0 {
             Err(Rich::custom(e.span(), "Empty character literal"))
         } else {
@@ -303,11 +303,11 @@ where
                     if c == '\\' {
                         Err(Rich::custom(e.span(), "Invalid control character"))
                     } else {
-                        Err(Rich::custom(e.span(), "Nope, an ill character"))
+                        Err(Rich::custom(e.span(), "Non-ASCII character"))
                     }
                 } else {
                     if ct_len == 2 {
-                        Err(Rich::custom(e.span(), "Too many characters you mf"))
+                        Err(Rich::custom(e.span(), "Char literals should only have one character"))
                     } else {
                         Ok(Token::CharLiter(c))
                     }
@@ -354,7 +354,13 @@ where
 
             for &(c, ill_formed) in &chars {
                 if ill_formed {
-                    return Err(Rich::custom(e.span(), "Bruh fuck no"));
+                    if c == '\\' {
+                        return Err(Rich::custom(e.span(), "Invalid control character"));
+                    } else if c == '\n' {
+                        return Err(Rich::custom(e.span(), "No new line"));
+                    } else {
+                        return Err(Rich::custom(e.span(), "Non-ASCII character"));
+                    }
                 }
 
                 string_builder.push(c);

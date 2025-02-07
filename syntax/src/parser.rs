@@ -113,7 +113,6 @@ where
             // give them precedence over identifiers
             array_elem.clone().sn().map(|elem| ast::Expr::ArrayElem(elem, ())),
             // Bootleg approach to get SN<Ident> from Ident parser
-            // TODO: check if this is the correct way to do this
             ident.clone().sn().map(|ident| ast::Expr::Ident(ident, ())),
             paren_expr.map(|paren| ast::Expr::Paren(paren, ())),
         ));
@@ -209,7 +208,7 @@ where
         ));
 
         // as of now, no other type of expression exists
-        expr.map(SN::into_inner) // TODO: this removes span from output. If this is not desirable, undo this line
+        expr.map(SN::into_inner)
     })
 }
 
@@ -410,7 +409,6 @@ where
         .map(ast::Stat::Scoped);
 
     // statement parser
-    // TODO: figure out labels and error recovery
     let stat = choice((
         just(Token::Skip).to(ast::Stat::Skip),
         variable_definition,
@@ -499,7 +497,6 @@ where
     });
 
     // program parser
-    // TODO: figure out error recovery and proper labeling
     let program = just(Token::Begin)
         .ignore_then(
             group((
