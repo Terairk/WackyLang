@@ -12,7 +12,7 @@ pub enum SemanticError {
     AssignmentWithBothSidesUnknown(SourcedSpan),
     MismatchedArgCount(SourcedSpan, usize, usize),
     InvalidIndexType(SourcedSpan, SemanticType),
-    InvalidNumberOfIndexes(usize), // TODO: add span to this error variant
+    InvalidNumberOfIndexes(usize),
     UndefinedIdent(SN<Ident>),
     ReturnInMain,
 }

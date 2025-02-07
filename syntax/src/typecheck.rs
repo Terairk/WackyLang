@@ -192,7 +192,7 @@ impl Folder for TypeResolver {
             return_type: func.return_type, // Type remains unchanged
             name: func.name,
             params: func.params.fold_with(|param| self.fold_func_param(param)),
-            body: self.fold_stat_block_sn(func.body),
+            body: self.fold_stat_block(func.body),
         };
         self.curr_func_ret_type = None;
         return func;
@@ -307,8 +307,8 @@ impl Folder for TypeResolver {
                 }
                 Stat::IfThenElse {
                     if_cond: resolved_if_cond,
-                    then_body: self.fold_stat_block_sn(then_body),
-                    else_body: self.fold_stat_block_sn(else_body),
+                    then_body: self.fold_stat_block(then_body),
+                    else_body: self.fold_stat_block(else_body),
                 }
             }
             Stat::WhileDo { while_cond, body } => {
@@ -322,10 +322,10 @@ impl Folder for TypeResolver {
                 }
                 Stat::WhileDo {
                     while_cond: resolved_while_cond,
-                    body: self.fold_stat_block_sn(body),
+                    body: self.fold_stat_block(body),
                 }
             }
-            Stat::Scoped(body) => Stat::Scoped(self.fold_stat_block_sn(body)),
+            Stat::Scoped(body) => Stat::Scoped(self.fold_stat_block(body)),
         }
     }
 

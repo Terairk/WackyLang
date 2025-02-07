@@ -182,7 +182,7 @@ impl Folder for Renamer {
 
         let folded_funcs = program.funcs.fold_with(|func| self.fold_func(func));
 
-        let folded_body = self.fold_stat_block_sn(program.body);
+        let folded_body = self.fold_stat_block(program.body);
 
         // Return type depends on individual implementation
         // Just make sure make_program returns Self::Output
@@ -195,7 +195,7 @@ impl Folder for Renamer {
         let new_map = self.copy_id_map_with_false();
         let old_id_map = mem::replace(&mut self.identifier_map, new_map);
         let params = func.params.fold_with(|param| self.fold_func_param(param));
-        let body = self.with_temporary_map(|slf| slf.fold_stat_block_sn(func.body));
+        let body = self.with_temporary_map(|slf| slf.fold_stat_block(func.body));
         self.identifier_map = old_id_map;
         self.in_main = true;
 
