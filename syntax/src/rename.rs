@@ -284,7 +284,7 @@ impl Folder for Renamer {
         &mut self,
         r#type: SN<Type>,
         name: SN<Self::N>,
-        rvalue: RValue<Self::N, Self::T>,
+        rvalue: SN<RValue<Self::N, Self::T>>,
     ) -> Stat<Self::OutputN, Self::OutputT> {
         // Sorry about the lots of clones here
         // Evaluate the rhs before creating unique name to not allow int x = x

@@ -15,7 +15,6 @@ pub enum SemanticType {
     Array(Box<SemanticType>),
     Pair(Box<SemanticType>, Box<SemanticType>),
     ErasedPair,
-    Unknown,
     AnyType,
     Error(SourcedSpan), // For invalid types
 }
@@ -140,7 +139,6 @@ impl SemanticType {
             (ErasedPair, Pair(_, _)) => true,
             (Pair(_, _), ErasedPair) => true,
             (ErasedPair, ErasedPair) => true,
-            (Unknown, Unknown) => true,
             _ => false,
         }
     }

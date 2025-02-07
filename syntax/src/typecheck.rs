@@ -1,21 +1,21 @@
 use crate::ast::*;
 use crate::types::{SemanticType, Type};
 use crate::fold_program::{Folder, NonEmptyFold};
-use crate::source::{SourcedNode, SourcedSpan};
+use crate::source::{SourcedNode, SourcedSpan, WithSourceId};
 use crate::fold_program::{BoxedSliceFold, };
 use crate::rename::{RenamedName, SemanticError};
-use crate::rename::SemanticError::{InvalidIndexType, InvalidNumberOfIndexes, SimpleTypeMismatch, TypeMismatch};
+use crate::rename::SemanticError::{InvalidIndexType, SimpleTypeMismatch, TypeMismatch};
 use crate::rename::Renamer;
 
 type SN<T> = SourcedNode<T>;
 type RenamedAst = Program<RenamedName, ()>;
 type TypedAst = Program<RenamedName, SemanticType>;
-impl Expr<RenamedName, SemanticType>{
+impl SN<Expr<RenamedName, SemanticType>> {
     pub fn get_type(&self, renamer: &Renamer) -> SemanticType {
-        match self {
+        match (**self).clone() {
             Expr::Liter(_, t) => t.clone(),
             Expr::Ident(_, t) => t.clone(),
-            Expr::ArrayElem(arr_elem, _) => arr_elem.get_type(&renamer),
+            Expr::ArrayElem(arr_elem, _) => arr_elem.get_type(&renamer).unwrap_or(SemanticType::Error(self.span())),
             Expr::Unary(_, _, t) => t.clone(),
             Expr::Binary(_, _, _, t) => t.clone(),
             Expr::Paren(_, t) => t.clone(),
@@ -24,55 +24,58 @@ impl Expr<RenamedName, SemanticType>{
     }
 }
 
-impl LValue<RenamedName, SemanticType> {
+impl SN<LValue<RenamedName, SemanticType>> {
     pub fn get_type(&self, renamer: &Renamer) -> SemanticType {
-        match self {
-            LValue::ArrayElem(arr_elem, _t) => arr_elem.get_type(&renamer),
-            LValue::PairElem(pair_elem, _t) => pair_elem.get_type(&renamer),
+        match (**self).clone() {
+            LValue::ArrayElem(arr_elem, _t) => arr_elem.get_type(&renamer).unwrap_or(SemanticType::Error(self.span())),
+            LValue::PairElem(pair_elem, _t) => pair_elem.get_type(&renamer).unwrap_or(SemanticType::Error(self.span())),
             LValue::Ident(_n, t) => t.clone(),
         }
     }
 }
 
-impl RValue<RenamedName, SemanticType> {
+impl SN<RValue<RenamedName, SemanticType>> {
     pub fn get_type(&self, renamer: &Renamer) -> SemanticType {
-        match self {
+        match (**self).clone() {
             RValue::Expr(expr, t) => expr.get_type(&renamer),
             RValue::ArrayLiter(_, t) => t.clone(),
             RValue::NewPair(_, _, t) => t.clone(),
             RValue::PairElem(pelem) => {
-                pelem.get_type(renamer)
+                pelem.get_type(&renamer).unwrap_or(SemanticType::Error(self.span()))
             },
             RValue::Call { return_type, .. } => return_type.clone(),
         }
     }
 }
 
-impl PairElem<RenamedName, SemanticType> {
-    pub fn get_type(&self, renamer: &Renamer) -> SemanticType {
-        match self {
+impl SN<PairElem<RenamedName, SemanticType>> {
+    pub fn get_type(&self, renamer: &Renamer) -> Option<SemanticType> {
+        match (**self).clone() {
             PairElem::Fst(lvalue_sn) => {
-                match lvalue_sn.inner().get_type(renamer) {
-                    SemanticType::Pair(fst, _) => *fst.clone(),
-                    _ => SemanticType::Unknown // TODO: Replace with smth else
+                match lvalue_sn.get_type(renamer) {
+                    SemanticType::Pair(fst, _) => Some(*fst.clone()),
+                    SemanticType::ErasedPair => Some(SemanticType::AnyType),
+                    _ => None // TODO: Replace with smth else
                 }
             },
             PairElem::Snd(lvalue_sn) => {
-                match lvalue_sn.inner().get_type(renamer) {
-                    SemanticType::Pair(_, snd) => *snd.clone(),
-                    _ => SemanticType::Unknown // TODO: Replace with smth else
+                match lvalue_sn.get_type(renamer) {
+                    SemanticType::Pair(_, snd) => Some(*snd.clone()),
+                    SemanticType::ErasedPair => Some(SemanticType::AnyType),
+                    _ => None // TODO: Replace with smth else
                 }
             },
         }
     }
 }
 
-impl ArrayElem<RenamedName, SemanticType> {
-    pub fn get_type(&self, renamer: &Renamer) -> SemanticType {
+impl SN<ArrayElem<RenamedName, SemanticType>> {
+    pub fn get_type(&self, renamer: &Renamer) -> Option<SemanticType> {
         let resolved_type = renamer.lookup_symbol_table(&self.array_name);
         match resolved_type {
-            SemanticType::Array(elem_type) => *elem_type.clone(),
-            _ => SemanticType::Unknown // TODO: replase with smth else
+            SemanticType::Array(elem_type) => Some(*elem_type.clone()),
+            SemanticType::AnyType => Some(SemanticType::AnyType),
+            _ => None // TODO: replase with smth else
         }
     }
 }
@@ -118,6 +121,38 @@ impl TypeResolver {
         } else {
             result_type
         }
+    }
+}
+
+
+fn err_if_not_array(resolved_type: &SemanticType, span: &WithSourceId, resolver: &mut TypeResolver) {
+    if let SemanticType::Array(_) = resolved_type {
+
+    } else if let SemanticType::Error(_) = resolved_type {
+
+    } else if SemanticType::AnyType == *resolved_type {
+
+    } else {
+        println!("ARRAY {:?}", resolved_type);
+        resolver.add_error(SemanticError::TypeMismatch(span.clone(), resolved_type.clone(), SemanticType::Array(Box::new(SemanticType::AnyType))));
+    }
+}
+
+
+fn err_if_not_pair(resolved_type: &SemanticType, span: &WithSourceId, resolver: &mut TypeResolver) {
+    
+    println!("pair {:?}", resolved_type);
+    if let SemanticType::Pair(_, _) = resolved_type {
+
+    } else if let SemanticType::ErasedPair = resolved_type {
+
+    } else if let SemanticType::Error(_) = resolved_type {
+
+    } else if SemanticType::AnyType == *resolved_type {
+
+    } else {
+        println!("PAIR {:?}", resolved_type);
+        resolver.add_error(SemanticError::TypeMismatch(span.clone(), resolved_type.clone(), SemanticType::Pair(Box::new(SemanticType::AnyType), Box::new(SemanticType::AnyType))));
     }
 }
 
@@ -247,31 +282,35 @@ impl Folder for TypeResolver {
     #[inline]
     fn fold_lvalue(
         &mut self,
-        lvalue: LValue<Self::N, Self::T>,
-    ) -> LValue<Self::OutputN, Self::OutputT> {
-        match lvalue {
+        lvalue: SN<LValue<Self::N, Self::T>>,
+    ) -> SN<LValue<Self::OutputN, Self::OutputT>> {
+        let span = lvalue.span().clone();
+        lvalue.map_inner(|inner| match inner {
             LValue::Ident(name, _ty) => {
                 let resolved_type = self.renamer.lookup_symbol_table(&name);
                 LValue::Ident(self.fold_name_sn(name), resolved_type)
             },
             LValue::ArrayElem(elem, _ty) => {
-                let resolved_type = self.renamer.lookup_symbol_table(&elem.array_name);
-                LValue::ArrayElem(self.fold_array_elem(elem), resolved_type)
+                let resolved_elem = self.fold_array_elem(elem);
+                let resolved_type = resolved_elem.get_type(&self.renamer).unwrap_or(SemanticType::Error(span.clone()));
+                
+                LValue::ArrayElem(resolved_elem, resolved_type)
             }
             LValue::PairElem(elem, ty) => {
-                let resolved_elem = self.fold_pair_elem_sn(elem);
-                let resolved_type = resolved_elem.inner().get_type(&self.renamer);
+                let resolved_elem = self.fold_pair_elem(elem);
+                let resolved_type = resolved_elem.get_type(&self.renamer).unwrap_or(SemanticType::Error(span.clone()));
+
                 LValue::PairElem(resolved_elem, resolved_type)
             }
-        }
+        })
     }
 
     #[inline]
     fn fold_rvalue(
         &mut self,
-        rvalue: RValue<Self::N, Self::T>,
-    ) -> RValue<Self::OutputN, Self::OutputT> {
-        match rvalue {
+        rvalue: SN<RValue<Self::N, Self::T>>,
+    ) -> SN<RValue<Self::OutputN, Self::OutputT>> {
+        rvalue.map_inner(|inner| match inner {
             RValue::Expr(expr, _ty) => {
                 let resolved_expr = self.fold_expr_sn(expr);
                 let resolved_type = resolved_expr.get_type(&self.renamer);
@@ -338,7 +377,7 @@ impl Folder for TypeResolver {
                     return_type: resolved_return_type,
                 }
             },
-        }
+        })
     }
 
     #[inline]
@@ -346,7 +385,7 @@ impl Folder for TypeResolver {
         &mut self,
         r#type: SN<Type>,
         name: SN<Self::N>,
-        rvalue: RValue<Self::N, Self::T>,
+        rvalue: SN<RValue<Self::N, Self::T>>,
     ) -> Stat<Self::OutputN, Self::OutputT> {
         let expected_type = r#type.to_semantic_type();
         let resolved_rvalue = self.fold_rvalue(rvalue);
@@ -457,29 +496,43 @@ impl Folder for TypeResolver {
     #[inline]
     fn fold_pair_elem(
         &mut self,
-        elem: PairElem<Self::N, Self::T>,
-    ) -> PairElem<Self::OutputN, Self::OutputT> {
-        match elem {
-            PairElem::Fst(expr) => PairElem::Fst(self.fold_lvalue_sn(expr)),
-            PairElem::Snd(expr) => PairElem::Snd(self.fold_lvalue_sn(expr)),
-        }
+        elem: SN<PairElem<Self::N, Self::T>>,
+    ) -> SN<PairElem<Self::OutputN, Self::OutputT>> {
+        let span = elem.span().clone();
+        elem.map_inner(|inner| match inner {
+            PairElem::Fst(expr) => {
+                let lval = self.fold_lvalue(expr);
+                err_if_not_pair(&lval.get_type(&self.renamer), &span, self);
+                
+                PairElem::Fst(lval)
+            },
+            PairElem::Snd(expr) => {
+                let lval = self.fold_lvalue(expr);
+                err_if_not_pair(&lval.get_type(&self.renamer), &span, self);
+
+                PairElem::Snd(lval)
+            },
+        })
     }
+    
     #[inline]
     fn fold_array_elem(
         &mut self,
-        elem: ArrayElem<Self::N, Self::T>,
-    ) -> ArrayElem<Self::OutputN, Self::OutputT> {
-        let resolved_indices = elem.indices.map_with(|index| self.fold_expr_sn(index));
+        elem: SN<ArrayElem<Self::N, Self::T>>,
+    ) -> SN<ArrayElem<Self::OutputN, Self::OutputT>> {
+        let resolved_indices = (*elem).clone().indices.map_with(|index| self.fold_expr_sn(index));
         // if resolved_indices.len() != 1 {
         //     self.add_error(InvalidNumberOfIndexes(resolved_indices.len()));
         // }
         if resolved_indices.first().get_type(&self.renamer) != SemanticType::Int {
             self.add_error(InvalidIndexType(resolved_indices.first().span(), resolved_indices.first().get_type(&self.renamer)));
         }
-        ArrayElem {
+
+        err_if_not_array(&self.renamer.lookup_symbol_table(&elem.array_name), &elem.span(), self);
+        elem.map_inner(|elem| ArrayElem {
             array_name: self.fold_name_sn(elem.array_name),
             indices: { resolved_indices },
-        }
+        })
     }
 }
 

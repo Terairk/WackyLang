@@ -128,7 +128,7 @@ pub trait Folder {
         &mut self,
         r#type: SN<Type>,
         name: SN<Self::N>,
-        rvalue: RValue<Self::N, Self::T>,
+        rvalue: SN<RValue<Self::N, Self::T>>,
     ) -> Stat<Self::OutputN, Self::OutputT> {
         Stat::VarDefinition {
             r#type,
@@ -148,64 +148,49 @@ pub trait Folder {
     #[inline]
     fn fold_lvalue(
         &mut self,
-        lvalue: LValue<Self::N, Self::T>,
-    ) -> LValue<Self::OutputN, Self::OutputT> {
-        match lvalue {
+        lvalue: SN<LValue<Self::N, Self::T>>,
+    ) -> SN<LValue<Self::OutputN, Self::OutputT>> {
+        lvalue.map_inner(|inner| match inner {
             LValue::Ident(name, ty) => LValue::Ident(self.fold_name_sn(name), self.fold_type(ty)),
             LValue::ArrayElem(elem, ty) => {
                 LValue::ArrayElem(self.fold_array_elem(elem), self.fold_type(ty))
             }
             LValue::PairElem(elem, ty) => {
-                LValue::PairElem(self.fold_pair_elem_sn(elem), self.fold_type(ty))
+                LValue::PairElem(self.fold_pair_elem(elem), self.fold_type(ty))
             }
-        }
-    }
-
-    #[inline]
-    fn fold_lvalue_sn(
-        &mut self,
-        lvalue: SN<LValue<Self::N, Self::T>>,
-    ) -> SN<LValue<Self::OutputN, Self::OutputT>> {
-        lvalue.map_inner(|inner| self.fold_lvalue(inner))
+        })
     }
 
     #[inline]
     fn fold_rvalue(
         &mut self,
-        rvalue: RValue<Self::N, Self::T>,
-    ) -> RValue<Self::OutputN, Self::OutputT> {
-        match rvalue {
-            RValue::Expr(expr, ty) => { 
-                RValue::Expr(expr.map_inner(|inner| self.fold_expr(inner)), self.fold_type(ty)) 
-            },
-            RValue::ArrayLiter(exprs, ty) => RValue::ArrayLiter(
-                exprs.fold_with(|expr| self.fold_expr_sn(expr)),
-                self.fold_type(ty),
-            ),
-            RValue::NewPair(fst, snd, ty) => RValue::NewPair(
-                self.fold_expr_sn(fst),
-                self.fold_expr_sn(snd),
-                self.fold_type(ty),
-            ),
-            RValue::PairElem(pair_elem) => RValue::PairElem(self.fold_pair_elem(pair_elem)),
-            RValue::Call {
-                func_name,
-                args,
-                return_type,
-            } => RValue::Call {
-                func_name: self.fold_funcname_sn(func_name),
-                args: args.fold_with(|arg| self.fold_expr_sn(arg)),
-                return_type: self.fold_type(return_type),
-            },
-        }
-    }
-
-    #[inline]
-    fn fold_rvalue_sn(
-        &mut self,
         value: SN<RValue<Self::N, Self::T>>,
     ) -> SN<RValue<Self::OutputN, Self::OutputT>> {
-        value.map_inner(|inner| self.fold_rvalue(inner))
+        value.map_inner(|inner| 
+            match inner {
+                RValue::Expr(expr, ty) => { 
+                    RValue::Expr(expr.map_inner(|inner| self.fold_expr(inner)), self.fold_type(ty)) 
+                },
+                RValue::ArrayLiter(exprs, ty) => RValue::ArrayLiter(
+                    exprs.fold_with(|expr| self.fold_expr_sn(expr)),
+                    self.fold_type(ty),
+                ),
+                RValue::NewPair(fst, snd, ty) => RValue::NewPair(
+                    self.fold_expr_sn(fst),
+                    self.fold_expr_sn(snd),
+                    self.fold_type(ty),
+                ),
+                RValue::PairElem(pair_elem) => RValue::PairElem(self.fold_pair_elem(pair_elem)),
+                RValue::Call {
+                    func_name,
+                    args,
+                    return_type,
+                } => RValue::Call {
+                    func_name: self.fold_funcname_sn(func_name),
+                    args: args.fold_with(|arg| self.fold_expr_sn(arg)),
+                    return_type: self.fold_type(return_type),
+                },
+            })
     }
 
     #[inline]
@@ -256,31 +241,23 @@ pub trait Folder {
     #[inline]
     fn fold_array_elem(
         &mut self,
-        elem: ArrayElem<Self::N, Self::T>,
-    ) -> ArrayElem<Self::OutputN, Self::OutputT> {
-        ArrayElem {
+        elem: SN<ArrayElem<Self::N, Self::T>>,
+    ) -> SN<ArrayElem<Self::OutputN, Self::OutputT>> {
+        elem.map_inner(|elem| ArrayElem {
             array_name: self.fold_name_sn(elem.array_name),
             indices: { elem.indices.map_with(|index| self.fold_expr_sn(index)) },
-        }
+        })
     }
 
     #[inline]
     fn fold_pair_elem(
         &mut self,
-        elem: PairElem<Self::N, Self::T>,
-    ) -> PairElem<Self::OutputN, Self::OutputT> {
-        match elem {
-            PairElem::Fst(expr) => PairElem::Fst(self.fold_lvalue_sn(expr)),
-            PairElem::Snd(expr) => PairElem::Snd(self.fold_lvalue_sn(expr)),
-        }
-    }
-
-    #[inline]
-    fn fold_pair_elem_sn(
-        &mut self,
         elem: SN<PairElem<Self::N, Self::T>>,
     ) -> SN<PairElem<Self::OutputN, Self::OutputT>> {
-        elem.map_inner(|inner| self.fold_pair_elem(inner))
+        elem.map_inner(|inner| match inner {
+            PairElem::Fst(expr) => PairElem::Fst(self.fold_lvalue(expr)),
+            PairElem::Snd(expr) => PairElem::Snd(self.fold_lvalue(expr)),
+        })
     }
 
     #[inline]
