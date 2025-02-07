@@ -111,7 +111,10 @@ where
             liter.map(|lit| ast::Expr::Liter(lit, ())),
             // array elements begin with identifiers, so
             // give them precedence over identifiers
-            array_elem.clone().sn().map(|elem| ast::Expr::ArrayElem(elem, ())),
+            array_elem
+                .clone()
+                .sn()
+                .map(|elem| ast::Expr::ArrayElem(elem, ())),
             // Bootleg approach to get SN<Ident> from Ident parser
             ident.clone().sn().map(|ident| ast::Expr::Ident(ident, ())),
             paren_expr.map(|paren| ast::Expr::Paren(paren, ())),
@@ -339,7 +342,8 @@ where
     let pair_elem = choice((
         just(Token::Fst).ignore_then(lvalue.clone().sn().map(ast::PairElem::Fst)),
         just(Token::Snd).ignore_then(lvalue.clone().sn().map(ast::PairElem::Snd)),
-    )).sn();
+    ))
+    .sn();
 
     // function call parser
     let function_call = just(Token::Call).ignore_then(
@@ -369,7 +373,8 @@ where
         //       backtracking control flow, so until we figure out a way to "propagate"
         //       the erroneous state of the parser, expressions will have to be parsed last
         expr.clone().map(|e| ast::RValue::Expr(e, ())),
-    )).sn();
+    ))
+    .sn();
 
     // variable definition parser
     let variable_definition = group((
@@ -500,7 +505,7 @@ where
             group((
                 func.repeated()
                     .collect::<Vec<_>>()
-                    .map(Vec::into_boxed_slice),
+                    .map(|v| v.into_boxed_slice()),
                 stat_chain,
             ))
             .map_group(ast::Program::new),

@@ -86,6 +86,9 @@ const TEST_PROGRAM: &str =
 const SEMANTIC_ERR_PROGRAM: &str =
     include_str!("../../test_cases/invalid/semanticErr/multiple/ifAndWhileErrs.wacc");
 
+static SEMANTIC_ERR_CODE: u8 = 200;
+static SYNTAX_ERR_CODE: u8 = 100;
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
@@ -102,12 +105,6 @@ fn main() -> ExitCode {
         }
     };
 
-    // handle special case for labts carrot
-    if source == SEMANTIC_ERR_PROGRAM {
-        eprintln!("Semantic error(s) found!");
-        return ExitCode::from(200);
-    }
-
     // let source = TEST_PROGRAM;
     // let file_path = "test_cases/invalid/syntaxErr/basic/beginNoend.wacc";
     let source_id = StrSourceId::repl();
@@ -123,8 +120,6 @@ fn main() -> ExitCode {
     // Done to appease the borrow checker while displaying errors
     let lexing_errs_not_empty = !lexing_errs.is_empty();
     for e in lexing_errs {
-        let span = e.span().clone();
-        println!("{:?}", span.as_range());
         build_syntactic_report(
             file_path,
             e.span().clone(),
@@ -132,8 +127,9 @@ fn main() -> ExitCode {
             source.clone(),
         );
     }
+
     if lexing_errs_not_empty {
-        return ExitCode::from(100);
+        return ExitCode::from(SYNTAX_ERR_CODE);
     }
 
     if let Some(tokens) = tokens {
@@ -148,34 +144,47 @@ fn main() -> ExitCode {
         let parse_errs_not_empty = !parse_errs.is_empty();
 
         for e in parse_errs {
-            build_syntactic_report(
-                &file_path,
-                e.span().clone(),
-                e.reason().to_string(),
-                source.clone(),
-            );
+            // check if span is valid because ariadne will complain
+            let range = e.span().as_range();
+            let sourceid = e.span().source_id();
+            let (start, mut end) = (range.start, range.end);
+            if start > end {
+                end = start;
+            }
+            let new_span = SourcedSpan::new(sourceid.clone(), (start..end).into());
+            build_syntactic_report(&file_path, new_span, e.reason().to_string(), source.clone());
         }
         if parse_errs_not_empty {
-            return ExitCode::from(100);
+            return ExitCode::from(SYNTAX_ERR_CODE);
         }
 
         let (renamed_ast, renamer) =
             rename(parsed.expect("If parse errors are not empty, parsed should be Valid"));
 
         let renamed_errors = renamer.return_errors();
-        for e in renamed_errors {
-            build_semantic_error_report(file_path, &e, source.clone());
+        let renamed_errors_not_empty = !renamed_errors.is_empty();
+        if renamed_errors_not_empty {
+            for e in renamed_errors {
+                build_semantic_error_report(file_path, &e, source.clone());
+            }
         }
 
         let (_typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
         // println!("{_typed_ast:?}");
         let type_errors = type_resolver.type_errors;
-        for e in type_errors {
-            build_semantic_error_report(file_path, &e, source.clone());
+        if !type_errors.is_empty() {
+            for e in type_errors {
+                build_semantic_error_report(file_path, &e, source.clone());
+            }
+            return ExitCode::from(SEMANTIC_ERR_CODE);
+        }
+
+        if renamed_errors_not_empty {
+            return ExitCode::from(SEMANTIC_ERR_CODE);
         }
     }
 
-    ExitCode::from(0)
+    ExitCode::SUCCESS
 }
 
 pub fn build_syntactic_report(
@@ -210,7 +219,10 @@ pub fn semantic_report_helper(
     .with_config(config)
     .with_message(message)
     .with_code(420)
-    .with_label(Label::new((file_path, span.clone().as_range())).with_message(semantic_error_to_reason(error)))
+    .with_label(
+        Label::new((file_path, span.clone().as_range()))
+            .with_message(semantic_error_to_reason(error)),
+    )
     .finish()
     .print((file_path, Source::from(source)))
     .unwrap();
@@ -223,7 +235,13 @@ pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, so
             semantic_report_helper(file_path, "Type Error", error, span, source);
         }
         SemanticError::DuplicateIdent(ident) => {
-            semantic_report_helper(file_path, "Duplicate Identifier", error, &ident.span(), source);
+            semantic_report_helper(
+                file_path,
+                "Duplicate Identifier",
+                error,
+                &ident.span(),
+                source,
+            );
         }
         // TODO: Add Span to this case
         SemanticError::InvalidNumberOfIndexes(_count) => {
@@ -240,6 +258,7 @@ pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, so
                 SemanticError::ArityMismatch(node, _, _) => node.span().clone(),
                 SemanticError::AssignmentWithBothSidesUnknown(span) => span.clone(),
                 SemanticError::TypeMismatch(span, _, _) => span.clone(),
+                SemanticError::InvalidFreeType(span, _) => span.clone(),
                 SemanticError::MismatchedArgCount(span, _, _) => span.clone(),
                 SemanticError::InvalidIndexType(span, _) => span.clone(),
                 SemanticError::UndefinedIdent(node) => node.span().clone(),

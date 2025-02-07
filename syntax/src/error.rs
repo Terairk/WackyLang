@@ -12,6 +12,7 @@ pub enum SemanticError {
     AssignmentWithBothSidesUnknown(SourcedSpan),
     MismatchedArgCount(SourcedSpan, usize, usize),
     InvalidIndexType(SourcedSpan, SemanticType),
+    InvalidFreeType(SourcedSpan, SemanticType),
     InvalidNumberOfIndexes(usize),
     UndefinedIdent(SN<Ident>),
     ReturnInMain,
@@ -55,6 +56,12 @@ pub fn semantic_error_to_reason(error: &SemanticError) -> String {
         }
         SemanticError::ReturnInMain => {
             format!("Cannot return from main function")
+        }
+        SemanticError::InvalidFreeType(_span, actual) => {
+            format!(
+                "Cannot free {} type, can only free an array or a pair",
+                actual
+            )
         }
     }
 }

@@ -26,7 +26,7 @@ impl fmt::Debug for RenamedName {
 
 impl RenamedName {
     #[inline]
-    fn new_sn(counter: &mut usize, ident: SN<Ident>) -> SN<Self> {
+    fn new_sn(counter: &mut usize, ident: &SN<Ident>) -> SN<Self> {
         // would rather crash in debug builds than define a saturating
         // so we can change this to u128
         // though I suspect we'd have bigger problems before then
@@ -222,7 +222,7 @@ impl Folder for Renamer {
             };
         }
 
-        let unique_name = RenamedName::new_sn(&mut self.counter, name.clone());
+        let unique_name = RenamedName::new_sn(&mut self.counter, &name);
         let map_entry = IDMapEntry::new(unique_name.clone(), true);
         self.identifier_map.insert(name.inner().clone(), map_entry);
 
@@ -269,7 +269,7 @@ impl Folder for Renamer {
             };
         }
 
-        let unique_name = RenamedName::new_sn(&mut self.counter, name.clone());
+        let unique_name = RenamedName::new_sn(&mut self.counter, &name);
         let map_entry = IDMapEntry::new(unique_name.clone(), true);
         self.identifier_map.insert(name.inner().clone(), map_entry);
 
