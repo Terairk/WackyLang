@@ -1,6 +1,6 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
-use ariadne::{Color, ColorGenerator, Label, Report, Source};
+use ariadne::{CharSet, Color, ColorGenerator, Label, Report, Source};
 use chumsky::error::RichReason;
 use chumsky::input::WithContext;
 use chumsky::prelude::Input as _;
@@ -10,11 +10,11 @@ use std::ops::{Deref, DerefMut, Range};
 use std::process::ExitCode;
 use wacc_syntax::fold_program::Folder;
 use wacc_syntax::parser::program_parser;
+use wacc_syntax::rename::SemanticError;
 use wacc_syntax::rename::{rename, Renamer};
 use wacc_syntax::source::{SourcedSpan, StrSourceId};
 use wacc_syntax::token::{lexer, Token};
 use wacc_syntax::typecheck::{typecheck, TypeResolver};
-use wacc_syntax::rename::SemanticError;
 
 #[allow(dead_code)]
 const TEST_EXPR: &str = r#"
@@ -82,35 +82,11 @@ end
 "#;
 
 #[allow(dead_code)]
-const TEST_PROGRAM: &str = r#"
-# begin missing closing end
-
-# Output:
-# #syntax_error#
-
-# Exit:
-# 100
-
-# Program:
-
-begin skip
-"#;
+const TEST_PROGRAM: &str =
+    include_str!("../../test_cases/valid/function/simple_functions/asciiTable.wacc");
 #[allow(dead_code)]
-const SEMANTIC_ERR_PROGRAM: &str = r#"
-# type mismatch: int <- bool
-
-# Output:
-# #semantic_error#
-
-# Exit:
-# 200
-
-# Program:
-
-begin
-  int i = true
-end
-"#;
+const SEMANTIC_ERR_PROGRAM: &str =
+    include_str!("../../test_cases/invalid/semanticErr/multiple/ifAndWhileErrs.wacc");
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
@@ -149,7 +125,14 @@ fn main() -> ExitCode {
     // Done to appease the borrow checker while displaying errors
     let lexing_errs_not_empty = !lexing_errs.is_empty();
     for e in lexing_errs {
-        build_syntactic_report(&file_path, e.span().clone(), e.reason().to_string(), source.clone());
+        let span = e.span().clone();
+        println!("{:?}", span.as_range());
+        build_syntactic_report(
+            file_path,
+            e.span().clone(),
+            e.reason().to_string(),
+            source.clone(),
+        );
     }
     if lexing_errs_not_empty {
         return ExitCode::from(100);
@@ -167,9 +150,12 @@ fn main() -> ExitCode {
         let parse_errs_not_empty = !parse_errs.is_empty();
 
         for e in parse_errs {
-            let mut colors = ColorGenerator::new();
-            
-            build_syntactic_report(&file_path, e.span().clone(), e.reason().to_string(), source.clone());
+            build_syntactic_report(
+                &file_path,
+                e.span().clone(),
+                e.reason().to_string(),
+                source.clone(),
+            );
         }
         if parse_errs_not_empty {
             return ExitCode::from(100);
@@ -184,11 +170,15 @@ fn main() -> ExitCode {
         for e in type_resolver.type_errors {
             match e {
                 SemanticError::TypeMismatch(span, got, expected) => {
-                    let reason = format!("Type mismatch: expected {}, but recieved {}", expected, got);
+                    let reason =
+                        format!("Type mismatch: expected {}, but recieved {}", expected, got);
                     build_semantic_report(file_path, span, reason, source.clone())
                 }
                 SemanticError::MismatchedArgCount(span, expected, got) => {
-                    let reason = format!("Wrong number of arguments: expected {} arguments, but got {}", expected, got);
+                    let reason = format!(
+                        "Wrong number of arguments: expected {} arguments, but got {}",
+                        expected, got
+                    );
                     build_semantic_report(file_path, span, reason, source.clone())
                 }
                 SemanticError::InvalidIndexType(span, got) => {
@@ -203,36 +193,40 @@ fn main() -> ExitCode {
     ExitCode::from(0)
 }
 
-
-pub fn build_syntactic_report(file_path: &String, span: SourcedSpan, reason: String, source: String) {
-    let mut colors = ColorGenerator::new();
+pub fn build_syntactic_report(
+    file_path: &String,
+    span: SourcedSpan,
+    reason: String,
+    source: String,
+) {
+    let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
     Report::build(ariadne::ReportKind::Error, (file_path, span.as_range()))
-                .with_message("Syntax error")
-                .with_code(69)
-                .with_label(
-                    Label::new((file_path, span.as_range()))
-                        .with_color(colors.next())
-                        .with_message(reason),
-                )
-                .finish()
-                .print((file_path, Source::from(&source)))
-                .unwrap();
+        .with_config(config)
+        .with_message("Syntax error")
+        .with_code(69)
+        .with_label(Label::new((file_path, span.as_range())).with_message(reason))
+        .finish()
+        .print((file_path, Source::from(&source)))
+        .unwrap();
 }
 
-pub fn build_semantic_report(file_path: &String, span: SourcedSpan, reason: String, source: String) {
-    let mut colors = ColorGenerator::new();
-    println!("{:?}", span.as_range());
-    Report::build(ariadne::ReportKind::Error, (file_path, span.clone().as_range()))
-        .with_message("Semantic error")
-        .with_code(420)
-        .with_label(
-            Label::new((file_path, span.clone().as_range()))
-                .with_color(colors.next())
-                .with_message(reason),
-        )
-        .finish()
-        .print((file_path, Source::from(source)))
-        .unwrap();
+pub fn build_semantic_report(
+    file_path: &String,
+    span: SourcedSpan,
+    reason: String,
+    source: String,
+) {
+    let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
+    Report::build(
+        ariadne::ReportKind::Error,
+        (file_path, span.clone().as_range()),
+    )
+    .with_message("Semantic error")
+    .with_code(420)
+    .with_label(Label::new((file_path, span.clone().as_range())).with_message(reason))
+    .finish()
+    .print((file_path, Source::from(source)))
+    .unwrap();
 }
 
 #[repr(transparent)]
