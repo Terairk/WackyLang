@@ -132,10 +132,11 @@ impl TypeResolver {
         expected_type: SemanticType,
         result_type: SemanticType,
     ) -> SemanticType {
-        if !lhs.get_type(&self).can_coerce_into(&expected_type) {
-            self.add_error(TypeMismatch(lhs.span(), lhs.get_type(&self), expected_type));
-            SemanticType::Error(lhs.span())
-        } else if !rhs.get_type(&self).can_coerce_into(&expected_type) {
+        if !lhs.get_type(&self).can_coerce_into(&expected_type.clone()) {
+            self.add_error(TypeMismatch(lhs.span(), lhs.get_type(&self), expected_type.clone()));
+            SemanticType::Error(lhs.span());
+        } 
+        if !rhs.get_type(&self).can_coerce_into(&expected_type) {
             self.add_error(TypeMismatch(rhs.span(), rhs.get_type(&self), expected_type));
             SemanticType::Error(rhs.span())
         } else {
@@ -599,7 +600,9 @@ impl Folder for TypeResolver {
         let arr_type = self.lookup_symbol_table(&elem.array_name);
 
         let mut curr_arr = arr_type.clone();
-        for (index, i) in resolved_indices.iter().enumerate() {
+        let length = resolved_indices.len();
+        let mut max_possible_index= 0;
+        for i in resolved_indices.iter() {
             let i_type = i.get_type(&self);
             if !matches!(i_type, SemanticType::Int | SemanticType::Error(_)) {
                 self.add_error(InvalidIndexType(
@@ -611,10 +614,11 @@ impl Folder for TypeResolver {
             match curr_arr {
                 SemanticType::Array(inner) => {
                     curr_arr = *inner;
+                    max_possible_index += 1;
                 }
                 SemanticType::AnyType | SemanticType::Error(_) => {}
                 _ => {
-                    self.add_error(InvalidNumberOfIndexes(i.span(), resolved_indices.len(), index));
+                    self.add_error(InvalidNumberOfIndexes(i.span(), length, max_possible_index));
                 }
             }
         }

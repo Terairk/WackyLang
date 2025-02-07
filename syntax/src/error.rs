@@ -49,7 +49,7 @@ pub fn semantic_error_to_reason(error: &SemanticError) -> String {
             format!("{} cannot be used to index into an array", ty)
         }
         SemanticError::InvalidNumberOfIndexes(_span, got, expected) => {
-            format!("Expected {} index, but got {}", expected, got)
+            format!("Expected maximum {} index(es), but got {}", expected, got)
         }
         SemanticError::UndefinedIdent(ident) => {
             format!("Undefined identifier '{}'", ident.inner())
