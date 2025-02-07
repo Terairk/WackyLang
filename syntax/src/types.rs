@@ -154,7 +154,6 @@ impl Display for SemanticType {
             SemanticType::Array(elem) => write!(f, "{}[]", elem),
             SemanticType::Pair(left, right) => write!(f, "({}, {})", left, right),
             SemanticType::ErasedPair => write!(f, "pair"),
-            SemanticType::Unknown => write!(f, "unknown"),
             SemanticType::Error(span) => write!(f, "error at {:?}", span),
             _ => write!(f, "This should never happen!"),
         }
