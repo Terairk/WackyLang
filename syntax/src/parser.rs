@@ -307,7 +307,6 @@ where
     let array_elem = array_elem_parser(ident.clone(), expr.clone());
 
     // wrap parsers with SN<_>
-    let stat_chain = stat_chain.sn();
     let ident = ident.sn();
     let expr = expr.sn();
     let array_elem = array_elem.sn();
@@ -461,8 +460,7 @@ where
         #[allow(clippy::let_and_return)]
         // because this is likely to be changed/extended in the future
         stat_chain
-    })
-    .sn();
+    });
 
     // func params parser
     let func_params = group((r#type.clone(), ident.clone()))

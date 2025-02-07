@@ -161,7 +161,7 @@ impl Display for SemanticType {
             SemanticType::Pair(left, right) => write!(f, "({}, {})", left, right),
             SemanticType::ErasedPair => write!(f, "pair"),
             SemanticType::Error(span) => write!(f, "error at {:?}", span),
-            SemanticType::AnyType => write!(f, "any, this shouldn't be here"),
+            SemanticType::AnyType => write!(f, "any"),
         }
     }
 }

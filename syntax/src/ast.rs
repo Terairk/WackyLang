@@ -37,7 +37,7 @@ type SN<T> = SourcedNode<T>;
 #[derive(Clone, Debug)]
 pub struct Program<N, T> {
     pub funcs: Box<[Func<N, T>]>,
-    pub body: SN<StatBlock<N, T>>,
+    pub body: StatBlock<N, T>,
 }
 
 #[derive(Clone, Debug)]
@@ -49,7 +49,7 @@ pub struct Func<N, T> {
     pub return_type: SN<Type>,
     pub name: SN<Ident>,
     pub params: Box<[FuncParam<N>]>,
-    pub body: SN<StatBlock<N, T>>,
+    pub body: StatBlock<N, T>,
 }
 
 #[derive(Clone, Debug)]
@@ -92,14 +92,14 @@ pub enum Stat<N, T> {
     Println(SN<Expr<N, T>>),
     IfThenElse {
         if_cond: SN<Expr<N, T>>,
-        then_body: SN<StatBlock<N, T>>,
-        else_body: SN<StatBlock<N, T>>,
+        then_body: StatBlock<N, T>,
+        else_body: StatBlock<N, T>,
     },
     WhileDo {
         while_cond: SN<Expr<N, T>>,
-        body: SN<StatBlock<N, T>>,
+        body: StatBlock<N, T>,
     },
-    Scoped(SN<StatBlock<N, T>>),
+    Scoped(StatBlock<N, T>),
 }
 
 #[derive(Clone, Debug)]
@@ -205,7 +205,7 @@ impl BinaryOper {
 impl<N, T> Program<N, T> {
     #[must_use]
     #[inline]
-    pub const fn new(funcs: Box<[Func<N, T>]>, body: SN<StatBlock<N, T>>) -> Self {
+    pub const fn new(funcs: Box<[Func<N, T>]>, body: StatBlock<N, T>) -> Self {
         Self { funcs, body }
     }
 }
@@ -217,7 +217,7 @@ impl<N, T> Func<N, T> {
         return_type: SN<Type>,
         name: SN<Ident>,
         params: Box<[FuncParam<N>]>,
-        body: SN<StatBlock<N, T>>,
+        body: StatBlock<N, T>,
     ) -> Self {
         Self {
             return_type,
@@ -317,8 +317,8 @@ impl<N, T> Stat<N, T> {
     #[inline]
     pub const fn if_then_else(
         if_cond: SN<Expr<N, T>>,
-        then_body: SN<StatBlock<N, T>>,
-        else_body: SN<StatBlock<N, T>>,
+        then_body: StatBlock<N, T>,
+        else_body: StatBlock<N, T>,
     ) -> Self {
         Self::IfThenElse {
             if_cond,
@@ -329,7 +329,7 @@ impl<N, T> Stat<N, T> {
 
     #[must_use]
     #[inline]
-    pub const fn while_do(while_cond: SN<Expr<N, T>>, body: SN<StatBlock<N, T>>) -> Self {
+    pub const fn while_do(while_cond: SN<Expr<N, T>>, body: StatBlock<N, T>) -> Self {
         Self::WhileDo { while_cond, body }
     }
 }

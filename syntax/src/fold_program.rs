@@ -35,7 +35,7 @@ pub trait Folder {
     ) -> Program<Self::OutputN, Self::OutputT> {
         let folded_funcs = program.funcs.fold_with(|func| self.fold_func(func));
 
-        let folded_body = self.fold_stat_block_sn(program.body);
+        let folded_body = self.fold_stat_block(program.body);
 
         // Return type depends on individual implementation
         // Just make sure make_program returns Self::Output
@@ -48,7 +48,7 @@ pub trait Folder {
             return_type: func.return_type, // Type remains unchanged
             name: func.name,
             params: func.params.fold_with(|param| self.fold_func_param(param)),
-            body: self.fold_stat_block_sn(func.body),
+            body: self.fold_stat_block(func.body),
         }
     }
 
@@ -66,14 +66,6 @@ pub trait Folder {
         block: StatBlock<Self::N, Self::T>,
     ) -> StatBlock<Self::OutputN, Self::OutputT> {
         StatBlock(block.0.map_with(|stat| self.fold_stat_sn(stat)))
-    }
-
-    #[inline]
-    fn fold_stat_block_sn(
-        &mut self,
-        block: SN<StatBlock<Self::N, Self::T>>,
-    ) -> SN<StatBlock<Self::OutputN, Self::OutputT>> {
-        block.map_inner(|inner| self.fold_stat_block(inner))
     }
 
     #[inline]
@@ -101,14 +93,14 @@ pub trait Folder {
                 else_body,
             } => Stat::IfThenElse {
                 if_cond: self.fold_expr(if_cond),
-                then_body: self.fold_stat_block_sn(then_body),
-                else_body: self.fold_stat_block_sn(else_body),
+                then_body: self.fold_stat_block(then_body),
+                else_body: self.fold_stat_block(else_body),
             },
             Stat::WhileDo { while_cond, body } => Stat::WhileDo {
                 while_cond: self.fold_expr(while_cond),
-                body: self.fold_stat_block_sn(body),
+                body: self.fold_stat_block(body),
             },
-            Stat::Scoped(body) => Stat::Scoped(self.fold_stat_block_sn(body)),
+            Stat::Scoped(body) => Stat::Scoped(self.fold_stat_block(body)),
         }
     }
 
@@ -261,7 +253,7 @@ pub trait Folder {
     fn make_program(
         &mut self,
         funcs: Box<[Func<Self::OutputN, Self::OutputT>]>,
-        body: SN<StatBlock<Self::OutputN, Self::OutputT>>,
+        body: StatBlock<Self::OutputN, Self::OutputT>,
     ) -> Program<Self::OutputN, Self::OutputT> {
         Program { funcs, body }
     }
