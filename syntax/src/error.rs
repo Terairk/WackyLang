@@ -10,7 +10,6 @@ pub enum SemanticError {
     DuplicateIdent(SN<Ident>),
     TypeMismatch(SourcedSpan, SemanticType, SemanticType),
     AssignmentWithBothSidesUnknown(SourcedSpan),
-    SimpleTypeMismatch(SemanticType, SemanticType), // TODO: remove this temp error
     MismatchedArgCount(SourcedSpan, usize, usize),
     InvalidIndexType(SourcedSpan, SemanticType),
     InvalidNumberOfIndexes(usize), // TODO: add span to this error variant
@@ -39,9 +38,6 @@ pub fn semantic_error_to_reason(error: &SemanticError) -> String {
         }
         SemanticError::AssignmentWithBothSidesUnknown(_span) => {
             format!("Cannot assign to unknown type")
-        }
-        SemanticError::SimpleTypeMismatch(actual, expected) => {
-            format!("Expected type {}, but got {}", expected, actual)
         }
         SemanticError::MismatchedArgCount(_span, expected, actual) => {
             format!("Expected {} arguments, but got {}", expected, actual)

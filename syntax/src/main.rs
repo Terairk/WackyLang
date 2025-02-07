@@ -252,10 +252,6 @@ pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, so
             .print((file_path, Source::from(source)))
             .unwrap();
         }
-        // TODO: remove this case when fixed
-        SemanticError::SimpleTypeMismatch(_actual, _expected) => {
-            println!("{}", semantic_error_to_reason(error));
-        }
         // TODO: Add Span to this case
         SemanticError::InvalidNumberOfIndexes(_count) => {
             println!("{}", semantic_error_to_reason(error));
