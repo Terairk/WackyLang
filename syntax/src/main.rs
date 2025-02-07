@@ -229,7 +229,6 @@ pub fn semantic_report_helper(
 }
 
 pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, source: String) {
-    let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
     match error {
         SemanticError::TypeMismatch(span, _, _) => {
             semantic_report_helper(file_path, "Type Error", error, span, source);
@@ -243,9 +242,14 @@ pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, so
                 source,
             );
         }
-        // TODO: Add Span to this case
-        SemanticError::InvalidNumberOfIndexes(_count) => {
-            println!("{}", semantic_error_to_reason(error));
+        SemanticError::InvalidNumberOfIndexes(span, _, _) => {
+            semantic_report_helper(
+                file_path,
+                "Wrong number of indexes",
+                error,
+                &span,
+                source,
+            );
         }
         // TODO: Add Span to this case
         SemanticError::ReturnInMain => {
@@ -264,21 +268,7 @@ pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, so
                 SemanticError::UndefinedIdent(node) => node.span().clone(),
                 _ => panic!("Unhandled error variant"),
             };
-
-            Report::build(
-                ariadne::ReportKind::Error,
-                (file_path, span.clone().as_range()),
-            )
-            .with_config(config)
-            .with_message("Semantic error")
-            .with_code(420)
-            .with_label(
-                Label::new((file_path, span.clone().as_range()))
-                    .with_message(semantic_error_to_reason(error)),
-            )
-            .finish()
-            .print((file_path, Source::from(source)))
-            .unwrap();
+            semantic_report_helper(file_path, "Semantic Error", error, &span, source);
         }
     }
 }

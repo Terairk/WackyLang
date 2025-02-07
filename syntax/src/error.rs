@@ -13,7 +13,7 @@ pub enum SemanticError {
     MismatchedArgCount(SourcedSpan, usize, usize),
     InvalidIndexType(SourcedSpan, SemanticType),
     InvalidFreeType(SourcedSpan, SemanticType),
-    InvalidNumberOfIndexes(usize),
+    InvalidNumberOfIndexes(SourcedSpan, usize, usize),
     UndefinedIdent(SN<Ident>),
     ReturnInMain,
 }
@@ -48,8 +48,8 @@ pub fn semantic_error_to_reason(error: &SemanticError) -> String {
             // String and not smth we defined
             format!("{} cannot be used to index into an array", ty)
         }
-        SemanticError::InvalidNumberOfIndexes(count) => {
-            format!("Expected 1 index, but got {}", count)
+        SemanticError::InvalidNumberOfIndexes(_span, got, expected) => {
+            format!("Expected {} index, but got {}", expected, got)
         }
         SemanticError::UndefinedIdent(ident) => {
             format!("Undefined identifier '{}'", ident.inner())

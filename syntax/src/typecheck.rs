@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::error::SemanticError;
-use crate::error::SemanticError::{InvalidFreeType, InvalidIndexType, TypeMismatch};
+use crate::error::SemanticError::{InvalidFreeType, InvalidIndexType, InvalidNumberOfIndexes, TypeMismatch};
 use crate::fold_program::BoxedSliceFold;
 use crate::fold_program::{Folder, NonEmptyFold};
 use crate::rename::RenamedName;
@@ -63,14 +63,14 @@ impl SN<PairElem<RenamedName, SemanticType>> {
                 match lvalue_sn.get_type(type_resolver) {
                     SemanticType::Pair(fst, _) => Some(*fst.clone()),
                     SemanticType::ErasedPair => Some(SemanticType::AnyType),
-                    _ => None, // TODO: Replace with smth else
+                    _ => None,
                 }
             }
             PairElem::Snd(lvalue_sn) => {
                 match lvalue_sn.get_type(type_resolver) {
                     SemanticType::Pair(_, snd) => Some(*snd.clone()),
                     SemanticType::ErasedPair => Some(SemanticType::AnyType),
-                    _ => None, // TODO: Replace with smth else
+                    _ => None,
                 }
             }
         }
@@ -83,7 +83,7 @@ impl SN<ArrayElem<RenamedName, SemanticType>> {
         match resolved_type {
             SemanticType::Array(elem_type) => Some(*elem_type.clone()),
             SemanticType::AnyType => Some(SemanticType::AnyType),
-            _ => None, // TODO: replase with smth else
+            _ => None,
         }
     }
 }
@@ -187,7 +187,7 @@ impl Folder for TypeResolver {
             body: self.fold_stat_block(func.body),
         };
         self.curr_func_ret_type = None;
-        return func;
+        func
     }
 
     #[inline]
@@ -225,8 +225,8 @@ impl Folder for TypeResolver {
                 } else if !&resolved_rval_type.can_coerce_into(&resolved_lval_type) {
                     self.add_error(TypeMismatch(
                         resolved_rvalue.span(),
-                        resolved_lvalue.get_type(&self),
                         resolved_rvalue.get_type(&self),
+                        resolved_lvalue.get_type(&self),
                     ));
                 }
                 Stat::Assignment {
@@ -334,7 +334,7 @@ impl Folder for TypeResolver {
         let resolved_rvalue = self.fold_rvalue(rvalue);
         let resolved_type = resolved_rvalue.get_type(self);
         if !resolved_type.can_coerce_into(&expected_type) {
-            self.add_error(TypeMismatch(name.span(), expected_type, resolved_type))
+            self.add_error(TypeMismatch(resolved_rvalue.span(), resolved_type, expected_type))
         }
         self.symid_table
             .insert(name.inner().clone(), r#type.inner().to_semantic_type());
@@ -599,7 +599,7 @@ impl Folder for TypeResolver {
         let arr_type = self.lookup_symbol_table(&elem.array_name);
 
         let mut curr_arr = arr_type.clone();
-        for i in resolved_indices.iter() {
+        for (index, i) in resolved_indices.iter().enumerate() {
             let i_type = i.get_type(&self);
             if !matches!(i_type, SemanticType::Int | SemanticType::Error(_)) {
                 self.add_error(InvalidIndexType(
@@ -614,11 +614,7 @@ impl Folder for TypeResolver {
                 }
                 SemanticType::AnyType | SemanticType::Error(_) => {}
                 _ => {
-                    self.add_error(SemanticError::TypeMismatch(
-                        elem.span().clone(),
-                        curr_arr.clone(),
-                        SemanticType::Array(Box::new(SemanticType::AnyType)),
-                    ));
+                    self.add_error(InvalidNumberOfIndexes(i.span(), resolved_indices.len(), index));
                 }
             }
         }
