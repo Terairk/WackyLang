@@ -141,7 +141,7 @@ fn main() -> ExitCode {
     // Done to appease the borrow checker while displaying errors
     let lexing_errs_not_empty = !lexing_errs.is_empty();
     for e in lexing_errs {
-        build_syntactic_report(e.span().clone(), e, source.clone());
+        build_syntactic_report(e, source.clone());
     }
 
     if lexing_errs_not_empty {
@@ -203,21 +203,21 @@ fn main() -> ExitCode {
 }
 
 #[allow(clippy::unwrap_used)]
-pub fn build_syntactic_report<T>(span: SourcedSpan, error: Rich<T, SourcedSpan>, source: String)
+pub fn build_syntactic_report<T>(error: Rich<T, SourcedSpan>, source: String)
 where
     T: fmt::Display,
 {
     let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
-    Report::build(ariadne::ReportKind::Error, span.clone())
+    Report::build(ariadne::ReportKind::Error, error.span().clone())
         .with_config(config)
         .with_message(format!("Syntax error"))
         .with_code(69)
-        .with_label(Label::new(span.clone()).with_message(error.reason().to_string()))
+        .with_label(Label::new(error.span().clone()).with_message(error.reason().to_string()))
         .with_labels(error.contexts().map(|(label, span)| {
             Label::new(span.clone()).with_message(format!("while parsing this {label}"))
         }))
         .finish()
-        .print((span.source_id().clone(), Source::from(source)))
+        .print((error.span().source_id().clone(), Source::from(source)))
         .unwrap();
 }
 
