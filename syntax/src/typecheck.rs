@@ -192,11 +192,7 @@ impl Folder for TypeResolver {
                     Liter::BoolLiter(_) => SemanticType::Bool,
                     Liter::CharLiter(_) => SemanticType::Char,
                     Liter::StrLiter(_) => SemanticType::String,
-                    Liter::PairLiter => {
-                        let fst = SemanticType::AnyType;
-                        let snd = SemanticType::AnyType;
-                        SemanticType::Pair(Box::from(fst), Box::from(snd))
-                    }
+                    Liter::PairLiter => SemanticType::ErasedPair,
                 };
                 Expr::Liter(lit, resolved_type)
             },
