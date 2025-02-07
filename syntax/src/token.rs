@@ -1,19 +1,16 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
 use crate::ext::ParserExt as _;
-use crate::source::{SourceIdSpan, SourcedSpan};
 use crate::{alias, ast, ext::CharExt as _, private};
 use chumsky::combinator::MapWith;
 use chumsky::extra::ParserExtra;
 use chumsky::input::MapExtra;
-use chumsky::span::Span;
 use chumsky::{error::Rich, input::StrInput, prelude::*, text};
 use extend::ext;
 use internment::ArcIntern;
 use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::ops::Range;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]

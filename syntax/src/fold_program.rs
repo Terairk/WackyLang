@@ -4,7 +4,7 @@ use crate::ast::{Expr, Func, FuncParam, Ident, LValue, Program, RValue, Stat, St
 use crate::source::SourcedNode;
 
 use crate::nonempty::NonemptyArray;
-use crate::types::{SemanticType, Type};
+use crate::types::Type;
 
 type SN<T> = SourcedNode<T>;
 

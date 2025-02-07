@@ -266,6 +266,7 @@ pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, so
 
 #[repr(transparent)]
 #[derive(Debug)]
+#[allow(dead_code)]
 struct DisplayVec<T>(Vec<T>);
 
 impl<T> DisplayVec<T> {
@@ -474,7 +475,7 @@ mod tests {
             let (renamed_ast, renamer) =
                 rename(parsed.expect("If parse errors are not empty, parsed should be Valid"));
 
-            let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
+            let (_typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
 
             if !type_resolver.type_errors.is_empty()
                 || !type_resolver.renamer.return_errors().is_empty()
