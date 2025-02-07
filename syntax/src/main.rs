@@ -1,10 +1,8 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
-use ariadne::{CharSet, Color, ColorGenerator, Label, Report, Source};
-use chumsky::error::RichReason;
+use ariadne::{CharSet, Label, Report, Source};
 use chumsky::input::WithContext;
 use chumsky::prelude::Input as _;
-use chumsky::text::TextExpected;
 use chumsky::Parser;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -169,8 +167,8 @@ fn main() -> ExitCode {
             build_semantic_error_report(file_path, &e, source.clone());
         }
 
-        let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
-        // println!("{typed_ast:?}");
+        let (_typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
+        // println!("{_typed_ast:?}");
         let type_errors = type_resolver.type_errors;
         for e in type_errors {
             build_semantic_error_report(file_path, &e, source.clone());
@@ -197,10 +195,11 @@ pub fn build_syntactic_report(
         .unwrap();
 }
 
-pub fn build_semantic_report(
+pub fn semantic_report_helper(
     file_path: &String,
-    span: SourcedSpan,
-    reason: String,
+    message: &str,
+    error: &SemanticError,
+    span: &SourcedSpan,
     source: String,
 ) {
     let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
@@ -209,9 +208,9 @@ pub fn build_semantic_report(
         (file_path, span.clone().as_range()),
     )
     .with_config(config)
-    .with_message("Semantic error")
+    .with_message(message)
     .with_code(420)
-    .with_label(Label::new((file_path, span.clone().as_range())).with_message(reason))
+    .with_label(Label::new((file_path, span.clone().as_range())).with_message(semantic_error_to_reason(error)))
     .finish()
     .print((file_path, Source::from(source)))
     .unwrap();
@@ -220,37 +219,11 @@ pub fn build_semantic_report(
 pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, source: String) {
     let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
     match error {
-        SemanticError::TypeMismatch(span, expected, actual) => {
-            Report::build(
-                ariadne::ReportKind::Error,
-                (file_path, span.clone().as_range()),
-            )
-            .with_config(config)
-            .with_message("Type Error")
-            .with_code(420)
-            .with_label(
-                Label::new((file_path, span.clone().as_range()))
-                    .with_message(semantic_error_to_reason(error)),
-            )
-            .finish()
-            .print((file_path, Source::from(source)))
-            .unwrap();
+        SemanticError::TypeMismatch(span, _, _) => {
+            semantic_report_helper(file_path, "Type Error", error, span, source);
         }
         SemanticError::DuplicateIdent(ident) => {
-            Report::build(
-                ariadne::ReportKind::Error,
-                (file_path, ident.span().clone().as_range()),
-            )
-            .with_config(config)
-            .with_message("Duplicate Identifier")
-            .with_code(420)
-            .with_label(
-                Label::new((file_path, ident.span().clone().as_range()))
-                    .with_message(semantic_error_to_reason(error)),
-            )
-            .finish()
-            .print((file_path, Source::from(source)))
-            .unwrap();
+            semantic_report_helper(file_path, "Duplicate Identifier", error, &ident.span(), source);
         }
         // TODO: Add Span to this case
         SemanticError::InvalidNumberOfIndexes(_count) => {
