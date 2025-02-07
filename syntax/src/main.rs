@@ -251,10 +251,6 @@ pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, so
                 source,
             );
         }
-        // TODO: Add Span to this case
-        SemanticError::ReturnInMain => {
-            println!("{}", semantic_error_to_reason(error));
-        }
         // Handle other error variants similarly
         _ => {
             // Generic error report for other cases
@@ -266,6 +262,7 @@ pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, so
                 SemanticError::MismatchedArgCount(span, _, _) => span.clone(),
                 SemanticError::InvalidIndexType(span, _) => span.clone(),
                 SemanticError::UndefinedIdent(node) => node.span().clone(),
+                SemanticError::ReturnInMain(span) => span.clone(),
                 _ => panic!("Unhandled error variant"),
             };
             semantic_report_helper(file_path, "Semantic Error", error, &span, source);
