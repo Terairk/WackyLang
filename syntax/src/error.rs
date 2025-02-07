@@ -8,13 +8,12 @@ type SN<T> = SourcedNode<T>;
 pub enum SemanticError {
     ArityMismatch(SN<Ident>, usize, usize),
     DuplicateIdent(SN<Ident>),
-    // TODO: import strum crate to make it easier to convert this to a string
     TypeMismatch(SourcedSpan, SemanticType, SemanticType),
     AssignmentWithBothSidesUnknown(SourcedSpan),
     SimpleTypeMismatch(SemanticType, SemanticType), // TODO: remove this temp error
     MismatchedArgCount(SourcedSpan, usize, usize),
     InvalidIndexType(SourcedSpan, SemanticType),
-    InvalidNumberOfIndexes(usize),
+    InvalidNumberOfIndexes(usize), // TODO: add span to this error variant
     UndefinedIdent(SN<Ident>),
     ReturnInMain,
 }
@@ -30,22 +29,27 @@ pub fn semantic_error_to_reason(error: &SemanticError) -> String {
             )
         }
         SemanticError::DuplicateIdent(ident) => {
-            format!("Duplicate identifier '{}'", ident.inner())
+            format!(
+                "Identifier '{}' already defined in current scope.",
+                ident.inner()
+            )
         }
-        SemanticError::TypeMismatch(span, expected, actual) => {
-            format!("Expected type {}, but got {}", expected, actual)
+        SemanticError::TypeMismatch(_span, actual, expected) => {
+            format!("Expected {}, but got {}", expected, actual)
         }
-        SemanticError::AssignmentWithBothSidesUnknown(span) => {
+        SemanticError::AssignmentWithBothSidesUnknown(_span) => {
             format!("Cannot assign to unknown type")
         }
-        SemanticError::SimpleTypeMismatch(expected, actual) => {
+        SemanticError::SimpleTypeMismatch(actual, expected) => {
             format!("Expected type {}, but got {}", expected, actual)
         }
-        SemanticError::MismatchedArgCount(span, expected, actual) => {
+        SemanticError::MismatchedArgCount(_span, expected, actual) => {
             format!("Expected {} arguments, but got {}", expected, actual)
         }
-        SemanticError::InvalidIndexType(span, ty) => {
-            format!("Invalid index type {}", ty)
+        SemanticError::InvalidIndexType(_span, ty) => {
+            // TODO: need to make sure SemanticType is a valid WACC type when displaying as a
+            // String and not smth we defined
+            format!("{} cannot be used to index into an array", ty)
         }
         SemanticError::InvalidNumberOfIndexes(count) => {
             format!("Expected 1 index, but got {}", count)

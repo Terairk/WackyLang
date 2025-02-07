@@ -4,13 +4,14 @@ use ariadne::{CharSet, Color, ColorGenerator, Label, Report, Source};
 use chumsky::error::RichReason;
 use chumsky::input::WithContext;
 use chumsky::prelude::Input as _;
+use chumsky::text::TextExpected;
 use chumsky::Parser;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::process::ExitCode;
-use wacc_syntax::error::SemanticError;
+use wacc_syntax::error::{semantic_error_to_reason, SemanticError};
 use wacc_syntax::parser::program_parser;
-use wacc_syntax::rename::{rename, Renamer};
+use wacc_syntax::rename::rename;
 use wacc_syntax::source::{SourcedSpan, StrSourceId};
 use wacc_syntax::token::{lexer, Token};
 use wacc_syntax::typecheck::typecheck;
@@ -163,29 +164,16 @@ fn main() -> ExitCode {
         let (renamed_ast, renamer) =
             rename(parsed.expect("If parse errors are not empty, parsed should be Valid"));
 
-        let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
+        let renamed_errors = renamer.return_errors();
+        for e in renamed_errors {
+            build_semantic_error_report(file_path, &e, source.clone());
+        }
 
+        let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
         // println!("{typed_ast:?}");
-        for e in type_resolver.type_errors {
-            match e {
-                SemanticError::TypeMismatch(span, got, expected) => {
-                    let reason =
-                        format!("Type mismatch: expected {}, but recieved {}", expected, got);
-                    build_semantic_report(file_path, span, reason, source.clone())
-                }
-                SemanticError::MismatchedArgCount(span, expected, got) => {
-                    let reason = format!(
-                        "Wrong number of arguments: expected {} arguments, but got {}",
-                        expected, got
-                    );
-                    build_semantic_report(file_path, span, reason, source.clone())
-                }
-                SemanticError::InvalidIndexType(span, got) => {
-                    let reason = format!("Invalid index type: expected int, but got {}", got);
-                    build_semantic_report(file_path, span, reason, source.clone())
-                }
-                _ => todo!(),
-            }
+        let type_errors = type_resolver.type_errors;
+        for e in type_errors {
+            build_semantic_error_report(file_path, &e, source.clone());
         }
     }
 
@@ -227,6 +215,84 @@ pub fn build_semantic_report(
     .finish()
     .print((file_path, Source::from(source)))
     .unwrap();
+}
+
+pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, source: String) {
+    let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
+    match error {
+        SemanticError::TypeMismatch(span, expected, actual) => {
+            Report::build(
+                ariadne::ReportKind::Error,
+                (file_path, span.clone().as_range()),
+            )
+            .with_config(config)
+            .with_message("Type Error")
+            .with_code(420)
+            .with_label(
+                Label::new((file_path, span.clone().as_range()))
+                    .with_message(semantic_error_to_reason(error)),
+            )
+            .finish()
+            .print((file_path, Source::from(source)))
+            .unwrap();
+        }
+        SemanticError::DuplicateIdent(ident) => {
+            Report::build(
+                ariadne::ReportKind::Error,
+                (file_path, ident.span().clone().as_range()),
+            )
+            .with_config(config)
+            .with_message("Duplicate Identifier")
+            .with_code(420)
+            .with_label(
+                Label::new((file_path, ident.span().clone().as_range()))
+                    .with_message(semantic_error_to_reason(error)),
+            )
+            .finish()
+            .print((file_path, Source::from(source)))
+            .unwrap();
+        }
+        // TODO: remove this case when fixed
+        SemanticError::SimpleTypeMismatch(_actual, _expected) => {
+            println!("{}", semantic_error_to_reason(error));
+        }
+        // TODO: Add Span to this case
+        SemanticError::InvalidNumberOfIndexes(_count) => {
+            println!("{}", semantic_error_to_reason(error));
+        }
+        // TODO: Add Span to this case
+        SemanticError::ReturnInMain => {
+            println!("{}", semantic_error_to_reason(error));
+        }
+        // Handle other error variants similarly
+        _ => {
+            // Generic error report for other cases
+            let span = match error {
+                SemanticError::ArityMismatch(node, _, _) => node.span().clone(),
+                SemanticError::AssignmentWithBothSidesUnknown(span) => span.clone(),
+                SemanticError::TypeMismatch(span, _, _) => span.clone(),
+                SemanticError::MismatchedArgCount(span, _, _) => span.clone(),
+                SemanticError::InvalidIndexType(span, _) => span.clone(),
+                SemanticError::UndefinedIdent(node) => node.span().clone(),
+                _ => panic!("Unhandled error variant"),
+            };
+
+            Report::build(
+                ariadne::ReportKind::Error,
+                (file_path, span.clone().as_range()),
+            )
+            .with_config(config)
+            .with_message("Semantic error")
+            .with_code(420)
+            .with_label(
+                Label::new((file_path, span.clone().as_range()))
+                    .with_message(semantic_error_to_reason(error)),
+            )
+            .finish()
+            .print((file_path, Source::from(source)))
+            .unwrap();
+        }
+    }
 }
 
 #[repr(transparent)]
