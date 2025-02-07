@@ -155,20 +155,20 @@ fn main() -> ExitCode {
     }
 
     if let Some(tokens) = tokens {
-        println!("{:#?}", DisplayVec(tokens.clone())); // TODO: remove this later
+        // println!("{:#?}", DisplayVec(tokens.clone())); // TODO: remove this later
 
         // attach the span of each token to it before parsing, so it is not forgotten
         #[allow(clippy::pattern_type_mismatch)]
         let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
-        println!("\n\nEOI span done!!!");
+        // println!("\n\nEOI span done!!!");
         let (parsed, parse_errs): ProgramOutput =
             Parser::parse(&program_parser::<_, ProgramExtra>(), spanned_tokens)
                 .into_output_errors();
 
-        println!(
-            "Done parsing\nParse errors: {:#?}\nParsed: {:#?}",
-            parse_errs, parsed
-        );
+        // println!(
+        //     "Done parsing\nParse errors: {:#?}\nParsed: {:#?}",
+        //     parse_errs, parsed
+        // );
 
         let parse_errs_not_empty = !parse_errs.is_empty();
 
