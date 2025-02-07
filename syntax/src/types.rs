@@ -158,9 +158,9 @@ impl Display for SemanticType {
             SemanticType::Char => write!(f, "char"),
             SemanticType::String => write!(f, "string"),
             SemanticType::Array(elem) => write!(f, "{}[]", elem),
-            SemanticType::Pair(left, right) => write!(f, "({}, {})", left, right),
+            SemanticType::Pair(left, right) => write!(f, "pair({}, {})", left, right),
             SemanticType::ErasedPair => write!(f, "pair"),
-            SemanticType::Error(span) => write!(f, "error at {:?}", span),
+            SemanticType::Error(_span) => write!(f, "unknown gibberish"),
             SemanticType::AnyType => write!(f, "any"),
         }
     }

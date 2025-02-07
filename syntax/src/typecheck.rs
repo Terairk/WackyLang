@@ -1,13 +1,13 @@
-use std::collections::HashMap;
 use crate::ast::*;
 use crate::error::SemanticError;
-use crate::error::SemanticError::{InvalidIndexType, TypeMismatch};
+use crate::error::SemanticError::{InvalidFreeType, InvalidIndexType, InvalidNumberOfIndexes, TypeMismatch};
 use crate::fold_program::BoxedSliceFold;
 use crate::fold_program::{Folder, NonEmptyFold};
 use crate::rename::RenamedName;
 use crate::rename::Renamer;
 use crate::source::{SourcedNode, WithSourceId};
 use crate::types::{SemanticType, Type};
+use std::collections::HashMap;
 
 type SN<T> = SourcedNode<T>;
 type RenamedAst = Program<RenamedName, ()>;
@@ -63,14 +63,14 @@ impl SN<PairElem<RenamedName, SemanticType>> {
                 match lvalue_sn.get_type(type_resolver) {
                     SemanticType::Pair(fst, _) => Some(*fst.clone()),
                     SemanticType::ErasedPair => Some(SemanticType::AnyType),
-                    _ => None, // TODO: Replace with smth else
+                    _ => None,
                 }
             }
             PairElem::Snd(lvalue_sn) => {
                 match lvalue_sn.get_type(type_resolver) {
                     SemanticType::Pair(_, snd) => Some(*snd.clone()),
                     SemanticType::ErasedPair => Some(SemanticType::AnyType),
-                    _ => None, // TODO: Replace with smth else
+                    _ => None,
                 }
             }
         }
@@ -83,7 +83,7 @@ impl SN<ArrayElem<RenamedName, SemanticType>> {
         match resolved_type {
             SemanticType::Array(elem_type) => Some(*elem_type.clone()),
             SemanticType::AnyType => Some(SemanticType::AnyType),
-            _ => None, // TODO: replase with smth else
+            _ => None,
         }
     }
 }
@@ -132,19 +132,12 @@ impl TypeResolver {
         expected_type: SemanticType,
         result_type: SemanticType,
     ) -> SemanticType {
-        if !lhs.get_type(&self).can_coerce_into(&expected_type) {
-            self.add_error(TypeMismatch(
-                lhs.span(),
-                lhs.get_type(&self),
-                expected_type,
-            ));
-            SemanticType::Error(lhs.span())
-        } else if !rhs.get_type(&self).can_coerce_into(&expected_type) {
-            self.add_error(TypeMismatch(
-                rhs.span(),
-                rhs.get_type(&self),
-                expected_type,
-            ));
+        if !lhs.get_type(&self).can_coerce_into(&expected_type.clone()) {
+            self.add_error(TypeMismatch(lhs.span(), lhs.get_type(&self), expected_type.clone()));
+            SemanticType::Error(lhs.span());
+        } 
+        if !rhs.get_type(&self).can_coerce_into(&expected_type) {
+            self.add_error(TypeMismatch(rhs.span(), rhs.get_type(&self), expected_type));
             SemanticType::Error(rhs.span())
         } else {
             result_type
@@ -195,12 +188,15 @@ impl Folder for TypeResolver {
             body: self.fold_stat_block(func.body),
         };
         self.curr_func_ret_type = None;
-        return func;
+        func
     }
 
     #[inline]
     fn fold_func_param(&mut self, param: FuncParam<Self::N>) -> FuncParam<Self::OutputN> {
-        self.symid_table.insert(param.name.inner().clone(), param.r#type.clone().to_semantic_type());
+        self.symid_table.insert(
+            param.name.inner().clone(),
+            param.r#type.clone().to_semantic_type(),
+        );
         FuncParam {
             r#type: param.r#type,
             name: self.fold_name_sn(param.name),
@@ -230,8 +226,8 @@ impl Folder for TypeResolver {
                 } else if !&resolved_rval_type.can_coerce_into(&resolved_lval_type) {
                     self.add_error(TypeMismatch(
                         resolved_rvalue.span(),
-                        resolved_lvalue.get_type(&self),
                         resolved_rvalue.get_type(&self),
+                        resolved_lvalue.get_type(&self),
                     ));
                 }
                 Stat::Assignment {
@@ -241,11 +237,11 @@ impl Folder for TypeResolver {
             }
             Stat::Read(lvalue) => {
                 let resolved_lvalue = self.fold_lvalue(lvalue);
-                match resolved_lvalue.get_type(&self) {
+                match resolved_lvalue.get_type(self) {
                     SemanticType::Int | SemanticType::Char => (),
                     _ => self.add_error(TypeMismatch(
                         resolved_lvalue.span(),
-                        resolved_lvalue.get_type(&self),
+                        resolved_lvalue.get_type(self),
                         SemanticType::Int,
                     )),
                 }
@@ -253,12 +249,11 @@ impl Folder for TypeResolver {
             }
             Stat::Free(expr) => {
                 let resolved_expr = self.fold_expr(expr);
-                match resolved_expr.get_type(&self) {
+                match resolved_expr.get_type(self) {
                     SemanticType::Array(_) | SemanticType::Pair(_, _) => (),
-                    _ => self.add_error(TypeMismatch(
+                    _ => self.add_error(InvalidFreeType(
                         resolved_expr.span(),
-                        resolved_expr.get_type(&self),
-                        SemanticType::Array(Box::new(SemanticType::AnyType)),
+                        resolved_expr.get_type(self),
                     )),
                 }
                 Stat::Free(resolved_expr)
@@ -266,14 +261,14 @@ impl Folder for TypeResolver {
             Stat::Return(expr) => {
                 let resolved_expr = self.fold_expr(expr);
                 if let Some(expected_ret_type) = self.curr_func_ret_type.as_ref() {
-                    let resolved_ret_value = resolved_expr.get_type(&self);
+                    let resolved_ret_value = resolved_expr.get_type(self);
                     let expected_ret_type = expected_ret_type.to_semantic_type();
                     if !&resolved_ret_value.can_coerce_into(&expected_ret_type) {
                         self.add_error(TypeMismatch(
                             resolved_expr.span(),
                             expected_ret_type,
                             resolved_ret_value,
-                        ))
+                        ));
                     }
                 } // otherwise we're in the main body, where the renaming stage will have emitted an error if there's a return statement
 
@@ -286,7 +281,7 @@ impl Folder for TypeResolver {
                         resolved_expr.span(),
                         resolved_expr.get_type(&self),
                         SemanticType::Int,
-                    ))
+                    ));
                 }
                 Stat::Exit(resolved_expr)
             }
@@ -298,10 +293,10 @@ impl Folder for TypeResolver {
                 else_body,
             } => {
                 let resolved_if_cond = self.fold_expr(if_cond);
-                if resolved_if_cond.get_type(&self) != SemanticType::Bool {
+                if resolved_if_cond.get_type(self) != SemanticType::Bool {
                     self.add_error(TypeMismatch(
                         resolved_if_cond.span(),
-                        resolved_if_cond.get_type(&self),
+                        resolved_if_cond.get_type(self),
                         SemanticType::Bool,
                     ));
                 }
@@ -313,10 +308,10 @@ impl Folder for TypeResolver {
             }
             Stat::WhileDo { while_cond, body } => {
                 let resolved_while_cond = self.fold_expr(while_cond);
-                if resolved_while_cond.get_type(&self) != SemanticType::Bool {
+                if resolved_while_cond.get_type(self) != SemanticType::Bool {
                     self.add_error(TypeMismatch(
                         resolved_while_cond.span(),
-                        resolved_while_cond.get_type(&self),
+                        resolved_while_cond.get_type(self),
                         SemanticType::Bool,
                     ));
                 }
@@ -338,11 +333,12 @@ impl Folder for TypeResolver {
     ) -> Stat<Self::OutputN, Self::OutputT> {
         let expected_type = r#type.to_semantic_type();
         let resolved_rvalue = self.fold_rvalue(rvalue);
-        let resolved_type = resolved_rvalue.get_type(&self);
+        let resolved_type = resolved_rvalue.get_type(self);
         if !resolved_type.can_coerce_into(&expected_type) {
-            self.add_error(TypeMismatch(name.span(), expected_type, resolved_type))
+            self.add_error(TypeMismatch(resolved_rvalue.span(), resolved_type, expected_type))
         }
-        self.symid_table.insert(name.inner().clone(), r#type.inner().to_semantic_type());
+        self.symid_table
+            .insert(name.inner().clone(), r#type.inner().to_semantic_type());
         Stat::VarDefinition {
             r#type,
             name: self.fold_name_sn(name),
@@ -355,7 +351,7 @@ impl Folder for TypeResolver {
         &mut self,
         lvalue: SN<LValue<Self::N, Self::T>>,
     ) -> SN<LValue<Self::OutputN, Self::OutputT>> {
-        let span = lvalue.span().clone();
+        let span = lvalue.span();
         lvalue.map_inner(|inner| match inner {
             LValue::Ident(name, _) => {
                 let resolved_type = self.lookup_symbol_table(&name);
@@ -430,9 +426,7 @@ impl Folder for TypeResolver {
             }
             RValue::PairElem(pair_elem) => RValue::PairElem(self.fold_pair_elem(pair_elem)),
             RValue::Call {
-                func_name,
-                args,
-                ..
+                func_name, args, ..
             } => {
                 let resolved_return_type = self.renamer.lookup_func_return_type(&func_name.clone());
                 let expected_args_types = self.renamer.lookup_func_args(&func_name.clone());
@@ -606,6 +600,8 @@ impl Folder for TypeResolver {
         let arr_type = self.lookup_symbol_table(&elem.array_name);
 
         let mut curr_arr = arr_type.clone();
+        let length = resolved_indices.len();
+        let mut max_possible_index= 0;
         for i in resolved_indices.iter() {
             let i_type = i.get_type(&self);
             if !matches!(i_type, SemanticType::Int | SemanticType::Error(_)) {
@@ -618,14 +614,11 @@ impl Folder for TypeResolver {
             match curr_arr {
                 SemanticType::Array(inner) => {
                     curr_arr = *inner;
+                    max_possible_index += 1;
                 }
                 SemanticType::AnyType | SemanticType::Error(_) => {}
                 _ => {
-                    self.add_error(SemanticError::TypeMismatch(
-                        elem.span().clone(),
-                        curr_arr.clone(),
-                        SemanticType::Array(Box::new(SemanticType::AnyType)),
-                    ));
+                    self.add_error(InvalidNumberOfIndexes(i.span(), length, max_possible_index));
                 }
             }
         }

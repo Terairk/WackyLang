@@ -12,9 +12,10 @@ pub enum SemanticError {
     AssignmentWithBothSidesUnknown(SourcedSpan),
     MismatchedArgCount(SourcedSpan, usize, usize),
     InvalidIndexType(SourcedSpan, SemanticType),
-    InvalidNumberOfIndexes(usize),
+    InvalidFreeType(SourcedSpan, SemanticType),
+    InvalidNumberOfIndexes(SourcedSpan, usize, usize),
     UndefinedIdent(SN<Ident>),
-    ReturnInMain,
+    ReturnInMain(SourcedSpan),
 }
 
 pub fn semantic_error_to_reason(error: &SemanticError) -> String {
@@ -47,14 +48,20 @@ pub fn semantic_error_to_reason(error: &SemanticError) -> String {
             // String and not smth we defined
             format!("{} cannot be used to index into an array", ty)
         }
-        SemanticError::InvalidNumberOfIndexes(count) => {
-            format!("Expected 1 index, but got {}", count)
+        SemanticError::InvalidNumberOfIndexes(_span, got, expected) => {
+            format!("Expected maximum {} index(es), but got {}", expected, got)
         }
         SemanticError::UndefinedIdent(ident) => {
             format!("Undefined identifier '{}'", ident.inner())
         }
-        SemanticError::ReturnInMain => {
+        SemanticError::ReturnInMain(_) => {
             format!("Cannot return from main function")
+        }
+        SemanticError::InvalidFreeType(_span, actual) => {
+            format!(
+                "Cannot free {} type, can only free an array or a pair",
+                actual
+            )
         }
     }
 }

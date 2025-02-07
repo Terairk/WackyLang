@@ -10,8 +10,6 @@ use crate::{
     token::Token,
     types,
 };
-use chumsky::input::{Checkpoint, Cursor};
-use chumsky::inspector::Inspector;
 use chumsky::pratt::right;
 use chumsky::{
     combinator::{DelimitedBy, MapWith},
@@ -34,7 +32,7 @@ type SN<T> = SourcedNode<T>;
 
 #[must_use]
 #[inline]
-pub fn ident_parser<'src, I, E>() -> impl alias::Parser2<'src, I, ast::Ident, E>
+pub fn ident_parser<'src, I>() -> impl alias::Parser<'src, I, ast::Ident>
 where
     I: BorrowInput<'src, Token = Token>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
