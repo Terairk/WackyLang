@@ -226,10 +226,11 @@ enum LongestMatchCorrectionToken<'src, I: Input<'src>> {
     clippy::single_call_fn
 )]
 #[inline]
-fn unflattened_token_lexer<'src, I>(
-) -> impl alias::Parser<'src, I, Vec<(LongestMatchCorrectionToken<'src, I>, I::Span)>>
+fn unflattened_token_lexer<'src, I, E>(
+) -> impl alias::Parser2<'src, I, Vec<(LongestMatchCorrectionToken<'src, I>, I::Span)>, E>
 where
     I: StrInput<'src, Token = char, Slice = &'src str>,
+    E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
 {
     // TODO: add labels where appropriate
     // TODO: think more about error handling: in particular the char/string delimiters
@@ -275,114 +276,103 @@ where
     // character literal parser
     let char_delim = just('\'');
     let char_liter = char_delim
-    .ignore_then(
-        choice((
-            well_formed_character.map(
-                |c| (c, false)
-            ),
-            any().and_is(char_delim.not()).map(
-                |c| (c, true)
-            ),
-        ))
-        .repeated()
-        .collect::<Vec<(char, bool)>>()
-        .then_ignore(char_delim),
-    )
-    .try_map_with(|content, e| {
-        let ct_len = content.len();
-        if ct_len > 2 {
-            Err(Rich::custom(e.span(), "Char literals should only have one character"))
-        } else if ct_len == 0 {
-            Err(Rich::custom(e.span(), "Empty character literal"))
-        } else {
-            if let Some(&(c, ill)) = content.get(0) {
-                if ill {
-                    if c == '\\' {
-                        Err(Rich::custom(e.span(), "Invalid control character"))
-                    } else {
-                        Err(Rich::custom(e.span(), "Non-ASCII character"))
-                    }
-                } else {
-                    if ct_len == 2 {
-                        Err(Rich::custom(e.span(), "Char literals should only have one character"))
-                    } else {
-                        Ok(Token::CharLiter(c))
-                    }
-                }
-            } else {
-                unreachable!();
-            }
-        }
-    })
-    .recover_with(via_parser(
-        char_delim.ignore_then(
+        .ignore_then(
             choice((
-                just('\\').ignore_then(any()),
-                any().and_is(char_delim.not()),
+                well_formed_character.map(|c| (c, false)),
+                any().and_is(char_delim.not()).map(|c| (c, true)),
             ))
             .repeated()
-            .collect::<String>()
-            .then_ignore(char_delim)
-            .map_with(|_, _| {
-                Token::CharLiter('6')
-            })
-        ),
-    ))
-    .map(LongestMatchCorrectionToken::Token)
-    .labelled("<char-liter>");
+            .collect::<Vec<(char, bool)>>()
+            .then_ignore(char_delim),
+        )
+        .try_map_with(|content, e| {
+            let ct_len = content.len();
+            if ct_len > 2 {
+                Err(Rich::custom(
+                    e.span(),
+                    "Char literals should only have one character",
+                ))
+            } else if ct_len == 0 {
+                Err(Rich::custom(e.span(), "Empty character literal"))
+            } else {
+                if let Some(&(c, ill)) = content.get(0) {
+                    if ill {
+                        if c == '\\' {
+                            Err(Rich::custom(e.span(), "Invalid control character"))
+                        } else {
+                            Err(Rich::custom(e.span(), "Non-ASCII character"))
+                        }
+                    } else {
+                        if ct_len == 2 {
+                            Err(Rich::custom(
+                                e.span(),
+                                "Char literals should only have one character",
+                            ))
+                        } else {
+                            Ok(Token::CharLiter(c))
+                        }
+                    }
+                } else {
+                    unreachable!();
+                }
+            }
+        })
+        .recover_with(via_parser(
+            char_delim.ignore_then(
+                choice((
+                    just('\\').ignore_then(any()),
+                    any().and_is(char_delim.not()),
+                ))
+                .repeated()
+                .collect::<String>()
+                .then_ignore(char_delim)
+                .map_with(|_, _| Token::CharLiter('6')),
+            ),
+        ))
+        .map(LongestMatchCorrectionToken::Token)
+        .labelled("<char-liter>");
 
     // string literal parser
     let str_delim = just('"');
     let str_liter = str_delim
         .ignore_then(
-        choice((
-            well_formed_character.map(
-                |c| (c, false)
-            ),
-            any().and_is(str_delim.not()).map(
-                |c| (c, true)
-                ),
+            choice((
+                well_formed_character.map(|c| (c, false)),
+                any().and_is(str_delim.not()).map(|c| (c, true)),
             ))
-        .repeated()
-        .collect::<Vec<(char, bool)>>()
-        .then_ignore(str_delim)
-        .try_map_with(|chars, e| {
-            let mut string_builder = String::with_capacity(chars.len());
+            .repeated()
+            .collect::<Vec<(char, bool)>>()
+            .then_ignore(str_delim)
+            .try_map_with(|chars, e| {
+                let mut string_builder = String::with_capacity(chars.len());
 
-            for &(c, ill_formed) in &chars {
-                if ill_formed {
-                    if c == '\\' {
-                        return Err(Rich::custom(e.span(), "Invalid control character"));
-                    } else if c == '\n' {
-                        return Err(Rich::custom(e.span(), "No new line"));
-                    } else {
-                        return Err(Rich::custom(e.span(), "Non-ASCII character"));
+                for &(c, ill_formed) in &chars {
+                    if ill_formed {
+                        if c == '\\' {
+                            return Err(Rich::custom(e.span(), "Invalid control character"));
+                        } else if c == '\n' {
+                            return Err(Rich::custom(e.span(), "No new line"));
+                        } else {
+                            return Err(Rich::custom(e.span(), "Non-ASCII character"));
+                        }
                     }
+
+                    string_builder.push(c);
                 }
 
-                string_builder.push(c);
-            }
-
-            return Ok(ArcIntern::from(string_builder));
-        })
+                return Ok(ArcIntern::from(string_builder));
+            }),
         )
         .recover_with(via_parser(
             str_delim.ignore_then(
-                choice((
-                    just('\\').ignore_then(any()),
-                    any().and_is(str_delim.not()),
-                ))
-                .repeated()
-                .collect::<String>()
-                .then_ignore(str_delim)
-                .map_with(|lit, _| {
-                    ArcIntern::from(lit)
-                })
+                choice((just('\\').ignore_then(any()), any().and_is(str_delim.not())))
+                    .repeated()
+                    .collect::<String>()
+                    .then_ignore(str_delim)
+                    .map_with(|lit, _| ArcIntern::from(lit)),
             ),
         ))
-        .pipe((
-            Token::StrLiter,
-        ))
+        .pipe((Token::StrLiter,))
         .map(LongestMatchCorrectionToken::Token)
         .labelled("<str-liter>");
 
@@ -516,12 +506,13 @@ where
 
 #[must_use]
 #[inline]
-pub fn lexer<'src, I>() -> impl alias::Parser<'src, I, Vec<(Token, I::Span)>>
+pub fn lexer<'src, I, E>() -> impl alias::Parser2<'src, I, Vec<(Token, I::Span)>, E>
 where
     I: StrInput<'src, Token = char, Slice = &'src str>,
     I::Span: Clone,
+    E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
 {
-    let lexer = unflattened_token_lexer::<'src, I>();
+    let lexer = unflattened_token_lexer::<'src, I, _>();
 
     lexer.map(|tokens| {
         // create new flattened vector

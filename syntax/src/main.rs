@@ -1,16 +1,21 @@
+// enable Rust-unstable features for convenience
+#![feature(type_alias_impl_trait)]
 #![allow(clippy::arbitrary_source_item_ordering)]
 
 use ariadne::{CharSet, Label, Report, Source};
-use chumsky::input::WithContext;
+use chumsky::error::Rich;
+use chumsky::input::{Input, MappedInput, WithContext};
 use chumsky::prelude::Input as _;
-use chumsky::Parser;
+use chumsky::util::IntoMaybe;
+use chumsky::{extra, Parser};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::process::ExitCode;
+use wacc_syntax::ast;
 use wacc_syntax::error::{semantic_error_to_reason, SemanticError};
-use wacc_syntax::parser::program_parser;
+use wacc_syntax::parser::{program_parser, DebugInspector};
 use wacc_syntax::rename::rename;
-use wacc_syntax::source::{SourcedSpan, StrSourceId};
+use wacc_syntax::source::{SourcedSpan, StrSourceId, WithSourceId};
 use wacc_syntax::token::{lexer, Token};
 use wacc_syntax::typecheck::typecheck;
 
@@ -86,10 +91,29 @@ const TEST_PROGRAM: &str =
 const SEMANTIC_ERR_PROGRAM: &str =
     include_str!("../../test_cases/invalid/semanticErr/multiple/ifAndWhileErrs.wacc");
 
+// type aliases, because Rust's type inference can't yet handle this, and typing the same
+// stuff over and over is very annoying and unreadable :)
+
+// pub type ErrorExtra<'a, E> = extra::Full<E, DebugInspector<'a, I>, ()>;
+pub type ErrorExtra<'a, E> = extra::Full<E, (), ()>;
+pub type ParseOutput<'a, O, E> = (Option<O>, Vec<E>);
+
+pub type InputError<'a, I> = Rich<'a, <I as Input<'a>>::Token, <I as Input<'a>>::Span>;
+pub type InputExtra<'a, I> = ErrorExtra<'a, InputError<'a, I>>;
+pub type InputParseOutput<'a, I, O> = ParseOutput<'a, O, InputError<'a, I>>;
+
+type LexerInput<'a> = WithContext<SourcedSpan, &'a str>;
+type LexerExtra<'a> = InputExtra<'a, LexerInput<'a>>;
+type LexerOutput<'a> = InputParseOutput<'a, LexerInput<'a>, Vec<(Token, SourcedSpan)>>;
+
+type ProgramError<'a> = Rich<'a, Token, SourcedSpan>;
+type ProgramExtra<'a> = ErrorExtra<'a, ProgramError<'a>>;
+type ProgramOutput<'a> = ParseOutput<'a, ast::Program<ast::Ident, ()>, ProgramError<'a>>;
+
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().collect();
+    let args = std::env::args().collect::<Vec<String>>();
     if args.len() != 2 {
-        eprintln!("Usage: {} <path-to-wacc-file>", &args[0]);
+        eprintln!("Usage: {} <path-to-wacc-file>", args[0]);
         return ExitCode::FAILURE;
     }
 
@@ -110,12 +134,12 @@ fn main() -> ExitCode {
 
     // let source = TEST_PROGRAM;
     // let file_path = "test_cases/invalid/syntaxErr/basic/beginNoend.wacc";
-    let source_id = StrSourceId::repl();
+    let source_id = StrSourceId::from_str(file_path);
     let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
 
     // so the pattern is, make everything generic asf and supply the concrete implementations later :)
-    let (tokens, lexing_errs): (Option<Vec<(Token, _)>>, _) = Parser::parse(
-        &lexer::<WithContext<SourcedSpan, &str>>(),
+    let (tokens, lexing_errs): LexerOutput = Parser::parse(
+        &lexer::<_, LexerExtra>(),
         source.with_context((source_id, ())),
     )
     .into_output_errors();
@@ -137,14 +161,21 @@ fn main() -> ExitCode {
     }
 
     if let Some(tokens) = tokens {
-        // println!("{:?}", DisplayVec(tokens.clone()));
+        println!("{:#?}", DisplayVec(tokens.clone())); // TODO: remove this later
 
         // attach the span of each token to it before parsing, so it is not forgotten
         #[allow(clippy::pattern_type_mismatch)]
         let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
-        let (parsed, parse_errs) = program_parser().parse(spanned_tokens).into_output_errors();
+        println!("\n\nEOI span done!!!");
+        let (parsed, parse_errs): ProgramOutput =
+            Parser::parse(&program_parser::<_, ProgramExtra>(), spanned_tokens)
+                .into_output_errors();
 
-        // println!("{parsed:?}");
+        println!(
+            "Done parsing\nParse errors: {:#?}\nParsed: {:#?}",
+            parse_errs, parsed
+        );
+
         let parse_errs_not_empty = !parse_errs.is_empty();
 
         for e in parse_errs {
@@ -210,7 +241,10 @@ pub fn semantic_report_helper(
     .with_config(config)
     .with_message(message)
     .with_code(420)
-    .with_label(Label::new((file_path, span.clone().as_range())).with_message(semantic_error_to_reason(error)))
+    .with_label(
+        Label::new((file_path, span.clone().as_range()))
+            .with_message(semantic_error_to_reason(error)),
+    )
     .finish()
     .print((file_path, Source::from(source)))
     .unwrap();
@@ -223,7 +257,13 @@ pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, so
             semantic_report_helper(file_path, "Type Error", error, span, source);
         }
         SemanticError::DuplicateIdent(ident) => {
-            semantic_report_helper(file_path, "Duplicate Identifier", error, &ident.span(), source);
+            semantic_report_helper(
+                file_path,
+                "Duplicate Identifier",
+                error,
+                &ident.span(),
+                source,
+            );
         }
         // TODO: Add Span to this case
         SemanticError::InvalidNumberOfIndexes(_count) => {
@@ -313,6 +353,7 @@ impl<T: fmt::Display> fmt::Display for DisplayVec<T> {
 
 #[cfg(test)]
 mod tests {
+    use crate::{LexerExtra, LexerInput, ProgramExtra, ProgramOutput};
     use chumsky::input::{Input, WithContext};
     use chumsky::Parser;
     use std::fs;
@@ -455,7 +496,7 @@ mod tests {
         let source_id = StrSourceId::repl();
         let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
         let (tokens, lexing_errs): (Option<Vec<(Token, _)>>, _) = Parser::parse(
-            &lexer::<WithContext<SourcedSpan, &str>>(),
+            &lexer::<LexerInput, LexerExtra>(),
             source.with_context((source_id, ())),
         )
         .into_output_errors();
@@ -466,7 +507,9 @@ mod tests {
         if let Some(tokens) = tokens {
             #[allow(clippy::pattern_type_mismatch)]
             let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
-            let (parsed, parse_errs) = program_parser().parse(spanned_tokens).into_output_errors();
+            let (parsed, parse_errs): ProgramOutput =
+                Parser::parse(&program_parser::<_, ProgramExtra>(), spanned_tokens)
+                    .into_output_errors();
 
             if !parse_errs.is_empty() {
                 return Err(SYNTAX_ERR_STR.to_owned());

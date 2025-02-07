@@ -204,37 +204,43 @@ where
 
 impl<SourceIdT, SpanT> ChumskySpan for WithSourceId<SourceIdT, SpanT>
 where
-    SourceIdT: SourceId,
-    SpanT: ChumskySpan<Offset = usize>,
+    SourceIdT: SourceId + fmt::Debug,
+    SpanT: ChumskySpan<Offset = usize> + fmt::Debug,
+    SpanT::Context: fmt::Debug,
 {
     type Context = (SourceIdT, SpanT::Context);
     type Offset = usize;
 
     #[inline]
     fn new(context: Self::Context, range: Range<Self::Offset>) -> Self {
+        println!("creating new span: {:#?}, {:#?}", context, range);
         Self::new(context.0, SpanT::new(context.1, range))
     }
 
     #[inline]
     fn context(&self) -> Self::Context {
+        println!("creating context: {:#?}", self);
         (self.source_id.clone(), self.span.context())
     }
 
     #[inline]
     fn start(&self) -> Self::Offset {
+        println!("creating start: {:#?}", self);
         Self::start_impl(self)
     }
 
     #[inline]
     fn end(&self) -> Self::Offset {
+        println!("creating end: {:#?}", self);
         Self::end_impl(self)
     }
 }
 
 impl<SourceIdT, SpanT> SourceIdSpan for WithSourceId<SourceIdT, SpanT>
 where
-    SourceIdT: SourceId,
-    SpanT: ChumskySpan<Offset = usize>,
+    SourceIdT: SourceId + fmt::Debug,
+    SpanT: ChumskySpan<Offset = usize> + fmt::Debug,
+    SpanT::Context: fmt::Debug,
 {
     type SourceId = SourceIdT;
 
