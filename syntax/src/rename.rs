@@ -11,12 +11,27 @@ use std::fmt;
 use std::hash::Hash;
 use std::mem;
 
+/* This file contains information pertaining to the renaming side of our compiler
+ * The renaming phase is responsible for renaming all variables to unique_names
+ * Usually using a counter i.e x -> x@1, y -> y@2 etc
+ * Notably functions don't get renamed
+ * We use a linear flat table to check scope
+ * The main function is a rename(UntypedAST) -> RenamedAST
+ */
+
+// RenamedName is simply a struct that contains the original identifier and a unique id
+// We make sure its Hashable as we may want to use it for a HashMap ID
+//
+// A file-local type alias for better readability of type definitions
+type SN<T> = SourcedNode<T>;
+type RenamedAST = Program<RenamedName, ()>;
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct RenamedName {
     pub ident: Ident,
     pub uuid: usize,
 }
 
+// Customised debug for prettier debugging
 impl fmt::Debug for RenamedName {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -25,6 +40,9 @@ impl fmt::Debug for RenamedName {
 }
 
 impl RenamedName {
+    // We use a counter to generate unique ids, counter is automatically incremented
+    // Note we use the same counter for all identifiers
+    // Takes in SN<Ident> as this is what we always get from the AST
     #[inline]
     fn new_sn(counter: &mut usize, ident: &SN<Ident>) -> SN<Self> {
         // would rather crash in debug builds than define a saturating
@@ -54,29 +72,29 @@ impl RenamedName {
     }
 }
 
-// A file-local type alias for better readability of type definitions
-type SN<T> = SourcedNode<T>;
-type RenamedAST = Program<RenamedName, ()>;
-
 // We handle functions separately from variables since its easier
 #[derive(Debug)]
 pub struct IdFuncTable {
     functions: HashMap<Ident, (SemanticType, Vec<SemanticType>)>,
 }
 
+// This struct helps us keep track of the identifiers in the current block
+// Useful for checking for duplicates with scoping
 struct IDMapEntry {
     renamed_name: SN<RenamedName>,
     from_current_block: bool,
 }
 
 impl IDMapEntry {
-    fn new(renamed_name: SN<RenamedName>, from_current_block: bool) -> Self {
+    const fn new(renamed_name: SN<RenamedName>, from_current_block: bool) -> Self {
         Self {
             renamed_name,
             from_current_block,
         }
     }
 
+    // Helper function to create a new IDMapEntry with from_current_block set to false
+    // Used when you enter a new scope and need to make a new entry
     fn create_false(&self) -> Self {
         Self {
             renamed_name: self.renamed_name.clone(),
@@ -86,6 +104,7 @@ impl IDMapEntry {
 }
 
 // struct responsible for traversing/folding the AST
+// holds state relevant for the renaming phase
 pub struct Renamer {
     pub id_func_table: IdFuncTable,
     errors: Vec<SemanticError>,
@@ -122,6 +141,9 @@ impl Renamer {
         &self.id_func_table
     }
 
+    // This function is used to create a copy of the current identifier map
+    // with from_current_block set to false, this is so we can allow shadowing
+    // of identifiers provided they're created in a new scope
     fn copy_id_map_with_false(&self) -> HashMap<Ident, IDMapEntry> {
         self.identifier_map
             .iter()
@@ -146,6 +168,10 @@ impl Renamer {
         }
     }
 
+    // Helper function to fold a statement with a new identifier map
+    // so we don't have to worry about resetting the map
+    // in one situation, it gets too difficult so we manually need to revert
+    // back to manually adjusting the map
     fn with_temporary_map<F, R>(&mut self, f: F) -> R
     where
         F: FnOnce(&mut Self) -> R,
@@ -159,6 +185,7 @@ impl Renamer {
 }
 
 impl Default for Renamer {
+    #[inline]
     fn default() -> Self {
         Self::new()
     }
@@ -189,6 +216,9 @@ impl Folder for Renamer {
         self.make_program(folded_funcs, folded_body)
     }
 
+    // When you enter a new function, you create a new scope just for the args,
+    // Then you create another scope for the body of the function
+    // We also keep track if we're in the main function
     #[inline]
     fn fold_func(&mut self, func: Func<Self::N, Self::T>) -> Func<Self::OutputN, Self::OutputT> {
         self.in_main = false;
@@ -222,7 +252,7 @@ impl Folder for Renamer {
             };
         }
 
-        let unique_name = RenamedName::new_sn(&mut self.counter, &name);
+        let unique_name = RenamedName::new_sn(&mut self.counter, name);
         let map_entry = IDMapEntry::new(unique_name.clone(), true);
         self.identifier_map.insert(name.inner().clone(), map_entry);
 
@@ -232,6 +262,8 @@ impl Folder for Renamer {
         }
     }
 
+    // We fold a stat block by creating a new scope for the block
+    // then we fold the statements in the block within that scope
     #[inline]
     fn fold_stat_block(
         &mut self,
@@ -285,8 +317,9 @@ impl Folder for Renamer {
         &mut self,
         expr: SN<Expr<Self::N, Self::T>>,
     ) -> Stat<Self::OutputN, Self::OutputT> {
+        // If we do a return in main, we add an error
         if self.in_main {
-            self.add_error(SemanticError::ReturnInMain);
+            self.add_error(SemanticError::ReturnInMain(expr.span()));
         }
         Stat::Return(self.fold_expr(expr))
     }
@@ -336,7 +369,8 @@ impl Folder for Renamer {
         name
     }
 
-    // OutputT is a () so return empty value
+    // OutputT is a () so return empty value, this looks wacc as hell
+    // but rust requires this
     #[inline]
     fn fold_type(&mut self, _ty: Self::T) -> Self::OutputT {}
 }

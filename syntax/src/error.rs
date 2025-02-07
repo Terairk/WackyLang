@@ -15,7 +15,7 @@ pub enum SemanticError {
     InvalidFreeType(SourcedSpan, SemanticType),
     InvalidNumberOfIndexes(SourcedSpan, usize, usize),
     UndefinedIdent(SN<Ident>),
-    ReturnInMain,
+    ReturnInMain(SourcedSpan),
 }
 
 pub fn semantic_error_to_reason(error: &SemanticError) -> String {
@@ -54,7 +54,7 @@ pub fn semantic_error_to_reason(error: &SemanticError) -> String {
         SemanticError::UndefinedIdent(ident) => {
             format!("Undefined identifier '{}'", ident.inner())
         }
-        SemanticError::ReturnInMain => {
+        SemanticError::ReturnInMain(_) => {
             format!("Cannot return from main function")
         }
         SemanticError::InvalidFreeType(_span, actual) => {
