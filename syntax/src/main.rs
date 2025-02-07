@@ -1,12 +1,15 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
-use ariadne::{CharSet, Label, Report, Source};
-use chumsky::input::WithContext;
+use ariadne::{CharSet, Color, Label, Report, Source};
+use chumsky::error::Rich;
+use chumsky::input::{Input, MappedInput, WithContext};
 use chumsky::prelude::Input as _;
-use chumsky::Parser;
+use chumsky::util::IntoMaybe;
+use chumsky::{extra, Parser};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::process::ExitCode;
+use syntax::ast;
 use syntax::error::{semantic_error_to_reason, SemanticError};
 use syntax::parser::program_parser;
 use syntax::rename::rename;
@@ -89,10 +92,29 @@ const SEMANTIC_ERR_PROGRAM: &str =
 static SEMANTIC_ERR_CODE: u8 = 200;
 static SYNTAX_ERR_CODE: u8 = 100;
 
+// type aliases, because Rust's type inference can't yet handle this, and typing the same
+// stuff over and over is very annoying and unreadable :)
+
+// pub type ErrorExtra<'a, E> = extra::Full<E, DebugInspector<'a, I>, ()>;
+pub type ErrorExtra<'a, E> = extra::Full<E, (), ()>;
+pub type ParseOutput<'a, O, E> = (Option<O>, Vec<E>);
+
+pub type InputError<'a, I> = Rich<'a, <I as Input<'a>>::Token, <I as Input<'a>>::Span>;
+pub type InputExtra<'a, I> = ErrorExtra<'a, InputError<'a, I>>;
+pub type InputParseOutput<'a, I, O> = ParseOutput<'a, O, InputError<'a, I>>;
+
+type LexerInput<'a> = WithContext<SourcedSpan, &'a str>;
+type LexerExtra<'a> = InputExtra<'a, LexerInput<'a>>;
+type LexerOutput<'a> = InputParseOutput<'a, LexerInput<'a>, Vec<(Token, SourcedSpan)>>;
+
+type ProgramError<'a> = Rich<'a, Token, SourcedSpan>;
+type ProgramExtra<'a> = ErrorExtra<'a, ProgramError<'a>>;
+type ProgramOutput<'a> = ParseOutput<'a, ast::Program<ast::Ident, ()>, ProgramError<'a>>;
+
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().collect();
+    let args = std::env::args().collect::<Vec<String>>();
     if args.len() != 2 {
-        eprintln!("Usage: {} <path-to-wacc-file>", &args[0]);
+        eprintln!("Usage: {} <path-to-wacc-file>", args[0]);
         return ExitCode::FAILURE;
     }
 
@@ -107,12 +129,12 @@ fn main() -> ExitCode {
 
     // let source = TEST_PROGRAM;
     // let file_path = "test_cases/invalid/syntaxErr/basic/beginNoend.wacc";
-    let source_id = StrSourceId::repl();
+    let source_id = StrSourceId::from_str(file_path);
     let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
 
     // so the pattern is, make everything generic asf and supply the concrete implementations later :)
-    let (tokens, lexing_errs): (Option<Vec<(Token, _)>>, _) = Parser::parse(
-        &lexer::<WithContext<SourcedSpan, &str>>(),
+    let (tokens, lexing_errs): LexerOutput = Parser::parse(
+        &lexer::<_, LexerExtra>(),
         source.with_context((source_id, ())),
     )
     .into_output_errors();
@@ -120,12 +142,7 @@ fn main() -> ExitCode {
     // Done to appease the borrow checker while displaying errors
     let lexing_errs_not_empty = !lexing_errs.is_empty();
     for e in lexing_errs {
-        build_syntactic_report(
-            file_path,
-            e.span().clone(),
-            e.reason().to_string(),
-            source.clone(),
-        );
+        build_syntactic_report(e.span().clone(), e, source.clone());
     }
 
     if lexing_errs_not_empty {
@@ -133,26 +150,33 @@ fn main() -> ExitCode {
     }
 
     if let Some(tokens) = tokens {
-        // println!("{:?}", DisplayVec(tokens.clone()));
+        // println!("{:#?}", DisplayVec(tokens.clone())); // TODO: remove this later
 
         // attach the span of each token to it before parsing, so it is not forgotten
         #[allow(clippy::pattern_type_mismatch)]
         let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
-        let (parsed, parse_errs) = program_parser().parse(spanned_tokens).into_output_errors();
+        // println!("\n\nEOI span done!!!");
+        let (parsed, parse_errs): ProgramOutput =
+            Parser::parse(&program_parser::<_, ProgramExtra>(), spanned_tokens)
+                .into_output_errors();
 
-        // println!("{parsed:?}");
+        // println!(
+        //     "Done parsing\nParse errors: {:#?}\nParsed: {:#?}",
+        //     parse_errs, parsed
+        // );
+
         let parse_errs_not_empty = !parse_errs.is_empty();
 
         for e in parse_errs {
             // check if span is valid because ariadne will complain
             let range = e.span().as_range();
             let sourceid = e.span().source_id();
-            let (start, mut end) = (range.start, range.end);
+            let (mut start, mut end) = (range.start, range.end);
             if start > end {
-                end = start;
+                std::mem::swap(&mut end, &mut start); // this is a heuristic, the parser probably meant to swap them around
             }
             let new_span = SourcedSpan::new(sourceid.clone(), (start..end).into());
-            build_syntactic_report(&file_path, new_span, e.reason().to_string(), source.clone());
+            build_syntactic_report(new_span, e, source.clone());
         }
         if parse_errs_not_empty {
             return ExitCode::from(SYNTAX_ERR_CODE);
@@ -187,23 +211,26 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-pub fn build_syntactic_report(
-    file_path: &String,
-    span: SourcedSpan,
-    reason: String,
-    source: String,
-) {
+#[allow(clippy::unwrap_used)]
+pub fn build_syntactic_report<T>(span: SourcedSpan, error: Rich<T, SourcedSpan>, source: String)
+where
+    T: fmt::Display,
+{
     let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
-    Report::build(ariadne::ReportKind::Error, (file_path, span.as_range()))
+    Report::build(ariadne::ReportKind::Error, span.clone())
         .with_config(config)
-        .with_message("Syntax error")
+        .with_message(format!("Syntax error"))
         .with_code(69)
-        .with_label(Label::new((file_path, span.as_range())).with_message(reason))
+        .with_label(Label::new(span.clone()).with_message(error.reason().to_string()))
+        .with_labels(error.contexts().map(|(label, span)| {
+            Label::new(span.clone()).with_message(format!("while parsing this {label}"))
+        }))
         .finish()
-        .print((file_path, Source::from(&source)))
+        .print((span.source_id().clone(), Source::from(source)))
         .unwrap();
 }
 
+#[allow(clippy::unwrap_used)]
 pub fn semantic_report_helper(
     file_path: &String,
     message: &str,
@@ -243,13 +270,7 @@ pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, so
             );
         }
         SemanticError::InvalidNumberOfIndexes(span, _, _) => {
-            semantic_report_helper(
-                file_path,
-                "Wrong number of indexes",
-                error,
-                &span,
-                source,
-            );
+            semantic_report_helper(file_path, "Wrong number of indexes", error, &span, source);
         }
         // Handle other error variants similarly
         _ => {
