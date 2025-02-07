@@ -1,10 +1,9 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
-use ariadne::{CharSet, Color, Label, Report, Source};
+use ariadne::{CharSet, Label, Report, Source};
 use chumsky::error::Rich;
-use chumsky::input::{Input, MappedInput, WithContext};
+use chumsky::input::{Input, WithContext};
 use chumsky::prelude::Input as _;
-use chumsky::util::IntoMaybe;
 use chumsky::{extra, Parser};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -142,7 +141,7 @@ fn main() -> ExitCode {
     // Done to appease the borrow checker while displaying errors
     let lexing_errs_not_empty = !lexing_errs.is_empty();
     for e in lexing_errs {
-        build_syntactic_report(e.span().clone(), e, source.clone());
+        build_syntactic_report(e, source.clone());
     }
 
     if lexing_errs_not_empty {
@@ -168,15 +167,7 @@ fn main() -> ExitCode {
         let parse_errs_not_empty = !parse_errs.is_empty();
 
         for e in parse_errs {
-            // check if span is valid because ariadne will complain
-            let range = e.span().as_range();
-            let sourceid = e.span().source_id();
-            let (mut start, mut end) = (range.start, range.end);
-            if start > end {
-                std::mem::swap(&mut end, &mut start); // this is a heuristic, the parser probably meant to swap them around
-            }
-            let new_span = SourcedSpan::new(sourceid.clone(), (start..end).into());
-            build_syntactic_report(new_span, e, source.clone());
+            build_syntactic_report(e, source.clone());
         }
         if parse_errs_not_empty {
             return ExitCode::from(SYNTAX_ERR_CODE);
@@ -212,21 +203,21 @@ fn main() -> ExitCode {
 }
 
 #[allow(clippy::unwrap_used)]
-pub fn build_syntactic_report<T>(span: SourcedSpan, error: Rich<T, SourcedSpan>, source: String)
+pub fn build_syntactic_report<T>(error: Rich<T, SourcedSpan>, source: String)
 where
     T: fmt::Display,
 {
     let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
-    Report::build(ariadne::ReportKind::Error, span.clone())
+    Report::build(ariadne::ReportKind::Error, error.span().clone())
         .with_config(config)
         .with_message(format!("Syntax error"))
         .with_code(69)
-        .with_label(Label::new(span.clone()).with_message(error.reason().to_string()))
+        .with_label(Label::new(error.span().clone()).with_message(error.reason().to_string()))
         .with_labels(error.contexts().map(|(label, span)| {
             Label::new(span.clone()).with_message(format!("while parsing this {label}"))
         }))
         .finish()
-        .print((span.source_id().clone(), Source::from(source)))
+        .print((error.span().source_id().clone(), Source::from(source)))
         .unwrap();
 }
 

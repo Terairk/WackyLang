@@ -216,7 +216,13 @@ where
     #[inline]
     fn new(context: Self::Context, range: Range<Self::Offset>) -> Self {
         // println!("creating new span: {:#?}, {:#?}", context, range);
-        Self::new(context.0, SpanT::new(context.1, range))
+        let (mut start, mut end) = (range.start, range.end);
+        if (start > end) {
+            // Hacky heuristic, if ranges are flipped then it is probably meant to be
+            // the other way around
+            std::mem::swap(&mut start, &mut end);
+        }
+        Self::new(context.0, SpanT::new(context.1, start..end))
     }
 
     #[inline]
