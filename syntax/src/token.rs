@@ -213,6 +213,226 @@ impl fmt::Display for Token {
     }
 }
 
+/// Unicode replacement character `�` meant to be used as an indicator of problems.
+/// For more information, [see this](https://en.wikipedia.org/wiki/Specials_(Unicode_block)#Replacement_character).
+const REPLACEMENT_CHAR: char = '\u{FFFD}';
+
+/// End-of-line (or newline) character
+const EOL_CHAR: char = '\n';
+
+fn character<'src, I, E>() -> impl alias::Parser<'src, I, char, E>
+where
+    I: StrInput<'src, Token = char, Slice = &'src str>,
+    E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
+{
+    // TODO: for all of these, have an "expected render" strategy for the characters,
+    //       if non-graphic characters, write out their hex codes, if graphic, display as-is
+    //       if non-ASCII altogether, do something else entirely............................
+
+    // escaped parser which maps escaped sequences to the characters they represent
+    let escaped = just('\\')
+        .ignore_then(any())
+        .validate(|c: char, e, emitter| {
+            c.lookup_escaped_wacc_char().unwrap_or_else(|| {
+                // emmit non-terminating error which lets the user know that they used an illegal
+                // escaped character. TODO make this error better.... decouple formatting and representation....
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    format!("unexpected \"{}\"\nexpected end of sequence\nvalid escape sequences are \\0, \\n, \\t, \\b, \\f, \\r, \\\", \\' or \\\\", c),
+                ));
+
+                REPLACEMENT_CHAR // map illegal escape characters to replacement character
+            })
+        });
+
+    // parser which validates normal characters, and emits appropriate non-terminating errors
+    let normal = any().validate(|c: char, e, emitter| {
+        match c {
+            // NON-graphic ASCII characters are disallowed:
+            // according to the WACC specification, graphic ASCII characters `g` are those
+            // such that `g >= ' '`, therefore NON-graphic characters range from the
+            // null-terminator `'\x00'` and upto-but-excluding space `'\x20'`
+            '\x00'..'\x20' => {
+                // emmit non-terminating error which lets the user know that they used an illegal
+                // non-graphic character. TODO make this error better.... decouple formatting and representation....
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    format!("unexpected non-graphic ASCII character with code 0x{:02x}\nexpected escape sequence or a graphic ASCII character\nyou can escape some of these",
+                            c as u32),
+                )); // might want to further subdivide into "escapable" and "non escapable" control characters
+                // so that we can provide better error messages, of which of these to replace with escape sequence
+                // .vs just fully unsupported
+
+                REPLACEMENT_CHAR // map non-graphic characters to replacement character
+            }
+
+            // the WACC specification also explicitly excludes these characters
+            '\\' | '\'' | '"'  => {
+                // emmit non-terminating error which lets the user know that they used an illegal
+                // graphic character. TODO make this error better.... decouple formatting and representation....
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    format!("unexpected ASCII character '{c}'\nexpected escape sequence or a graphic ASCII character\nplease use an appropriate escape sequence"),
+                ));
+
+                REPLACEMENT_CHAR // map non-graphic characters to replacement character
+            }
+
+            // everything else in the ASCII-character range is fine, i.e. from `'\x20'` upto
+            // `'\x7F'` inclusive
+            '\x20'..='\x7F' => c,
+
+            // all other characters are non-ASCII and should not be accepted
+            _ => {
+                // emmit non-terminating error which lets the user know that they used an illegal
+                // graphic character. TODO make this error better.... decouple formatting and representation....
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    format!("unexpected non-ASCII character '{c}'\nexpected escape sequence or a graphic ASCII character"),
+                ));
+
+                REPLACEMENT_CHAR // map non-ascii characters to replacement character
+            },
+        }
+    });
+
+    // character parser TODO: appropriate labels and correct nested contexts
+    let character = escaped.or(normal).labelled("<character>").as_context();
+    character
+}
+
+#[allow(clippy::single_call_fn)]
+fn char_liter<'src, I, E>() -> impl alias::Parser<'src, I, Token, E>
+where
+    I: StrInput<'src, Token = char, Slice = &'src str>,
+    E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
+{
+    let char_liter_delim = just('\'');
+
+    // parse the first (unterminated) part of character literals and map to token
+    let char_liter_unterminated = char_liter_delim
+        .ignore_then(character())
+        .map(Token::CharLiter);
+
+    // now parse the terminating delimiter to complete the literal, or emmit a non-terminating
+    // error if not found, and continue parsing other things
+    let char_liter =
+        char_liter_unterminated.then_ignore(char_liter_delim.or_not().validate(|x, e, emitter| {
+            if let None = x {
+                // emmit non-terminating error which lets the user know that they
+                // forgot to terminate their character literal. TODO make this error better.... decouple formatting and representation....
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    "unterminated character literal".to_string(),
+                ));
+            }
+        }));
+
+    char_liter.labelled("<char-liter>").as_context() // TODO: appropriate labels and correct nested contexts
+}
+
+#[allow(clippy::single_call_fn)]
+fn str_liter<'src, I, E>() -> impl alias::Parser<'src, I, Token, E>
+where
+    I: StrInput<'src, Token = char, Slice = &'src str>,
+    E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
+{
+    // TODO: for all of these, have an "expected render" strategy for the characters,
+    //       if non-graphic characters, write out their hex codes, if graphic, display as-is
+    //       if non-ASCII altogether, do something else entirely............................
+
+    // escaped parser which maps escaped sequences to the characters they represent
+    let escaped = just('\\')
+        .ignore_then(any())
+        .validate(|c: char, e, emitter| {
+            c.lookup_escaped_wacc_char().unwrap_or_else(|| {
+                // emmit non-terminating error which lets the user know that they used an illegal
+                // escaped character. TODO make this error better.... decouple formatting and representation....
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    format!("unexpected \"{}\"\nexpected end of sequence\nvalid escape sequences are \\0, \\n, \\t, \\b, \\f, \\r, \\\", \\' or \\\\", c),
+                ));
+
+                REPLACEMENT_CHAR // map illegal escape characters to replacement character
+            })
+        });
+
+    // parser which validates normal characters, and emits appropriate non-terminating errors
+    let normal = none_of("\"\n").validate(|c: char, e, emitter| {
+        match c {
+            // NON-graphic ASCII characters are disallowed:
+            // according to the WACC specification, graphic ASCII characters `g` are those
+            // such that `g >= ' '`, therefore NON-graphic characters range from the
+            // null-terminator `'\x00'` and upto-but-excluding space `'\x20'`
+            '\x00'..'\x20' => {
+                // emmit non-terminating error which lets the user know that they used an illegal
+                // non-graphic character. TODO make this error better.... decouple formatting and representation....
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    format!("unexpected non-graphic ASCII character with code 0x{:02x}\nexpected escape sequence or a graphic ASCII character\nyou can escape some of these",
+                            c as u32),
+                )); // might want to further subdivide into "escapable" and "non escapable" control characters
+                // so that we can provide better error messages, of which of these to replace with escape sequence
+                // .vs just fully unsupported
+
+                REPLACEMENT_CHAR // map non-graphic characters to replacement character
+            }
+
+            // the WACC specification also explicitly excludes these characters
+            '\\' | '\'' | '"'  => { // " and \ are redundant options
+                // emmit non-terminating error which lets the user know that they used an illegal
+                // graphic character. TODO make this error better.... decouple formatting and representation....
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    format!("unexpected ASCII character '{c}'\nexpected escape sequence or a graphic ASCII character\nplease use proper escape sequence"),
+                ));
+
+                REPLACEMENT_CHAR // map non-graphic characters to replacement character
+            }
+
+            // everything else in the ASCII-character range is fine, i.e. from `'\x20'` upto
+            // `'\x7F'` inclusive
+            '\x20'..='\x7F' => c,
+
+            // all other characters are non-ASCII and should not be accepted
+            _ => {
+                // emmit non-terminating error which lets the user know that they used an illegal
+                // graphic character. TODO make this error better.... decouple formatting and representation....
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    format!("unexpected non-ASCII character '{c}'\nexpected escape sequence or a graphic ASCII character"),
+                ));
+
+                REPLACEMENT_CHAR // map non-ascii characters to replacement character
+            },
+        }
+    });
+
+    // character parser TODO: appropriate labels and correct nested contexts
+    let character = escaped.or(normal).labelled("<character>").as_context();
+
+    let str_liter_delim = just('"');
+    let str_liter_unterminated = str_liter_delim
+        .ignore_then(character.repeated().collect::<String>())
+        .pipe((ArcIntern::from, Token::StrLiter));
+
+    // now parse the terminating delimiter to complete the literal, or emmit a non-terminating
+    // error if not found, and continue parsing other things
+    let str_liter =
+        str_liter_unterminated.then_ignore(str_liter_delim.or_not().validate(|x, e, emitter| {
+            if let None = x {
+                // emmit non-terminating error which lets the user know that they
+                // forgot to terminate their string literal. TODO make this error better.... decouple formatting and representation....
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    "unterminated string literal".to_string(),
+                ));
+            }
+        }));
+
+    str_liter.labelled("<str-liter>").as_context() // TODO: appropriate labels and correct nested contexts
+}
+
 /// An intermediary token-type that encodes the corrections made to the grammar, to accommodate for
 /// the mistakes made by the longest-match lexing algorithm
 enum LongestMatchCorrectionToken<'src, I: Input<'src>> {

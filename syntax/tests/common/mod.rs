@@ -1,7 +1,9 @@
+use chumsky::error::Rich;
+use chumsky::input::{Input, WithContext};
+use chumsky::{extra, Parser};
 use std::fs;
 use std::path::{Path, PathBuf};
-use chumsky::input::{Input, WithContext};
-use chumsky::Parser;
+use syntax::ast;
 use syntax::parser::program_parser;
 use syntax::rename::rename;
 use syntax::source::{SourcedSpan, StrSourceId};
@@ -10,6 +12,25 @@ use syntax::typecheck::typecheck;
 
 static SYNTAX_ERR_STR: &str = "Syntax error(s) found!";
 static SEMANTIC_ERR_STR: &str = "Semantic error(s) found!";
+
+// type aliases, because Rust's type inference can't yet handle this, and typing the same
+// stuff over and over is very annoying and unreadable :)
+
+// pub type ErrorExtra<'a, E> = extra::Full<E, DebugInspector<'a, I>, ()>;
+pub type ErrorExtra<'a, E> = extra::Full<E, (), ()>;
+pub type ParseOutput<'a, O, E> = (Option<O>, Vec<E>);
+
+pub type InputError<'a, I> = Rich<'a, <I as Input<'a>>::Token, <I as Input<'a>>::Span>;
+pub type InputExtra<'a, I> = ErrorExtra<'a, InputError<'a, I>>;
+pub type InputParseOutput<'a, I, O> = ParseOutput<'a, O, InputError<'a, I>>;
+
+type LexerInput<'a> = WithContext<SourcedSpan, &'a str>;
+type LexerExtra<'a> = InputExtra<'a, LexerInput<'a>>;
+type LexerOutput<'a> = InputParseOutput<'a, LexerInput<'a>, Vec<(Token, SourcedSpan)>>;
+
+type ProgramError<'a> = Rich<'a, Token, SourcedSpan>;
+type ProgramExtra<'a> = ErrorExtra<'a, ProgramError<'a>>;
+type ProgramOutput<'a> = ParseOutput<'a, ast::Program<ast::Ident, ()>, ProgramError<'a>>;
 
 /// Recursively collects all `.wacc` files from the given directory.
 pub fn get_test_files(dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
@@ -43,11 +64,11 @@ pub fn run_single_test(path: &Path) -> Result<String, String> {
     // Perform lexing (syntax analysis)
     let source_id = StrSourceId::repl();
     let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
-    let (tokens, lexing_errs): (Option<Vec<(Token, _)>>, _) = Parser::parse(
-        &lexer::<WithContext<SourcedSpan, &str>>(),
+    let (tokens, lexing_errs): LexerOutput = Parser::parse(
+        &lexer::<_, LexerExtra>(),
         source.with_context((source_id, ())),
     )
-        .into_output_errors();
+    .into_output_errors();
     // If there are syntax errors, return an appropriate result
     if !lexing_errs.is_empty() {
         return Err(SYNTAX_ERR_STR.to_owned());
@@ -55,7 +76,9 @@ pub fn run_single_test(path: &Path) -> Result<String, String> {
     if let Some(tokens) = tokens {
         #[allow(clippy::pattern_type_mismatch)]
         let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
-        let (parsed, parse_errs) = program_parser().parse(spanned_tokens).into_output_errors();
+        let (parsed, parse_errs): ProgramOutput =
+            Parser::parse(&program_parser::<_, ProgramExtra>(), spanned_tokens)
+                .into_output_errors();
 
         if !parse_errs.is_empty() {
             return Err(SYNTAX_ERR_STR.to_owned());
