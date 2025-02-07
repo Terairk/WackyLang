@@ -10,6 +10,8 @@ use crate::{
     token::Token,
     types,
 };
+use chumsky::input::{Checkpoint, Cursor};
+use chumsky::inspector::Inspector;
 use chumsky::pratt::right;
 use chumsky::{
     combinator::{DelimitedBy, MapWith},
@@ -32,7 +34,7 @@ type SN<T> = SourcedNode<T>;
 
 #[must_use]
 #[inline]
-pub fn ident_parser<'src, I>() -> impl alias::Parser<'src, I, ast::Ident>
+pub fn ident_parser<'src, I, E>() -> impl alias::Parser<'src, I, ast::Ident, E>
 where
     I: BorrowInput<'src, Token = Token>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
@@ -46,7 +48,7 @@ where
 #[allow(clippy::pattern_type_mismatch)]
 #[must_use]
 #[inline]
-pub fn liter_parser<'src, I, E>() -> impl alias::Parser2<'src, I, ast::Liter, E>
+pub fn liter_parser<'src, I, E>() -> impl alias::Parser<'src, I, ast::Liter, E>
 where
     I: BorrowInput<'src, Token = Token>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
@@ -77,12 +79,12 @@ where
 pub fn array_elem_parser<'src, I, E, Ident, Expr>(
     ident: Ident,
     expr: Expr,
-) -> impl alias::Parser2<'src, I, ast::ArrayElem<ast::Ident, ()>, E>
+) -> impl alias::Parser<'src, I, ast::ArrayElem<ast::Ident, ()>, E>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
-    Ident: alias::Parser2<'src, I, ast::Ident, E>,
-    Expr: alias::Parser2<'src, I, ast::Expr<ast::Ident, ()>, E>,
+    Ident: alias::Parser<'src, I, ast::Ident, E>,
+    Expr: alias::Parser<'src, I, ast::Expr<ast::Ident, ()>, E>,
 {
     let array_elem_indices = expr
         .delim_by(Delim::Bracket)
@@ -100,7 +102,7 @@ where
 
 #[must_use]
 #[inline]
-pub fn expr_parser<'src, I, E>() -> impl alias::Parser2<'src, I, ast::Expr<ast::Ident, ()>, E>
+pub fn expr_parser<'src, I, E>() -> impl alias::Parser<'src, I, ast::Expr<ast::Ident, ()>, E>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan> + ValueInput<'src>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
@@ -224,7 +226,7 @@ where
 
 #[must_use]
 #[inline]
-pub fn type_parser<'src, I, E>() -> impl alias::Parser2<'src, I, types::Type, E>
+pub fn type_parser<'src, I, E>() -> impl alias::Parser<'src, I, types::Type, E>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan> + ValueInput<'src>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
@@ -308,11 +310,11 @@ where
 #[inline]
 pub fn stat_parser<'src, I, E, P>(
     stat_chain: P,
-) -> impl alias::Parser2<'src, I, ast::Stat<ast::Ident, ()>, E>
+) -> impl alias::Parser<'src, I, ast::Stat<ast::Ident, ()>, E>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan> + ValueInput<'src>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
-    P: alias::Parser2<'src, I, ast::StatBlock<ast::Ident, ()>, E>,
+    P: alias::Parser<'src, I, ast::StatBlock<ast::Ident, ()>, E>,
 {
     let ident = ident_parser();
     let expr = expr_parser();
@@ -452,7 +454,7 @@ where
 }
 
 #[inline]
-pub fn program_parser<'src, I, E>() -> impl alias::Parser2<'src, I, ast::Program<ast::Ident, ()>, E>
+pub fn program_parser<'src, I, E>() -> impl alias::Parser<'src, I, ast::Program<ast::Ident, ()>, E>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan> + ValueInput<'src>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,

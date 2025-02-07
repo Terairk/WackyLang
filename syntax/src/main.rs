@@ -9,6 +9,7 @@ use chumsky::{extra, Parser};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::process::ExitCode;
+use syntax::ast;
 use syntax::error::{semantic_error_to_reason, SemanticError};
 use syntax::parser::program_parser;
 use syntax::rename::rename;
@@ -271,13 +272,7 @@ pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, so
             );
         }
         SemanticError::InvalidNumberOfIndexes(span, _, _) => {
-            semantic_report_helper(
-                file_path,
-                "Wrong number of indexes",
-                error,
-                &span,
-                source,
-            );
+            semantic_report_helper(file_path, "Wrong number of indexes", error, &span, source);
         }
         // Handle other error variants similarly
         _ => {

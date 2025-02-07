@@ -227,7 +227,7 @@ enum LongestMatchCorrectionToken<'src, I: Input<'src>> {
 )]
 #[inline]
 fn unflattened_token_lexer<'src, I, E>(
-) -> impl alias::Parser2<'src, I, Vec<(LongestMatchCorrectionToken<'src, I>, I::Span)>, E>
+) -> impl alias::Parser<'src, I, Vec<(LongestMatchCorrectionToken<'src, I>, I::Span)>, E>
 where
     I: StrInput<'src, Token = char, Slice = &'src str>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
@@ -506,7 +506,7 @@ where
 
 #[must_use]
 #[inline]
-pub fn lexer<'src, I, E>() -> impl alias::Parser2<'src, I, Vec<(Token, I::Span)>, E>
+pub fn lexer<'src, I, E>() -> impl alias::Parser<'src, I, Vec<(Token, I::Span)>, E>
 where
     I: StrInput<'src, Token = char, Slice = &'src str>,
     I::Span: Clone,

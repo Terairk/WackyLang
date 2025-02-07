@@ -16,13 +16,7 @@ pub(crate) mod alias {
     use chumsky::prelude::{Input, Rich};
 
     /// Trait alias for generic [`chumsky::Parser`] implementations used by the various parsers here
-    pub trait Parser<'src, I, O> = chumsky::Parser<'src, I, O, extra::Full<Rich<'src, I::Token, I::Span>, (), ()>>
-        + Clone
-    where
-        I: Input<'src>,
-        I::Token: PartialEq;
-    
-    pub trait Parser2<'src, I, O, E> = chumsky::Parser<'src, I, O, E> + Clone
+    pub trait Parser<'src, I, O, E> = chumsky::Parser<'src, I, O, E> + Clone
     where
         I: Input<'src>,
         I::Token: PartialEq,
@@ -30,7 +24,7 @@ pub(crate) mod alias {
     
     
     
-    pub trait StatelessParser<'src, I, O> = Parser2<'src, I, O, extra::Full<Rich<'src, I::Token, I::Span>, (), ()>>
+    pub trait StatelessParser<'src, I, O> = Parser<'src, I, O, extra::Full<Rich<'src, I::Token, I::Span>, (), ()>>
     where
         I: Input<'src>,
         I::Token: PartialEq;
