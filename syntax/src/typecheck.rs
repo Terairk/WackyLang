@@ -409,7 +409,11 @@ impl Folder for TypeResolver {
             Stat::Assignment { lvalue, rvalue } => {
                 let resolved_lvalue = self.fold_lvalue(lvalue);
                 let resolved_rvalue = self.fold_rvalue(rvalue);
-                if !&resolved_rvalue.get_type(&self.renamer).can_coerce_into(&resolved_lvalue.get_type(&self.renamer)) {
+                let resolved_lval_type = resolved_lvalue.get_type(&self.renamer);
+                let resolved_rval_type = resolved_rvalue.get_type(&self.renamer);
+                if resolved_lval_type == SemanticType::AnyType && resolved_rval_type == SemanticType::AnyType {
+                    self.add_error(SemanticError::AssignmentWithBothSidesUnknown(resolved_lvalue.span()));
+                } else if !&resolved_rval_type.can_coerce_into(&resolved_lval_type) {
                     println!("Type mismatch in Assignment! from {:?} to {:?}", &resolved_rvalue.get_type(&self.renamer), &resolved_lvalue.get_type(&self.renamer));
                     self.add_error(SimpleTypeMismatch(resolved_lvalue.get_type(&self.renamer), resolved_rvalue.get_type(&self.renamer)));
                 }

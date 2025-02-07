@@ -68,6 +68,7 @@ pub enum SemanticError {
     DuplicateIdent(SN<Ident>),
     // TODO: import strum crate to make it easier to convert this to a string
     TypeMismatch(SourcedSpan, SemanticType, SemanticType),
+    AssignmentWithBothSidesUnknown(SourcedSpan),
     SimpleTypeMismatch(SemanticType, SemanticType), // TODO: remove this temp error
     MismatchedArgCount(SourcedSpan, usize, usize),
     InvalidIndexType(SourcedSpan, SemanticType),
