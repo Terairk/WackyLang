@@ -42,7 +42,9 @@ where
     // identifiers can be extracted directly from `Ident` tokens, copying
     // an internal atomic reference to an interned identifier string
     #[allow(clippy::pattern_type_mismatch)]
-    (select_ref! { Token::Ident(x) => x.clone() }).labelled("<ident>")
+    (select_ref! { Token::Ident(x) => x.clone() })
+        .labelled("<ident>")
+        .as_context()
 }
 
 #[allow(clippy::pattern_type_mismatch)]
@@ -54,22 +56,27 @@ where
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
 {
     // some literals can be extracted from their corresponding tokens
-    let int_liter =
-        select_ref! { Token::IntLiter(x) => ast::Liter::IntLiter(*x) }.labelled("<int-liter>");
-    let char_liter =
-        select_ref! { Token::CharLiter(x) => ast::Liter::CharLiter(*x) }.labelled("<char-liter>");
+    let int_liter = select_ref! { Token::IntLiter(x) => ast::Liter::IntLiter(*x) }
+        .labelled("<int-liter>")
+        .as_context();
+    let char_liter = select_ref! { Token::CharLiter(x) => ast::Liter::CharLiter(*x) }
+        .labelled("<char-liter>")
+        .as_context();
     let str_liter = select_ref! { Token::StrLiter(x) => ast::Liter::StrLiter(x.clone()) }
-        .labelled("<str-liter>");
+        .labelled("<str-liter>")
+        .as_context();
 
     // some literals can be created from keywords
     let bool_liter = choice((
         just(Token::True).to(ast::Liter::BoolLiter(true)),
         just(Token::False).to(ast::Liter::BoolLiter(false)),
     ))
-    .labelled("<bool-liter>");
+    .labelled("<bool-liter>")
+    .as_context();
     let pair_liter = just(Token::Null)
         .to(ast::Liter::PairLiter)
-        .labelled("<pair-liter>");
+        .labelled("<pair-liter>")
+        .as_context();
 
     // final literal parser is one of these five
     choice((int_liter, char_liter, str_liter, bool_liter, pair_liter))
@@ -95,7 +102,8 @@ where
         .pipe((NonemptyArray::try_from_boxed_slice, Result::unwrap));
     let array_elem = group((ident.sn(), array_elem_indices))
         .map_group(ast::ArrayElem::<ast::Ident, ()>::new)
-        .labelled("<array-elem>");
+        .labelled("<array-elem>")
+        .as_context();
 
     array_elem
 }
@@ -145,20 +153,23 @@ where
             just(Token::Chr).to(ast::UnaryOper::Chr),
         ))
         .sn()
-        .labelled("<unary-oper>");
+        .labelled("<unary-oper>")
+        .as_context();
         let product_oper = choice((
             just(Token::Star).to(ast::BinaryOper::Mul),
             just(Token::ForwardSlash).to(ast::BinaryOper::Div),
             just(Token::Percent).to(ast::BinaryOper::Mod),
         ))
         .sn()
-        .labelled("<binary-oper>");
+        .labelled("<binary-oper>")
+        .as_context();
         let sum_oper = choice((
             just(Token::Plus).to(ast::BinaryOper::Add),
             just(Token::Minus).to(ast::BinaryOper::Sub),
         ))
         .sn()
-        .labelled("<binary-oper>");
+        .labelled("<binary-oper>")
+        .as_context();
         let arith_cmp_oper = choice((
             just(Token::Lte).to(ast::BinaryOper::Lte),
             just(Token::Lt).to(ast::BinaryOper::Lt),
@@ -166,21 +177,25 @@ where
             just(Token::Gt).to(ast::BinaryOper::Gt),
         ))
         .sn()
-        .labelled("<binary-oper>");
+        .labelled("<binary-oper>")
+        .as_context();
         let eq_cmp_oper = choice((
             just(Token::EqualsEquals).to(ast::BinaryOper::Eq),
             just(Token::BangEquals).to(ast::BinaryOper::Neq),
         ))
         .sn()
-        .labelled("<binary-oper>");
+        .labelled("<binary-oper>")
+        .as_context();
         let land_oper = just(Token::And)
             .to(ast::BinaryOper::And)
             .sn()
-            .labelled("<binary-oper>");
+            .labelled("<binary-oper>")
+            .as_context();
         let lor_oper = just(Token::Or)
             .to(ast::BinaryOper::Or)
             .sn()
-            .labelled("<binary-oper>");
+            .labelled("<binary-oper>")
+            .as_context();
 
         // procedure to turn patterns into binary expressions
         let binary_create = |lhs, op, rhs, extra: &mut MapExtra<'src, '_, I, _>| {
@@ -240,7 +255,8 @@ where
             just(Token::String).to(types::BaseType::String),
         ))
         .sn()
-        .labelled("<base-type>");
+        .labelled("<base-type>")
+        .as_context();
 
         // array types are left-recursive, and `chumsky` is a PEG parser meaning it does not
         // handle left-recursion by default (i.e. it will recurse infinitely) so we need to use
@@ -268,7 +284,8 @@ where
                 _ => None,
             })
             .memoized()
-            .labelled("<array-type>");
+            .labelled("<array-type>")
+            .as_context();
 
         // pair-element type parser;
         // an array type and all other types look the same until the very last, so we should
@@ -278,7 +295,8 @@ where
             base_type.clone().map(types::PairElemType::BaseType),
             just(Token::Pair).to_span().map(types::PairElemType::Pair),
         ))
-        .labelled("<pair-elem-type>");
+        .labelled("<pair-elem-type>")
+        .as_context();
         let pair_type = just(Token::Pair)
             .ignore_then(
                 group((
@@ -290,7 +308,8 @@ where
                 // Attempt to recover anything that looks like a (parenthesised) pair type but contains errors
                 .recover_with_delim(Delim::Paren, types::Type::Error),
             )
-            .labelled("<pair-type>");
+            .labelled("<pair-type>")
+            .as_context();
 
         // a type is either a base type, array type, or pair type;
         // an array type and all other types look the same until the very last, so we should
@@ -301,7 +320,8 @@ where
             base_type.map(types::Type::BaseType),
             pair_type,
         ))
-        .labelled("<type>");
+        .labelled("<type>")
+        .as_context();
 
         r#type
     })
@@ -337,7 +357,9 @@ where
     let array_liter = expr_sequence
         .clone()
         .delim_by(Delim::Bracket)
-        .map(|lit| ast::RValue::ArrayLiter(lit, ()));
+        .map(|lit| ast::RValue::ArrayLiter(lit, ()))
+        .labelled("<array-liter>")
+        .as_context();
 
     // newpair parser
     let newpair = just(Token::Newpair).ignore_then(
@@ -354,7 +376,9 @@ where
         just(Token::Fst).ignore_then(lvalue.clone().sn().map(ast::PairElem::Fst)),
         just(Token::Snd).ignore_then(lvalue.clone().sn().map(ast::PairElem::Snd)),
     ))
-    .sn();
+    .sn()
+    .labelled("<pair-elem>")
+    .as_context();
 
     // function call parser
     let function_call = just(Token::Call).ignore_then(
@@ -371,7 +395,7 @@ where
         ident.clone().map(|ident| ast::LValue::Ident(ident, ())),
     )));
 
-    let lvalue = lvalue.sn();
+    let lvalue = lvalue.sn().labelled("<lvalue>").as_context();
 
     // rvalue parser
     let rvalue = choice((
@@ -385,7 +409,9 @@ where
         //       the erroneous state of the parser, expressions will have to be parsed last
         expr.clone().map(|e| ast::RValue::Expr(e, ())),
     ))
-    .sn();
+    .sn()
+    .labelled("<rvalue>")
+    .as_context();
 
     // variable definition parser
     let variable_definition = group((
@@ -447,7 +473,9 @@ where
         if_then_else,
         while_do,
         scoped,
-    ));
+    ))
+    .labelled("<stmt>")
+    .as_context();
 
     #[allow(clippy::let_and_return)] // because this is likely to be changed/extended in the future
     stat
@@ -491,13 +519,16 @@ where
         .separated_by(just(Token::Comma))
         .collect::<Vec<_>>()
         .map(Vec::into_boxed_slice)
-        .delim_by(Delim::Paren);
+        .labelled("<param-list>")
+        .as_context();
 
     // function parser
     let func = group((
         r#type,
         ident,
-        func_params.then_ignore(just(Token::Is)),
+        func_params
+            .delim_by(Delim::Paren)
+            .then_ignore(just(Token::Is)),
         stat_chain.clone().then_ignore(just(Token::End)),
     ))
     .map_group(ast::Func::new)
@@ -515,7 +546,9 @@ where
 
         // return func to continue validation of other functions
         func
-    });
+    })
+    .labelled("<func>")
+    .as_context();
 
     // program parser
     let funcs = func
@@ -528,7 +561,10 @@ where
         .map(|(l, r)| ast::Program::new(l, r));
 
     #[allow(clippy::let_and_return)] // because this is likely to be changed/extended in the future
-    program.then_ignore(end())
+    program
+        .then_ignore(end())
+        .labelled("<program>")
+        .as_context()
 }
 
 #[derive(Default)]

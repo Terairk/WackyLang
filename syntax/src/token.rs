@@ -465,7 +465,8 @@ where
             Token::Ident,
             LongestMatchCorrectionToken::Token,
         ))
-        .labelled("<ident>");
+        .labelled("<ident>")
+        .as_context();
 
     // copy the Regex pattern found in the WACC spec verbatim
     let int_liter = regex("[\\+-]?[0-9]+")
@@ -478,7 +479,8 @@ where
             })
         })
         .map(Token::IntLiter)
-        .labelled("<int-liter>");
+        .labelled("<int-liter>")
+        .as_context();
 
     // character parser
     let well_formed_character = choice((
@@ -491,7 +493,8 @@ where
                 c.lookup_escaped_wacc_char().unwrap()
             }),
     ))
-    .labelled("<character>");
+    .labelled("<character>")
+    .as_context();
 
     // character literal parser
     let char_delim = just('\'');
@@ -550,7 +553,8 @@ where
             ),
         ))
         .map(LongestMatchCorrectionToken::Token)
-        .labelled("<char-liter>");
+        .labelled("<char-liter>")
+        .as_context();
 
     // string literal parser
     let str_delim = just('"');
@@ -594,7 +598,8 @@ where
         ))
         .pipe((Token::StrLiter,))
         .map(LongestMatchCorrectionToken::Token)
-        .labelled("<str-liter>");
+        .labelled("<str-liter>")
+        .as_context();
 
     let delim_symbols = choice((
         just('(').to(Token::Open(Delim::Paren)),
@@ -709,7 +714,8 @@ where
         any().and_is(eol.not()).repeated(),
         choice((eol, end())),
     ))
-    .labelled("<comment>");
+    .labelled("<comment>")
+    .as_context();
 
     // tokens are padded by comments and whitespace
     token
