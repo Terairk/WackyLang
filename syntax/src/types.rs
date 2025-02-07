@@ -1,9 +1,12 @@
 use crate::source::SourcedNode;
 use crate::source::SourcedSpan;
 use std::cmp::PartialEq;
+use std::fmt;
+use std::fmt::{Display, Formatter};
+
 type SN<T> = SourcedNode<T>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SemanticType {
     Int,
     Bool,
@@ -12,7 +15,7 @@ pub enum SemanticType {
     Array(Box<SemanticType>),
     Pair(Box<SemanticType>, Box<SemanticType>),
     ErasedPair,
-    Unknown,
+    AnyType,
     Error(SourcedSpan), // For invalid types
 }
 
@@ -94,25 +97,71 @@ impl PairElemType {
                 let elem_type = sn_array.elem_type.to_semantic_type();
                 SemanticType::Array(Box::new(elem_type))
             }
-            PairElemType::Pair(span) => SemanticType::Error(span.clone()),
+            PairElemType::Pair(_span) => SemanticType::ErasedPair,
         }
     }
 }
 
-impl PartialEq for SemanticType {
-    fn eq(&self, other: &Self) -> bool {
+impl SemanticType {
+    fn pair_inner_erasable(from: &SemanticType, to: &SemanticType) -> bool {
+        use SemanticType::{Pair, ErasedPair};
+        if let Pair(_, _) = from {
+            if *to == ErasedPair {
+                return true;
+            }
+        } else if let Pair(_, _) = to {
+            if *from == ErasedPair {
+                return true;
+            }
+        }
+
+        return from == to;
+    }
+
+    pub fn can_coerce_into(&self, to: &SemanticType) -> bool {
         use SemanticType::*;
-        match (self, other) {
+
+        if to == &SemanticType::String {
+            if let SemanticType::Array(from_inner) = self {
+                return **from_inner == SemanticType::Char;
+            }
+        }
+
+        match (self, to) {
+            (AnyType, _) => true,
+            (Error(_), _) => true,
+            (_, AnyType) => true,
+            (_, Error(_)) => true,
             (Int, Int) | (Bool, Bool) | (Char, Char) | (String, String) => true,
-            (Array(a), Array(b)) => a == b,
-            (Pair(a1, b1), Pair(a2, b2)) => a1 == a2 && b1 == b2,
+            (Array(a), Array(b)) => {
+                a == b || // arrays are invariant
+                SemanticType::pair_inner_erasable(a, b) ||
+                **a == AnyType
+            },
+            (Pair(a1, b1), Pair(a2, b2)) => {
+                (a1 == a2 && b1 == b2) || // pairs are invariant
+                (SemanticType::pair_inner_erasable(a1, a2) && SemanticType::pair_inner_erasable(b1, b2))
+            },
+            (ErasedPair, Pair(_, _)) => true,
+            (Pair(_, _), ErasedPair) => true,
             (ErasedPair, ErasedPair) => true,
-            (Unknown, Unknown) => true,
-            (Error(_), Error(_)) => true, // Treat all errors as equal, ignoring SourcedSpan details
             _ => false,
         }
     }
 }
 
-impl Eq for SemanticType {}
-
+impl Display for SemanticType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SemanticType::Int => write!(f, "int"),
+            SemanticType::Bool => write!(f, "bool"),
+            SemanticType::Char => write!(f, "char"),
+            SemanticType::String => write!(f, "string"),
+            SemanticType::Array(elem) => write!(f, "{}[]", elem),
+            SemanticType::Pair(left, right) => write!(f, "({}, {})", left, right),
+            SemanticType::ErasedPair => write!(f, "pair"),
+            SemanticType::Error(span) => write!(f, "error at {:?}", span),
+            _ => unreachable!(),
+        }
+    }
+}

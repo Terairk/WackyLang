@@ -196,4 +196,4 @@ pub(crate) mod private {
 pub mod source;
 
 pub mod token;
-// pub mod typecheck;
+pub mod typecheck;

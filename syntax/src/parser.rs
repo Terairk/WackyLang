@@ -111,9 +111,8 @@ where
             liter.map(|lit| ast::Expr::Liter(lit, ())),
             // array elements begin with identifiers, so
             // give them precedence over identifiers
-            array_elem.map(|elem| ast::Expr::ArrayElem(elem, ())),
+            array_elem.clone().sn().map(|elem| ast::Expr::ArrayElem(elem, ())),
             // Bootleg approach to get SN<Ident> from Ident parser
-            // TODO: check if this is the correct way to do this
             ident.clone().sn().map(|ident| ast::Expr::Ident(ident, ())),
             paren_expr.map(|paren| ast::Expr::Paren(paren, ())),
         ));
@@ -209,7 +208,7 @@ where
         ));
 
         // as of now, no other type of expression exists
-        expr.map(SN::into_inner) // TODO: this removes span from output. If this is not desirable, undo this line
+        expr.map(SN::into_inner)
     })
 }
 
@@ -311,6 +310,7 @@ where
     let stat_chain = stat_chain.sn();
     let ident = ident.sn();
     let expr = expr.sn();
+    let array_elem = array_elem.sn();
     let r#type = type_parser().sn();
 
     // a sequence of expressions separated by commas
@@ -340,7 +340,7 @@ where
     let pair_elem = choice((
         just(Token::Fst).ignore_then(lvalue.clone().sn().map(ast::PairElem::Fst)),
         just(Token::Snd).ignore_then(lvalue.clone().sn().map(ast::PairElem::Snd)),
-    ));
+    )).sn();
 
     // function call parser
     let function_call = just(Token::Call).ignore_then(
@@ -353,10 +353,11 @@ where
         array_elem.map(|elem| ast::LValue::ArrayElem(elem, ())),
         pair_elem
             .clone()
-            .sn()
             .map(|elem| ast::LValue::PairElem(elem, ())),
         ident.clone().map(|ident| ast::LValue::Ident(ident, ())),
     )));
+
+    let lvalue = lvalue.sn();
 
     // rvalue parser
     let rvalue = choice((
@@ -368,8 +369,8 @@ where
         //       seem like the parser succeeded even if it failed. This messes with
         //       backtracking control flow, so until we figure out a way to "propagate"
         //       the erroneous state of the parser, expressions will have to be parsed last
-        expr.clone().map(ast::RValue::Expr),
-    ));
+        expr.clone().map(|e| ast::RValue::Expr(e, ())),
+    )).sn();
 
     // variable definition parser
     let variable_definition = group((
@@ -408,7 +409,6 @@ where
         .map(ast::Stat::Scoped);
 
     // statement parser
-    // TODO: figure out labels and error recovery
     let stat = choice((
         just(Token::Skip).to(ast::Stat::Skip),
         variable_definition,
@@ -497,7 +497,6 @@ where
     });
 
     // program parser
-    // TODO: figure out error recovery and proper labeling
     let program = just(Token::Begin)
         .ignore_then(
             group((

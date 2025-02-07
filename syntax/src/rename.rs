@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::ast::{Expr, Func, FuncParam, Ident, Program, RValue, Stat, StatBlock};
 use crate::fold_program::Folder;
 use crate::fold_program::{BoxedSliceFold as _, NonEmptyFold as _};
-use crate::source::SourcedNode;
+use crate::source::{SourcedNode, SourcedSpan};
 use crate::types::{SemanticType, Type};
 use std::fmt;
 use std::hash::Hash;
@@ -67,7 +67,12 @@ pub enum SemanticError {
     ArityMismatch(SN<Ident>, usize, usize),
     DuplicateIdent(SN<Ident>),
     // TODO: import strum crate to make it easier to convert this to a string
-    TypeMismatch(SN<Expr<RenamedName, SemanticType>>, Type, Type),
+    TypeMismatch(SourcedSpan, SemanticType, SemanticType),
+    AssignmentWithBothSidesUnknown(SourcedSpan),
+    SimpleTypeMismatch(SemanticType, SemanticType), // TODO: remove this temp error
+    MismatchedArgCount(SourcedSpan, usize, usize),
+    InvalidIndexType(SourcedSpan, SemanticType),
+    InvalidNumberOfIndexes(usize),
     UndefinedIdent(SN<Ident>),
     ReturnInMain,
 }
@@ -103,6 +108,7 @@ impl IDMapEntry {
 pub struct Renamer {
     pub id_func_table: IdFuncTable,
     pub symbol_table: HashMap<Ident, SemanticType>,
+    pub symid_table: HashMap<usize, SemanticType>,
     errors: Vec<SemanticError>,
     in_main: bool,
     counter: usize,
@@ -118,6 +124,7 @@ impl Renamer {
             },
             identifier_map: HashMap::new(),
             symbol_table: HashMap::new(),
+            symid_table: HashMap::new(),
             counter: 0,
             in_main: true,
             errors: Vec::new(),
@@ -148,6 +155,32 @@ impl Renamer {
             .iter()
             .map(|(k, v)| (k.clone(), v.create_false()))
             .collect()
+    }
+
+    #[inline]
+    pub fn lookup_symbol_table(&self, renamed_name: &SN<RenamedName>) -> SemanticType {
+        if let Some(semantic_type) = self.symid_table.get(&renamed_name.inner().uuid) {
+            semantic_type.clone()
+        } else {
+            SemanticType::Error(renamed_name.span())
+        }
+    }
+
+    #[inline]
+    pub fn lookup_func_args(&self, ident: &SN<Ident>) -> Vec<SemanticType> {
+        if let Some((_, args)) = self.id_func_table.functions.get(ident) {
+            args.clone()
+        } else {
+            Vec::new()
+        }
+    }
+    #[inline]
+    pub fn lookup_func_return_type(&self, ident: &SN<Ident>) -> SemanticType {
+        if let Some((return_type, _)) = self.id_func_table.functions.get(ident) {
+            return_type.clone()
+        } else {
+            SemanticType::Error(ident.span())
+        }
     }
 
     fn with_temporary_map<F, R>(&mut self, f: F) -> R
@@ -254,7 +287,7 @@ impl Folder for Renamer {
         &mut self,
         r#type: SN<Type>,
         name: SN<Self::N>,
-        rvalue: RValue<Self::N, Self::T>,
+        rvalue: SN<RValue<Self::N, Self::T>>,
     ) -> Stat<Self::OutputN, Self::OutputT> {
         // Sorry about the lots of clones here
         // Evaluate the rhs before creating unique name to not allow int x = x
@@ -281,6 +314,8 @@ impl Folder for Renamer {
         self.identifier_map.insert(name.inner().clone(), map_entry);
         self.symbol_table
             .insert(name.inner().clone(), r#type.inner().to_semantic_type());
+        self.symid_table
+            .insert(unique_name.uuid, r#type.inner().to_semantic_type());
 
         Stat::VarDefinition {
             r#type,
@@ -297,7 +332,7 @@ impl Folder for Renamer {
         if self.in_main {
             self.add_error(SemanticError::ReturnInMain);
         }
-        Stat::Return(self.fold_expr_sn(expr))
+        Stat::Return(self.fold_expr(expr))
     }
 
     #[inline]
@@ -320,6 +355,8 @@ impl Folder for Renamer {
         self.identifier_map.insert(name.inner().clone(), map_entry);
         self.symbol_table
             .insert(name.inner().clone(), param.r#type.to_semantic_type());
+        self.symid_table
+            .insert(unique_name.uuid, param.r#type.inner().to_semantic_type());
 
         FuncParam {
             r#type: param.r#type,

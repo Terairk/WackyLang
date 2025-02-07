@@ -1,17 +1,20 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
+use ariadne::{Color, ColorGenerator, Label, Report, Source};
 use chumsky::error::RichReason;
 use chumsky::input::WithContext;
 use chumsky::prelude::Input as _;
 use chumsky::Parser;
 use std::fmt;
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref, DerefMut, Range};
 use std::process::ExitCode;
 use wacc_syntax::fold_program::Folder;
 use wacc_syntax::parser::program_parser;
 use wacc_syntax::rename::{rename, Renamer};
 use wacc_syntax::source::{SourcedSpan, StrSourceId};
 use wacc_syntax::token::{lexer, Token};
+use wacc_syntax::typecheck::{typecheck, TypeResolver};
+use wacc_syntax::rename::SemanticError;
 
 #[allow(dead_code)]
 const TEST_EXPR: &str = r#"
@@ -22,24 +25,79 @@ const TEST_EXPR: &str = r#"
 const TEST_TYPE: &str = r#"pair(int, pair(pair,string)[][][])[][]"#;
 
 #[allow(dead_code)]
-const TEST_PROGRAM: &str = r#"
-# simple integer calculation
+const TEST_PAIR_PROGRAM: &str = r#"
+# print pair a null pair
 
 # Output:
-# 72
+# (nil)
 #
 
 # Program:
 
 begin
-  int x = 42 ;
-  int y = 30 ;
-  int z = x + y ;
-  println z
+  pair(pair, pair) p = null ;
+  println p
 end
 "#;
 
-const SEMANTIC_ERR_PROGRAM: &str = r#"# type mismatch: int <- bool
+#[allow(dead_code)]
+const TEST_FUNC_PROGRAM: &str = r#"
+# a function with varied inputs
+
+# Output:
+# a is 42
+# b is true
+# c is u
+# d is hello
+# e is #addrs#
+# f is #addrs#
+# answer is g
+#
+
+# Program:
+
+begin
+  char doSomething(int a, bool b, char c, string d, bool[] e, int[] f) is
+    print "a is " ;
+    println a ;
+    print "b is " ;
+    println b ;
+    print "c is " ;
+    println c ;
+    print "d is " ;
+    println d ;
+    print "e is " ;
+    println e ;
+    print "f is " ;
+    println f ;
+    return 'g'
+  end
+  bool[] bools = [ false, true ] ;
+  int[] ints = [ 1, 2 ] ;
+  char answer = call doSomething(42, true, 'u', "hello", bools, ints) ;
+  print "answer is " ;
+  println answer
+end
+
+"#;
+
+#[allow(dead_code)]
+const TEST_PROGRAM: &str = r#"
+# begin missing closing end
+
+# Output:
+# #syntax_error#
+
+# Exit:
+# 100
+
+# Program:
+
+begin skip
+"#;
+#[allow(dead_code)]
+const SEMANTIC_ERR_PROGRAM: &str = r#"
+# type mismatch: int <- bool
 
 # Output:
 # #semantic_error#
@@ -77,6 +135,7 @@ fn main() -> ExitCode {
     }
 
     // let source = TEST_PROGRAM;
+    // let file_path = "test_cases/invalid/syntaxErr/basic/beginNoend.wacc";
     let source_id = StrSourceId::repl();
     let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
 
@@ -86,6 +145,15 @@ fn main() -> ExitCode {
         source.with_context((source_id, ())),
     )
     .into_output_errors();
+
+    // Done to appease the borrow checker while displaying errors
+    let lexing_errs_not_empty = !lexing_errs.is_empty();
+    for e in lexing_errs {
+        build_syntactic_report(&file_path, e.span().clone(), e.reason().to_string(), source.clone());
+    }
+    if lexing_errs_not_empty {
+        return ExitCode::from(100);
+    }
 
     if let Some(tokens) = tokens {
         // println!("{:?}", DisplayVec(tokens.clone()));
@@ -99,15 +167,9 @@ fn main() -> ExitCode {
         let parse_errs_not_empty = !parse_errs.is_empty();
 
         for e in parse_errs {
-            let span: SourcedSpan = e.span().clone();
-            let reason: RichReason<_> = e.reason().clone();
-            let contexts = e.contexts();
-            println!("Parse error at {span:?}");
-            println!("Reason:\n{reason:#?}");
-            println!("Contexts:\n");
-            for context in contexts {
-                println!("-> {context:#?}");
-            }
+            let mut colors = ColorGenerator::new();
+            
+            build_syntactic_report(&file_path, e.span().clone(), e.reason().to_string(), source.clone());
         }
         if parse_errs_not_empty {
             return ExitCode::from(100);
@@ -116,22 +178,61 @@ fn main() -> ExitCode {
         let (renamed_ast, renamer) =
             rename(parsed.expect("If parse errors are not empty, parsed should be Valid"));
 
-        println!("{renamed_ast:?}");
-        println!("{:?}", renamer.return_errors());
-        println!("{:?}", renamer.get_func_table());
-        println!("{:?}", renamer.get_symbol_table());
-    }
+        let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
 
-    // Done to appease the borrow checker while displaying errors
-    let lexing_errs_not_empty = !lexing_errs.is_empty();
-    for e in lexing_errs {
-        println!("Lexing error: {e}");
-    }
-    if lexing_errs_not_empty {
-        return ExitCode::from(100);
+        // println!("{typed_ast:?}");
+        for e in type_resolver.type_errors {
+            match e {
+                SemanticError::TypeMismatch(span, got, expected) => {
+                    let reason = format!("Type mismatch: expected {}, but recieved {}", expected, got);
+                    build_semantic_report(file_path, span, reason, source.clone())
+                }
+                SemanticError::MismatchedArgCount(span, expected, got) => {
+                    let reason = format!("Wrong number of arguments: expected {} arguments, but got {}", expected, got);
+                    build_semantic_report(file_path, span, reason, source.clone())
+                }
+                SemanticError::InvalidIndexType(span, got) => {
+                    let reason = format!("Invalid index type: expected int, but got {}", got);
+                    build_semantic_report(file_path, span, reason, source.clone())
+                }
+                _ => todo!(),
+            }
+        }
     }
 
     ExitCode::from(0)
+}
+
+
+pub fn build_syntactic_report(file_path: &String, span: SourcedSpan, reason: String, source: String) {
+    let mut colors = ColorGenerator::new();
+    Report::build(ariadne::ReportKind::Error, (file_path, span.as_range()))
+                .with_message("Syntax error")
+                .with_code(69)
+                .with_label(
+                    Label::new((file_path, span.as_range()))
+                        .with_color(colors.next())
+                        .with_message(reason),
+                )
+                .finish()
+                .print((file_path, Source::from(&source)))
+                .unwrap();
+}
+
+pub fn build_semantic_report(file_path: &String, span: SourcedSpan, reason: String, source: String) {
+    let mut colors = ColorGenerator::new();
+    println!("{:?}", span.as_range());
+    Report::build(ariadne::ReportKind::Error, (file_path, span.clone().as_range()))
+        .with_message("Semantic error")
+        .with_code(420)
+        .with_label(
+            Label::new((file_path, span.clone().as_range()))
+                .with_color(colors.next())
+                .with_message(reason),
+        )
+        .finish()
+        .print((file_path, Source::from(source)))
+        .unwrap();
 }
 
 #[repr(transparent)]
@@ -187,8 +288,46 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use wacc_syntax::parser::program_parser;
+    use wacc_syntax::rename::rename;
     use wacc_syntax::source::{SourcedSpan, StrSourceId};
     use wacc_syntax::token::{lexer, Token};
+    use wacc_syntax::typecheck::typecheck;
+
+    static SYNTAX_ERR_STR: &str = "Syntax error(s) found!";
+    static SEMANTIC_ERR_STR: &str = "Semantic error(s) found!";
+
+    #[test]
+    fn run_failed_semantic_tests() {
+        let tests_dir = Path::new("../test_cases/invalid/semanticErr");
+
+        let mut passed_count = 0;
+        let mut total_count = 0;
+
+        match get_test_files(tests_dir) {
+            Ok(test_files) => {
+                for test_file in test_files {
+                    let test_name = test_file.display();
+                    match run_single_test(&test_file) {
+                        Ok(_) => {
+                            println!("Test failed: error not detected in {test_name}");
+                        }
+                        Err(error_msg) => {
+                            if error_msg == SEMANTIC_ERR_STR {
+                                println!("Test passed: {test_name}");
+                                passed_count += 1;
+                            } else {
+                                println!("Test failed: {test_name} with cause {error_msg}");
+                            }
+                        }
+                    }
+                    total_count += 1;
+                }
+            }
+            Err(e) => eprintln!("Failed to collect test files: {e}"),
+        }
+        println!("Passed {passed_count} out of {total_count} tests!");
+        assert_eq!(passed_count, total_count);
+    }
     #[test]
     fn run_failed_syntax_tests() {
         let tests_dir = Path::new("../test_cases/invalid/syntaxErr");
@@ -202,21 +341,21 @@ mod tests {
                     let test_name = test_file.display();
                     match run_single_test(&test_file) {
                         Ok(_) => {
-                            println!("Test failed: error not detected in {}", test_name)
+                            println!("Test failed: error not detected in {test_name}");
                         }
                         Err(error_msg) => {
-                            if error_msg == "Syntax error(s) found!" {
-                                println!("Test passed: {}", test_name);
+                            if error_msg == SYNTAX_ERR_STR {
+                                println!("Test passed: {test_name}");
                                 passed_count += 1;
                             } else {
-                                println!("Test failed: {} with cause {error_msg}", test_name)
+                                println!("Test failed: {test_name} with cause {error_msg}");
                             }
                         }
                     }
                     total_count += 1;
                 }
             }
-            Err(e) => eprintln!("Failed to collect test files: {}", e),
+            Err(e) => eprintln!("Failed to collect test files: {e}"),
         }
         println!("Passed {passed_count} out of {total_count} tests!");
         assert_eq!(passed_count, total_count);
@@ -236,16 +375,16 @@ mod tests {
                     match run_single_test(&test_file) {
                         Ok(_) => {
                             passed_count += 1;
-                            println!("Test passed: {}", test_name)
+                            println!("Test passed: {test_name}");
                         }
                         Err(error_msg) => {
-                            println!("Test failed: {} with cause {error_msg}", test_name)
+                            println!("Test failed: {test_name} with cause {error_msg}");
                         }
                     }
                     total_count += 1;
                 }
             }
-            Err(e) => eprintln!("Failed to collect test files: {}", e),
+            Err(e) => eprintln!("Failed to collect test files: {e}"),
         }
         println!("Passed {passed_count} out of {total_count} tests!");
         assert_eq!(passed_count, total_count);
@@ -278,7 +417,7 @@ mod tests {
             Ok(content) => content,
             Err(e) => {
                 eprintln!("Failed to read file {}: {}", path.display(), e);
-                return Err(format!("File read error: {}", e));
+                return Err(format!("File read error: {e}"));
             }
         };
 
@@ -287,29 +426,32 @@ mod tests {
         let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
         let (tokens, lexing_errs): (Option<Vec<(Token, _)>>, _) = Parser::parse(
             &lexer::<WithContext<SourcedSpan, &str>>(),
-            source.with_context((source_id.clone(), ())),
+            source.with_context((source_id, ())),
         )
         .into_output_errors();
-        let syntax_err_str = String::from("Syntax error(s) found!");
+        // If there are syntax errors, return an appropriate result
+        if !lexing_errs.is_empty() {
+            return Err(SYNTAX_ERR_STR.to_owned());
+        }
         if let Some(tokens) = tokens {
             #[allow(clippy::pattern_type_mismatch)]
             let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
-            let (_parsed, parse_errs) = program_parser().parse(spanned_tokens).into_output_errors();
+            let (parsed, parse_errs) = program_parser().parse(spanned_tokens).into_output_errors();
 
             if !parse_errs.is_empty() {
-                return Err(syntax_err_str);
+                return Err(SYNTAX_ERR_STR.to_owned());
             }
-        }
-        // If there are syntax errors, return an appropriate result
-        if !lexing_errs.is_empty() {
-            return Err(syntax_err_str);
-        }
 
-        // TODO: semantic analysis
-        let semantic_errors: Vec<i32> = Vec::new();
+            let (renamed_ast, renamer) =
+                rename(parsed.expect("If parse errors are not empty, parsed should be Valid"));
 
-        if !semantic_errors.is_empty() {
-            return Err(syntax_err_str);
+            let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
+
+            if !type_resolver.type_errors.is_empty()
+                || !type_resolver.renamer.return_errors().is_empty()
+            {
+                return Err(SEMANTIC_ERR_STR.to_owned());
+            }
         }
 
         // If both syntax and semantic analysis succeed, return success

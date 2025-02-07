@@ -78,13 +78,13 @@ pub enum Stat<N, T> {
         // to convert to a SemanticType
         r#type: SN<Type>,
         name: SN<N>,
-        rvalue: RValue<N, T>,
+        rvalue: SN<RValue<N, T>>,
     },
     Assignment {
-        lvalue: LValue<N, T>,
-        rvalue: RValue<N, T>,
+        lvalue: SN<LValue<N, T>>,
+        rvalue: SN<RValue<N, T>>,
     },
-    Read(LValue<N, T>),
+    Read(SN<LValue<N, T>>),
     Free(SN<Expr<N, T>>),
     Return(SN<Expr<N, T>>),
     Exit(SN<Expr<N, T>>),
@@ -105,16 +105,16 @@ pub enum Stat<N, T> {
 #[derive(Clone, Debug)]
 pub enum LValue<N, T> {
     Ident(SN<N>, T),
-    ArrayElem(ArrayElem<N, T>, T),
+    ArrayElem(SN<ArrayElem<N, T>>, T),
     PairElem(SN<PairElem<N, T>>, T),
 }
 
 #[derive(Clone, Debug)]
 pub enum RValue<N, T> {
-    Expr(SN<Expr<N, T>>), // Type info already in Expr, TODO: maybe needs a T
-    ArrayLiter(Box<[SN<Expr<N, T>>]>, T), // Array needs a type
+    Expr(SN<Expr<N, T>>, T),                    // Type info already in Expr
+    ArrayLiter(Box<[SN<Expr<N, T>>]>, T),       // Array needs a type
     NewPair(SN<Expr<N, T>>, SN<Expr<N, T>>, T), // Pair needs a type I think
-    PairElem(PairElem<N, T>), // Type info would come from the inner pair
+    PairElem(SN<PairElem<N, T>>),                   // Type info would come from the inner pair
     Call {
         func_name: SN<Ident>,
         args: Box<[SN<Expr<N, T>>]>,
@@ -138,7 +138,7 @@ pub struct ArrayElem<N, T> {
 pub enum Expr<N, T> {
     Liter(Liter, T),
     Ident(SN<N>, T),
-    ArrayElem(ArrayElem<N, T>, T),
+    ArrayElem(SN<ArrayElem<N, T>>, T),
     Unary(SN<UnaryOper>, SN<Self>, T),
     Binary(SN<Self>, SN<BinaryOper>, SN<Self>, T),
     Paren(SN<Self>, T),
@@ -251,13 +251,14 @@ impl<N, T> StatBlock<N, T> {
             .map_err(|_| EmptyStatVecError)
     }
 
-    /// A block of statements is called ‘returning’ if the last statement in the block is either:
-    ///
-    ///     1. a ‘return’ statement
-    ///     2. an ‘exit’ statement
-    ///     3. an ‘if’ statement with two returning blocks.
-    ///
-    /// All function bodies **MUST** be returning blocks.
+    // A block of statements is called ‘returning’ if the last statement in the block is either:
+    //
+    //     1. a ‘return’ statement
+    //     2. an ‘exit’ statement
+    //     3. an ‘if’ statement with two returning blocks.
+    //
+    // All function bodies **MUST** be returning blocks.
+    #[inline]
     pub fn is_return_block(&self) -> bool {
         match &**self.last() {
             Stat::Return(_) | Stat::Exit(_) => true,
@@ -266,6 +267,7 @@ impl<N, T> StatBlock<N, T> {
                 else_body,
                 ..
             } => then_body.is_return_block() && else_body.is_return_block(),
+            Stat::Scoped(stat_block) => stat_block.is_return_block(),
             _ => false,
         }
     }
@@ -297,7 +299,7 @@ impl<N, T> TryFrom<Vec<SN<Stat<N, T>>>> for StatBlock<N, T> {
 impl<N, T> Stat<N, T> {
     #[must_use]
     #[inline]
-    pub const fn var_definition(r#type: SN<Type>, name: SN<N>, rvalue: RValue<N, T>) -> Self {
+    pub const fn var_definition(r#type: SN<Type>, name: SN<N>, rvalue: SN<RValue<N, T>>) -> Self {
         Self::VarDefinition {
             r#type,
             name,
@@ -307,7 +309,7 @@ impl<N, T> Stat<N, T> {
 
     #[must_use]
     #[inline]
-    pub const fn assignment(lvalue: LValue<N, T>, rvalue: RValue<N, T>) -> Self {
+    pub const fn assignment(lvalue: SN<LValue<N, T>>, rvalue: SN<RValue<N, T>>) -> Self {
         Self::Assignment { lvalue, rvalue }
     }
 
