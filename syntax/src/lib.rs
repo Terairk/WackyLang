@@ -7,7 +7,6 @@
 #![feature(stmt_expr_attributes)]
 #![feature(unboxed_closures)]
 
-use chumsky::prelude::Input;
 
 /// Namespace for all the type/trait aliases used by this crate.
 pub(crate) mod alias {

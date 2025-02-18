@@ -27,7 +27,6 @@ use chumsky::{
 use extend::ext;
 use std::fmt;
 use std::marker::PhantomData;
-use std::ptr::hash;
 
 /// A file-local type alias for better readability of type definitions
 type SN<T> = SourcedNode<T>;

@@ -3,7 +3,6 @@
 use ariadne::{CharSet, Label, Report, Source};
 use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
-use chumsky::prelude::Input as _;
 use chumsky::{extra, Parser};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
