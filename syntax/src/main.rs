@@ -16,71 +16,6 @@ use syntax::token::{lexer, Token};
 use syntax::typecheck::typecheck;
 
 #[allow(dead_code)]
-const TEST_EXPR: &str = r#"
-(foo == bar[23][3234 + ord - chr flll][34][234]) * len - ord ("some string literal" - chr - +2341) >= 23 == '\\'
-"#;
-
-#[allow(dead_code, clippy::needless_raw_string_hashes)]
-const TEST_TYPE: &str = r#"pair(int, pair(pair,string)[][][])[][]"#;
-
-#[allow(dead_code)]
-const TEST_PAIR_PROGRAM: &str = r#"
-# print pair a null pair
-
-# Output:
-# (nil)
-#
-
-# Program:
-
-begin
-  pair(pair, pair) p = null ;
-  println p
-end
-"#;
-
-#[allow(dead_code)]
-const TEST_FUNC_PROGRAM: &str = r#"
-# a function with varied inputs
-
-# Output:
-# a is 42
-# b is true
-# c is u
-# d is hello
-# e is #addrs#
-# f is #addrs#
-# answer is g
-#
-
-# Program:
-
-begin
-  char doSomething(int a, bool b, char c, string d, bool[] e, int[] f) is
-    print "a is " ;
-    println a ;
-    print "b is " ;
-    println b ;
-    print "c is " ;
-    println c ;
-    print "d is " ;
-    println d ;
-    print "e is " ;
-    println e ;
-    print "f is " ;
-    println f ;
-    return 'g'
-  end
-  bool[] bools = [ false, true ] ;
-  int[] ints = [ 1, 2 ] ;
-  char answer = call doSomething(42, true, 'u', "hello", bools, ints) ;
-  print "answer is " ;
-  println answer
-end
-
-"#;
-
-#[allow(dead_code)]
 const TEST_PROGRAM: &str =
     include_str!("../../test_cases/valid/function/simple_functions/asciiTable.wacc");
 #[allow(dead_code)]
@@ -184,7 +119,7 @@ fn main() -> ExitCode {
         }
 
         let (_typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
-        // println!("{_typed_ast:?}");
+        println!("{_typed_ast:?}");
         let type_errors = type_resolver.type_errors;
         if !type_errors.is_empty() {
             for e in type_errors {
