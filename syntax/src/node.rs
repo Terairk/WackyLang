@@ -57,7 +57,7 @@ impl<T, C> Node<T, C> {
     }
 
     #[inline]
-    pub fn context_mut(&mut self) -> &mut C {
+    pub const fn context_mut(&mut self) -> &mut C {
         &mut self.context
     }
 

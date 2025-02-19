@@ -1,11 +1,21 @@
 //! TODO: crate documentation
 //!
 //! this is here as a placeholder documentation
+//!
+//!
 
 // enable Rust-unstable features for convenience
 #![feature(trait_alias)]
 #![feature(stmt_expr_attributes)]
 #![feature(unboxed_closures)]
+
+
+use ariadne::{CharSet, Label, Report, Source};
+use chumsky::error::Rich;
+use std::fmt;
+use std::ops::{Deref, DerefMut};
+use crate::error::{SemanticError, semantic_error_to_reason};
+use crate::source::SourcedSpan;
 
 
 /// Namespace for all the type/trait aliases used by this crate.
@@ -207,3 +217,132 @@ pub mod source;
 
 pub mod token;
 pub mod typecheck;
+
+
+#[allow(clippy::unwrap_used)]
+pub fn build_syntactic_report<T>(error: &Rich<T, SourcedSpan>, source: String)
+where
+    T: fmt::Display,
+{
+    let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
+    Report::build(ariadne::ReportKind::Error, error.span().clone())
+        .with_config(config)
+        .with_message(format!("Syntax error"))
+        .with_code(69)
+        .with_label(Label::new(error.span().clone()).with_message(error.reason().to_string()))
+        .with_labels(error.contexts().map(|(label, span)| {
+            Label::new(span.clone()).with_message(format!("while parsing this {label}"))
+        }))
+        .finish()
+        .print((error.span().source_id().clone(), Source::from(source)))
+        .unwrap();
+}
+
+#[allow(clippy::unwrap_used)]
+#[inline]
+pub fn semantic_report_helper(
+    file_path: &String,
+    message: &str,
+    error: &SemanticError,
+    span: &SourcedSpan,
+    source: String,
+) {
+    let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
+    Report::build(
+        ariadne::ReportKind::Error,
+        (file_path, span.clone().as_range()),
+    )
+    .with_config(config)
+    .with_message(message)
+    .with_code(420)
+    .with_label(
+        Label::new((file_path, span.clone().as_range()))
+            .with_message(semantic_error_to_reason(error)),
+    )
+    .finish()
+    .print((file_path, Source::from(source)))
+    .unwrap();
+}
+
+pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, source: String) {
+    match error {
+        SemanticError::TypeMismatch(span, _, _) => {
+            semantic_report_helper(file_path, "Type Error", error, span, source);
+        }
+        SemanticError::DuplicateIdent(ident) => {
+            semantic_report_helper(
+                file_path,
+                "Duplicate Identifier",
+                error,
+                &ident.span(),
+                source,
+            );
+        }
+        SemanticError::InvalidNumberOfIndexes(span, _, _) => {
+            semantic_report_helper(file_path, "Wrong number of indexes", error, &span, source);
+        }
+        // Handle other error variants similarly
+        _ => {
+            // Generic error report for other cases
+            let span = match error {
+                SemanticError::ArityMismatch(node, _, _) => node.span().clone(),
+                SemanticError::AssignmentWithBothSidesUnknown(span) => span.clone(),
+                SemanticError::TypeMismatch(span, _, _) => span.clone(),
+                SemanticError::InvalidFreeType(span, _) => span.clone(),
+                SemanticError::MismatchedArgCount(span, _, _) => span.clone(),
+                SemanticError::InvalidIndexType(span, _) => span.clone(),
+                SemanticError::UndefinedIdent(node) => node.span().clone(),
+                SemanticError::ReturnInMain(span) => span.clone(),
+                _ => panic!("Unhandled error variant"),
+            };
+            semantic_report_helper(file_path, "Semantic Error", error, &span, source);
+        }
+    }
+}
+
+#[repr(transparent)]
+#[derive(Debug)]
+#[allow(dead_code)]
+struct DisplayVec<T>(Vec<T>);
+
+impl<T> DisplayVec<T> {
+    const DISPLAY_WIDTH: usize = 4;
+    const OFFSET_WIDTH: usize = 2;
+}
+
+impl<T> Deref for DisplayVec<T> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for DisplayVec<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[allow(clippy::arithmetic_side_effects)]
+impl<T: fmt::Display> fmt::Display for DisplayVec<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{")?;
+
+        let mut width = 0;
+        for i in self.iter() {
+            // control items-per-line width
+            if width == 0 {
+                writeln!(f)?;
+                for _ in 0..Self::OFFSET_WIDTH {
+                    write!(f, " ")?;
+                }
+                width = Self::DISPLAY_WIDTH;
+            }
+            width -= 1;
+            write!(f, "{i}, ")?;
+        }
+
+        write!(f, "\n}}")
+    }
+}

@@ -1,6 +1,6 @@
 all:
 	cargo build --release
-	cp target/release/syntax compile
+	cp target/release/compiler compile
 
 clean:
 	cargo clean
