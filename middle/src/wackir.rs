@@ -97,7 +97,8 @@ pub enum WackProgram {
 pub enum TopLevel {
     Function {
         name: MidIdent,
-        params: Vec<RenamedName>, // Not sure if we need types or just this
+        params: Vec<MidIdent>, // Not sure if we need types, should be fine if we have
+        // Symbol Table
         body: Vec<Instruction>,
     },
 }
@@ -185,6 +186,13 @@ pub enum Value {
     Var(MidIdent),
 }
 
+pub enum Const {
+    Int(i32),
+    Bool(bool),
+    Char(char),
+    String(String),
+}
+
 // I know that these are the same as the ones in ast.rs but I'm not sure if I want to
 // couple them together or not. For now I'll separate them just in case I need to move
 // Len, Ord, Chr somewhere else
@@ -245,21 +253,21 @@ impl Hash for MidIdent {
 }
 
 pub trait ConvertToMidIdent {
-    fn to_mid_ident(self, counter: &mut usize) -> MidIdent;
+    fn to_mid_ident(&self, counter: &mut usize) -> MidIdent;
 }
 
 impl ConvertToMidIdent for RenamedName {
     #[inline]
-    fn to_mid_ident(self, _counter: &mut usize) -> MidIdent {
-        MidIdent(self.ident, self.uuid)
+    fn to_mid_ident(&self, _counter: &mut usize) -> MidIdent {
+        MidIdent(self.ident.clone(), self.uuid)
     }
 }
 
 impl ConvertToMidIdent for Ident {
     #[inline]
-    fn to_mid_ident(self, counter: &mut usize) -> MidIdent {
+    fn to_mid_ident(&self, counter: &mut usize) -> MidIdent {
         let uuid = *counter;
         *counter += 1;
-        MidIdent(self, uuid)
+        MidIdent(self.clone(), uuid)
     }
 }
