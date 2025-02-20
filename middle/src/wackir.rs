@@ -81,8 +81,10 @@
  * However I might change them to regular old Strings if i do a lot of modification etc
  * */
 
+use internment::ArcIntern;
 use std::fmt::{self, Debug, Formatter};
 use std::hash::{Hash, Hasher};
+use syntax::ast::{BinaryOper, Liter, UnaryOper};
 use syntax::{ast::Ident, rename::RenamedName, types::SemanticType};
 
 #[derive(Clone, Debug)]
@@ -182,15 +184,17 @@ pub enum Instruction {
 
 #[derive(Clone, Debug)]
 pub enum Value {
-    Constant(SemanticType), // My only concern is the error type on SemanticType
+    Constant(Const), // My only concern is the error type on SemanticType
     Var(MidIdent),
 }
 
+#[derive(Clone, Debug)]
 pub enum Const {
     Int(i32),
     Bool(bool),
     Char(char),
-    String(String),
+    StringLit(ArcIntern<str>),
+    NullPair,
 }
 
 // I know that these are the same as the ones in ast.rs but I'm not sure if I want to
@@ -222,6 +226,50 @@ pub enum BinaryOperator {
     Neq,
     And,
     Or,
+}
+
+impl From<BinaryOper> for BinaryOperator {
+    fn from(binop: BinaryOper) -> Self {
+        match binop {
+            BinaryOper::Mul => BinaryOperator::Mul,
+            BinaryOper::Div => BinaryOperator::Div,
+            BinaryOper::Mod => BinaryOperator::Mod,
+            BinaryOper::Add => BinaryOperator::Add,
+            BinaryOper::Sub => BinaryOperator::Sub,
+            BinaryOper::Lte => BinaryOperator::Lte,
+            BinaryOper::Lt => BinaryOperator::Lt,
+            BinaryOper::Gte => BinaryOperator::Gte,
+            BinaryOper::Gt => BinaryOperator::Gt,
+            BinaryOper::Eq => BinaryOperator::Eq,
+            BinaryOper::Neq => BinaryOperator::Neq,
+            BinaryOper::And => BinaryOperator::And,
+            BinaryOper::Or => BinaryOperator::Or,
+        }
+    }
+}
+
+impl From<UnaryOper> for UnaryOperator {
+    fn from(unop: UnaryOper) -> Self {
+        match unop {
+            UnaryOper::Not => UnaryOperator::Not,
+            UnaryOper::Minus => UnaryOperator::Negate,
+            UnaryOper::Len => UnaryOperator::Len,
+            UnaryOper::Ord => UnaryOperator::Ord,
+            UnaryOper::Chr => UnaryOperator::Chr,
+        }
+    }
+}
+
+impl From<Liter> for Const {
+    fn from(liter: Liter) -> Self {
+        match liter {
+            Liter::IntLiter(i) => Const::Int(i),
+            Liter::BoolLiter(b) => Const::Bool(b),
+            Liter::CharLiter(c) => Const::Char(c),
+            Liter::StrLiter(s) => Const::StringLit(s),
+            Liter::PairLiter => Const::NullPair,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -264,10 +312,10 @@ impl ConvertToMidIdent for RenamedName {
 }
 
 impl ConvertToMidIdent for Ident {
+    #[allow(clippy::arithmetic_side_effects)]
     #[inline]
     fn to_mid_ident(&self, counter: &mut usize) -> MidIdent {
-        let uuid = *counter;
         *counter += 1;
-        MidIdent(self.clone(), uuid)
+        MidIdent(self.clone(), *counter)
     }
 }

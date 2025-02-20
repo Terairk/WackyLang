@@ -1,13 +1,18 @@
 use std::collections::HashMap;
 
+use internment::ArcIntern;
 use syntax::ast::{
-    ArrayElem, Expr, Func, FuncParam, LValue, Liter, PairElem, Program, RValue, Stat, StatBlock,
+    ArrayElem, BinaryOper, Expr, Func, FuncParam, Ident, LValue, Liter, PairElem, Program, RValue,
+    Stat, StatBlock, UnaryOper,
 };
 use syntax::rename::RenamedName;
 use syntax::typecheck::TypeResolver;
 use syntax::{rename::IdFuncTable, types::SemanticType};
 
-use crate::wackir::{ConvertToMidIdent as _, Instruction, MidIdent, TopLevel, Value, WackProgram};
+use crate::wackir::{
+    BinaryOperator, Const, ConvertToMidIdent as _, Instruction, MidIdent, TopLevel, UnaryOperator,
+    Value, WackProgram,
+};
 
 /* ================== PUBLIC API ================== */
 
@@ -62,6 +67,14 @@ fn create_lowering_context(type_resolver: TypeResolver) -> Lowerer {
 }
 
 impl Lowerer {
+    // Makes a temporary wacky variable
+    fn make_temporary(&mut self) -> MidIdent {
+        // Eventually we may want to replace temp with a function name
+        // for better debugging
+        let ident = Ident::from_str("temp");
+        ident.to_mid_ident(&mut self.counter)
+    }
+
     fn lower_func(&mut self, func: TypedFunc) -> TopLevel {
         // TODO: Figure out how/when to take in a list of instructions as parameter
         let name = func.name.to_mid_ident(&mut self.counter);
@@ -88,37 +101,54 @@ impl Lowerer {
         &mut self,
         stat_block: TypedStatBlock,
         instructions: &mut Vec<Instruction>,
-    ) -> Vec<Instruction> {
+    ) {
         unimplemented!();
     }
 
     // TODO: check this return type later
+    // TODO: i ignore types now but i doubt it'll be for long
     fn lower_expr(&mut self, expr: TypedExpr, instructions: &mut Vec<Instruction>) -> Value {
         match expr {
-            TypedExpr::Liter(liter, t) => self.lower_literal(liter, t, instructions),
+            TypedExpr::Liter(liter, _t) => Self::lower_literal(liter),
             TypedExpr::Ident(sn_ident, t) => panic!("Ident not implemented in Wacky"),
             TypedExpr::ArrayElem(array_elem, t) => panic!("ArrayElem not implem in Wacky"),
-            TypedExpr::Unary(sn_unary, sn_expr, t) => todo!(),
+            TypedExpr::Unary(sn_unary, sn_expr, _t) => {
+                self.lower_unary(sn_unary.into_inner(), sn_expr.into_inner(), instructions)
+            }
             TypedExpr::Binary(sn_expr1, sn_binop, sn_expr2, t) => {
                 panic!("Binary not implemented in Wacky")
             }
-            TypedExpr::Paren(sn_expr, t) => panic!("Paren not implemented in Wacky"),
+            TypedExpr::Paren(sn_expr, _t) => self.lower_expr(sn_expr.into_inner(), instructions),
             TypedExpr::Error(_) => panic!("Bug somewhere in frontend."),
         }
     }
 
-    fn lower_literal(
+    // Very confusing but converts a syntax literal to Wacky Value
+    // For now their definitions are basically the same
+    fn lower_literal(liter: Liter) -> Value {
+        Value::Constant(liter.into())
+    }
+
+    // Very confusing but converts a syntax unary operand to Wacky Operator
+    // For now their definitions are the same, but they may diverge in the future
+    // TODO: check this later
+
+    fn lower_unary(
         &mut self,
-        liter: Liter,
-        t: SemanticType,
-        instructions: &mut Vec<Instruction>,
+        unary_op: UnaryOper,
+        expr: TypedExpr,
+        instr: &mut Vec<Instruction>,
     ) -> Value {
-        match liter {
-            Liter::IntLiter(i) => unimplemented!(),
-            Liter::BoolLiter(b) => unimplemented!(),
-            Liter::CharLiter(c) => unimplemented!(),
-            Liter::StrLiter(s) => unimplemented!(),
-            Liter::PairLiter => panic!("wtf is this"),
-        }
+        let src = self.lower_expr(expr, instr);
+        let dst_name = self.make_temporary();
+        let dst = Value::Var(dst_name);
+        let wacky_op: UnaryOperator = unary_op.into();
+        let new_instr = Instruction::Unary {
+            op: wacky_op,
+            src,
+            dst: dst.clone(),
+        };
+        instr.push(new_instr);
+        dst
     }
 }

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 syntax = { path = "../syntax" }
+internment = { version = "0.8.6", features = ["arc"] }
 
 
 [lints]
