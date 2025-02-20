@@ -87,3 +87,23 @@ impl<T> ops::Index<usize> for NonemptyArray<T> {
         self.0.index(index)
     }
 }
+
+impl<T> IntoIterator for NonemptyArray<T> {
+    type Item = T;
+    type IntoIter = std::vec::IntoIter<T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.into_boxed_slice().into_vec().into_iter()
+    }
+}
+
+impl<'a, T> IntoIterator for &'a NonemptyArray<T> {
+    type Item = &'a T;
+    type IntoIter = slice::Iter<'a, T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}

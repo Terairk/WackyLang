@@ -102,7 +102,13 @@ impl Lowerer {
         stat_block: TypedStatBlock,
         instructions: &mut Vec<Instruction>,
     ) {
-        unimplemented!();
+        for stat in stat_block.0 {
+            self.lower_stat(stat.into_inner(), instructions);
+        }
+    }
+
+    fn lower_stat(&mut self, stat: TypedStat, instructions: &mut Vec<Instruction>) {
+        unimplemented!()
     }
 
     // TODO: check this return type later
