@@ -1,17 +1,15 @@
 use std::collections::HashMap;
 
-use internment::ArcIntern;
 use syntax::ast::{
-    ArrayElem, BinaryOper, Expr, Func, FuncParam, Ident, LValue, Liter, PairElem, Program, RValue,
-    Stat, StatBlock, UnaryOper,
+    ArrayElem, Expr, Func, FuncParam, Ident, LValue, Liter, PairElem, Program, RValue, Stat,
+    StatBlock, UnaryOper,
 };
 use syntax::rename::RenamedName;
 use syntax::typecheck::TypeResolver;
 use syntax::{rename::IdFuncTable, types::SemanticType};
 
 use crate::wackir::{
-    BinaryOperator, Const, ConvertToMidIdent as _, Instruction, MidIdent, TopLevel, UnaryOperator,
-    Value, WackProgram,
+    ConvertToMidIdent as _, Instruction, MidIdent, TopLevel, UnaryOperator, Value, WackProgram,
 };
 
 /* ================== PUBLIC API ================== */
@@ -108,7 +106,38 @@ impl Lowerer {
     }
 
     fn lower_stat(&mut self, stat: TypedStat, instructions: &mut Vec<Instruction>) {
-        unimplemented!()
+        match stat {
+            TypedStat::Skip => (),
+            TypedStat::VarDefinition {
+                r#type,
+                name,
+                rvalue,
+            } => panic!("VarDefinition not implemented in Wacky"),
+            TypedStat::Assignment { lvalue, rvalue } => {
+                panic!("Assignment not implemented in Wacky")
+            }
+            TypedStat::Read(lvalue) => panic!("Read not implemented in Wacky"),
+            TypedStat::Free(expr) => panic!("Write not implemented in Wacky"),
+            TypedStat::Return(expr) => {
+                // TODO: look into if we need the type
+                // let sem_type = expr.inner().get_type();
+                let value = self.lower_expr(expr.into_inner(), instructions);
+                let instr = Instruction::Return(value);
+                instructions.push(instr);
+            }
+            TypedStat::Exit(expr) => panic!("Exit not implemented in Wacky"),
+            TypedStat::Print(expr) => panic!("Print not implemented in Wacky"),
+            TypedStat::Println(expr) => panic!("Println not implemented in Wacky"),
+            TypedStat::IfThenElse {
+                if_cond,
+                then_body,
+                else_body,
+            } => panic!("If not implemented in Wacky"),
+            TypedStat::WhileDo { while_cond, body } => panic!("While not implemented in Wacky"),
+            // Not sure if scoped is implemented correctly here
+            // TODO: check this later
+            TypedStat::Scoped(stat_block) => self.lower_stat_block(stat_block, instructions),
+        }
     }
 
     // TODO: check this return type later
