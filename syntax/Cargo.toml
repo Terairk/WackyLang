@@ -17,7 +17,6 @@ workspace = true
 extend = "1.2"
 delegate = "0.13"
 impl-trait-for-tuples = "0.2.3"
-backend = { path = "../backend" }
 
 # utility dependencies
 fn_pipe = { path = "../fn_pipe" }
