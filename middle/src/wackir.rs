@@ -217,7 +217,7 @@ pub enum BinaryOperator {
 }
 
 #[derive(Clone)]
-pub struct MidIdent(Ident, u32);
+pub struct MidIdent(Ident, usize);
 
 impl Debug for MidIdent {
     #[inline]
@@ -233,13 +233,33 @@ impl PartialEq for MidIdent {
     }
 }
 
-// Invariant: The u32's are unique so should reuse the global counter when possible
-// DO NOT UNDER ANY CIRCUMSTANCES USE THE SAME U32 FOR TWO DIFFERENT IDENTIFIERS
+// Invariant: The usize's are unique so should reuse the global counter when possible
+// DO NOT UNDER ANY CIRCUMSTANCES USE THE SAME usize FOR TWO DIFFERENT IDENTIFIERS
 impl Eq for MidIdent {}
 
 impl Hash for MidIdent {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.1.hash(state)
+        self.1.hash(state);
+    }
+}
+
+pub trait ConvertToMidIdent {
+    fn to_mid_ident(self, counter: &mut usize) -> MidIdent;
+}
+
+impl ConvertToMidIdent for RenamedName {
+    #[inline]
+    fn to_mid_ident(self, _counter: &mut usize) -> MidIdent {
+        MidIdent(self.ident, self.uuid)
+    }
+}
+
+impl ConvertToMidIdent for Ident {
+    #[inline]
+    fn to_mid_ident(self, counter: &mut usize) -> MidIdent {
+        let uuid = *counter;
+        *counter += 1;
+        MidIdent(self, uuid)
     }
 }

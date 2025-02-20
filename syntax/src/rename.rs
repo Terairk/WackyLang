@@ -168,6 +168,11 @@ impl Renamer {
         }
     }
 
+    #[inline]
+    pub const fn counter(&self) -> usize {
+        self.counter
+    }
+
     // Helper function to fold a statement with a new identifier map
     // so we don't have to worry about resetting the map
     // in one situation, it gets too difficult so we manually need to revert
