@@ -1,6 +1,9 @@
 stages:
-  - build
-  - test
+  - syntax-check
+  - test-syntax
+  - test-middle
+  - test-backend
+  - test-compiler
 
 # Cache configuration to speed up builds
 cache:
@@ -10,22 +13,69 @@ cache:
     - .cargo/registry
     - .cargo/git
 
-# Build stage
-build:
-  stage: build
+# Syntax Check Stage
+syntax-check:
+  stage: syntax-check
   script:
     - rustup override set nightly
-    - cargo build --verbose
+    - cargo check --verbose
   artifacts:
     paths:
       - target/debug/
     expire_in: 1 week
 
-# Test stage
-test:
-  stage: test
+# Test Syntax Crate
+test-syntax:
+  stage: test-syntax
   script:
     - rustup override set nightly
-    - cargo test --verbose
+    - cargo test --package syntax --verbose
   dependencies:
-    - build
+    - syntax-check
+  artifacts:
+    paths:
+      - target/debug/
+    expire_in: 1 week
+
+# Test Middle Crate
+test-middle:
+  stage: test-middle
+  script:
+    - rustup override set nightly
+    - cargo test --package middle --verbose
+  dependencies:
+    - syntax-check
+    - test-syntax
+  artifacts:
+    paths:
+      - target/debug/
+    expire_in: 1 week
+
+# Test Backend Crate
+test-backend:
+  stage: test-backend
+  script:
+    - rustup override set nightly
+    - cargo test --package backend --verbose
+  dependencies:
+    - syntax-check
+    - test-middle
+  artifacts:
+    paths:
+      - target/debug/
+    expire_in: 1 week
+
+# # Test Compiler Crate
+# test-compiler:
+#   stage: test-compiler
+#   script:
+#     - rustup override set nightly
+#     - cargo test --package compiler --verbose
+#   dependencies:
+#     - test-syntax
+#     - test-middle
+#     - test-backend
+#   artifacts:
+#     paths:
+#       - target/debug/
+#     expire_in: 1 week
