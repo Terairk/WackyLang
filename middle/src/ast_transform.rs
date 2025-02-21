@@ -28,31 +28,56 @@ type TypedPairElem = PairElem<RenamedName, SemanticType>;
 
 // Only take in type_resolver so i can discard the heck out of it
 // I can probably take it in by reference but I'd prefer not to clone
-pub fn lower_program(program: TypedAST, type_resolver: TypeResolver) -> WackProgram {
-    let context = create_lowering_context(type_resolver);
-    unimplemented!();
-    // let mut wack_program = WackProgram::Program {
-    //     top_level: Vec::new(),
-    //     body: Vec::new(),
-    // };
-    // for func in program.funcs.iter() {
-    //     let top_level = lower_func(func, &context);
-    //     wack_program.top_level.push(top_level);
-    // }
-    // wack_program
+#[must_use]
+#[inline]
+pub fn lower_program(program: TypedAST, type_resolver: TypeResolver) -> (WackProgram, usize) {
+    let mut context = create_lowering_context(type_resolver);
+    let mut main_body = Vec::new();
+    context.lower_stat_block(program.body, &mut main_body);
+
+    let wack_functions = program
+        .funcs
+        .into_iter()
+        .map(|func| context.lower_func(func))
+        .collect();
+
+    let wack_program = WackProgram {
+        functions: wack_functions,
+        main_body,
+    };
+
+    (wack_program, context.counter())
 }
 
 /* ================== INTERNAL API ================== */
 struct Lowerer {
     counter: usize,
-    func_table: IdFuncTable,
+    func_table: HashMap<MidIdent, (SemanticType, Vec<SemanticType>)>,
     symbol_table: HashMap<MidIdent, SemanticType>,
+    // used for function identifiers
+    id_map: HashMap<Ident, MidIdent>,
+}
+
+impl Lowerer {
+    fn counter(&self) -> usize {
+        self.counter
+    }
 }
 
 fn create_lowering_context(type_resolver: TypeResolver) -> Lowerer {
     let renamer = type_resolver.renamer;
+    let mut id_map: HashMap<Ident, MidIdent> = HashMap::new();
     let mut counter = renamer.counter();
-    let func_table = renamer.id_func_table;
+    let func_table = renamer
+        .id_func_table
+        .functions
+        .into_iter()
+        .map(|(id, (func, params))| {
+            let new_id = id.to_mid_ident(&mut counter);
+            id_map.insert(id.clone(), new_id);
+            (id.to_mid_ident(&mut counter), (func, params))
+        })
+        .collect();
     let symbol_table: HashMap<MidIdent, SemanticType> = type_resolver
         .symid_table
         .into_iter()
@@ -62,6 +87,7 @@ fn create_lowering_context(type_resolver: TypeResolver) -> Lowerer {
         counter,
         func_table,
         symbol_table,
+        id_map,
     }
 }
 
@@ -76,7 +102,11 @@ impl Lowerer {
 
     fn lower_func(&mut self, func: TypedFunc) -> WackFunction {
         // TODO: Figure out how/when to take in a list of instructions as parameter
-        let name = func.name.to_mid_ident(&mut self.counter);
+        let name = self
+            .id_map
+            .get(&func.name)
+            .expect("wacky id_map should have function name")
+            .clone();
         let params = func
             .params
             .into_iter()
@@ -92,6 +122,7 @@ impl Lowerer {
         }
     }
 
+    /* TODO: find where we care about the types of params */
     fn lower_func_param(&mut self, param: TypedFuncParam) -> MidIdent {
         param.name.to_mid_ident(&mut self.counter)
     }

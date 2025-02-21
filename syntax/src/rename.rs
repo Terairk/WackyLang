@@ -75,7 +75,7 @@ impl RenamedName {
 // We handle functions separately from variables since its easier
 #[derive(Debug)]
 pub struct IdFuncTable {
-    functions: HashMap<Ident, (SemanticType, Vec<SemanticType>)>,
+    pub functions: HashMap<Ident, (SemanticType, Vec<SemanticType>)>,
 }
 
 // This struct helps us keep track of the identifiers in the current block

@@ -1,4 +1,6 @@
-use middle::wackir::{UnaryOperator, WackConst, WackInstruction, WackProgram, WackValue};
+use middle::wackir::{
+    UnaryOperator, WackConst, WackFunction, WackInstruction, WackProgram, WackValue,
+};
 
 use crate::{
     assembly_ast::{
@@ -11,10 +13,16 @@ use crate::{
 /* ================== PUBLIC API ================== */
 
 #[inline]
-pub fn tacky_to_assembly(program: WackProgram) -> AsmProgram {
-    let wack_functions = program.top_level;
-    let main_wack_function = program.body;
-    unimplemented!()
+#[must_use]
+pub fn tacky_to_assembly(program: WackProgram, counter: usize) -> AsmProgram {
+    let mut asm_gen = AsmGen::new(counter);
+    let mut asm_functions: Vec<AsmFunction> = Vec::new();
+    asm_functions.push(asm_gen.lower_main_asm(program.main_body));
+    for wack_function in program.functions {
+        asm_functions.push(asm_gen.lower_function(wack_function));
+    }
+
+    AsmProgram { asm_functions }
 }
 
 /* ================== INTERNAL API ================== */
@@ -35,8 +43,8 @@ struct AsmGen {
 }
 
 impl AsmGen {
-    fn new(counter: usize) -> Self {
-        AsmGen {
+    const fn new(counter: usize) -> Self {
+        Self {
             counter,
             gen_flags: GenFlags::empty(),
         }
@@ -55,6 +63,21 @@ impl AsmGen {
             global: true,
             external: false,
             instructions: asm_instructions,
+        }
+    }
+
+    fn lower_function(&mut self, wack_function: WackFunction) -> AsmFunction {
+        let mut asm = Vec::new();
+        let func_name: String = wack_function.name.into();
+        for instr in wack_function.body {
+            self.lower_instruction(instr, &mut asm);
+        }
+
+        AsmFunction {
+            name: func_name,
+            global: false,
+            external: false,
+            instructions: asm,
         }
     }
 
@@ -110,6 +133,7 @@ impl AsmGen {
                 dst: Operand::Reg(Register::AX),
             }),
             Operand::Indexed { .. } => unimplemented!(),
+            Operand::Stack(_) => unimplemented!(),
         }
 
         asm_instructions.push(Asm::Ret);
@@ -183,8 +207,8 @@ impl AsmGen {
             Constant(StringLit(s)) => unimplemented!(),
             Constant(NullPair) => Operand::Imm(0),
             // TODO: need to figure out if its a Scalar or Aggregate Value
-            // so I can do either Pseudo or PseudoMem
-            Var(ident) => unimplemented!(),
+            // so I can do either Pseudo or PseudoMem, for now its Pseudo
+            Var(ident) => Operand::Pseudo(ident.into()),
         }
     }
 }

@@ -34,12 +34,13 @@
 // Top-level structures
 // Use String here for now because i'm getting tired
 // and it'd be easier for me probably
+// Change later if you want
 
 use middle::wackir::UnaryOperator;
 
 #[derive(Debug, Clone)]
 pub struct AsmProgram {
-    pub top_level: Vec<AsmFunction>,
+    pub asm_functions: Vec<AsmFunction>,
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +96,7 @@ pub enum AsmInstruction {
         operand: Operand,
     },
     Label(String),
+    // Temporary thing below
     AllocateStack(i32),
     Push(Operand),
     Call(String),
@@ -114,6 +116,8 @@ pub enum Operand {
         index: Register,
         scale: i32,
     },
+    // This is a temporary thing for now
+    Stack(i32),
 }
 
 #[derive(Debug, Clone)]

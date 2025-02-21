@@ -90,8 +90,8 @@ use syntax::{ast::Ident, rename::RenamedName, types::SemanticType};
 // Treat WackFunction's slightly differently from main
 #[derive(Clone, Debug)]
 pub struct WackProgram {
-    pub top_level: Vec<WackFunction>,
-    pub body: Vec<WackInstruction>,
+    pub functions: Vec<WackFunction>,
+    pub main_body: Vec<WackInstruction>,
 }
 
 #[derive(Clone, Debug)]
@@ -320,6 +320,13 @@ impl ConvertToMidIdent for Ident {
     fn to_mid_ident(&self, counter: &mut usize) -> MidIdent {
         *counter += 1;
         MidIdent(self.clone(), *counter)
+    }
+}
+
+impl From<MidIdent> for String {
+    #[inline]
+    fn from(mid_ident: MidIdent) -> Self {
+        format!("{}.{}", mid_ident.0, mid_ident.1)
     }
 }
 
