@@ -35,6 +35,8 @@
 // Use String here for now because i'm getting tired
 // and it'd be easier for me probably
 
+use middle::wackir::UnaryOperator;
+
 #[derive(Debug, Clone)]
 pub struct AsmProgram {
     pub top_level: Vec<AsmFunction>,
@@ -126,11 +128,24 @@ pub enum AsmBinaryOperator {
     ShrTwoOp,
 }
 
+// I'm unsure if Assembly Unary Operators
+// should have Len, Ord, Chr
+// but I need some way of guiding the code gen
+// Length could be put somewhere else like a simple
+// memory lookup, but id have to change the structure of
+// it being a unary operator
+// To do that, I'd have to change from Len in syntax AST to a
+// different construct in Wacky IR
+// Ord is also technically a redundant operation (rn at least)
+// Only Chr needs special handling due to runtime
 #[derive(Debug, Clone)]
 pub enum AsmUnaryOperator {
     Neg,
     Not,
     Shr,
+    Len,
+    Ord,
+    Chr,
 }
 
 #[derive(Debug, Clone)]
@@ -164,8 +179,22 @@ pub enum Register {
 
 #[derive(Debug, Clone)]
 pub enum AssemblyType {
-    Byte,
-    Longword,
-    Quadword,
+    Byte,     // 1 byte
+    Longword, // 4 bytes
+    Quadword, // 8 bytes
     ByteArray { size: i32, alignment: i32 },
+}
+
+/* ================ ASM Impl's for Conversions ============ */
+
+impl From<UnaryOperator> for AsmUnaryOperator {
+    fn from(op: UnaryOperator) -> Self {
+        match op {
+            UnaryOperator::Negate => AsmUnaryOperator::Neg,
+            UnaryOperator::Not => AsmUnaryOperator::Not,
+            UnaryOperator::Len => AsmUnaryOperator::Len,
+            UnaryOperator::Ord => AsmUnaryOperator::Ord,
+            UnaryOperator::Chr => AsmUnaryOperator::Chr,
+        }
+    }
 }
