@@ -9,7 +9,8 @@ use syntax::typecheck::TypeResolver;
 use syntax::{rename::IdFuncTable, types::SemanticType};
 
 use crate::wackir::{
-    ConvertToMidIdent as _, Instruction, MidIdent, UnaryOperator, Value, WackFunction, WackProgram,
+    ConvertToMidIdent as _, MidIdent, UnaryOperator, WackFunction, WackInstruction, WackProgram,
+    WackValue,
 };
 
 /* ================== PUBLIC API ================== */
@@ -82,7 +83,7 @@ impl Lowerer {
             .map(|param| self.lower_func_param(param))
             .collect();
 
-        let mut instructions: Vec<Instruction> = Vec::new();
+        let mut instructions: Vec<WackInstruction> = Vec::new();
         self.lower_stat_block(func.body, &mut instructions);
         WackFunction {
             name,
@@ -98,14 +99,14 @@ impl Lowerer {
     fn lower_stat_block(
         &mut self,
         stat_block: TypedStatBlock,
-        instructions: &mut Vec<Instruction>,
+        instructions: &mut Vec<WackInstruction>,
     ) {
         for stat in stat_block.0 {
             self.lower_stat(stat.into_inner(), instructions);
         }
     }
 
-    fn lower_stat(&mut self, stat: TypedStat, instructions: &mut Vec<Instruction>) {
+    fn lower_stat(&mut self, stat: TypedStat, instructions: &mut Vec<WackInstruction>) {
         match stat {
             TypedStat::Skip => (),
             TypedStat::VarDefinition {
@@ -122,7 +123,7 @@ impl Lowerer {
                 // TODO: look into if we need the type
                 // let sem_type = expr.inner().get_type();
                 let value = self.lower_expr(expr.into_inner(), instructions);
-                let instr = Instruction::Return(value);
+                let instr = WackInstruction::Return(value);
                 instructions.push(instr);
             }
             TypedStat::Exit(expr) => panic!("Exit not implemented in Wacky"),
@@ -142,7 +143,11 @@ impl Lowerer {
 
     // TODO: check this return type later
     // TODO: i ignore types now but i doubt it'll be for long
-    fn lower_expr(&mut self, expr: TypedExpr, instructions: &mut Vec<Instruction>) -> Value {
+    fn lower_expr(
+        &mut self,
+        expr: TypedExpr,
+        instructions: &mut Vec<WackInstruction>,
+    ) -> WackValue {
         match expr {
             TypedExpr::Liter(liter, _t) => Self::lower_literal(liter),
             TypedExpr::Ident(sn_ident, t) => panic!("Ident not implemented in Wacky"),
@@ -160,8 +165,8 @@ impl Lowerer {
 
     // Very confusing but converts a syntax literal to Wacky Value
     // For now their definitions are basically the same
-    fn lower_literal(liter: Liter) -> Value {
-        Value::Constant(liter.into())
+    fn lower_literal(liter: Liter) -> WackValue {
+        WackValue::Constant(liter.into())
     }
 
     // Very confusing but converts a syntax unary operand to Wacky Operator
@@ -172,13 +177,13 @@ impl Lowerer {
         &mut self,
         unary_op: UnaryOper,
         expr: TypedExpr,
-        instr: &mut Vec<Instruction>,
-    ) -> Value {
+        instr: &mut Vec<WackInstruction>,
+    ) -> WackValue {
         let src = self.lower_expr(expr, instr);
         let dst_name = self.make_temporary();
-        let dst = Value::Var(dst_name);
+        let dst = WackValue::Var(dst_name);
         let wacky_op: UnaryOperator = unary_op.into();
-        let new_instr = Instruction::Unary {
+        let new_instr = WackInstruction::Unary {
             op: wacky_op,
             src,
             dst: dst.clone(),

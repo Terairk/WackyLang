@@ -91,7 +91,7 @@ use syntax::{ast::Ident, rename::RenamedName, types::SemanticType};
 #[derive(Clone, Debug)]
 pub struct WackProgram {
     pub top_level: Vec<WackFunction>,
-    pub body: Vec<Instruction>,
+    pub body: Vec<WackInstruction>,
 }
 
 #[derive(Clone, Debug)]
@@ -100,97 +100,98 @@ pub struct WackFunction {
     pub params: Vec<MidIdent>,
     // Not sure if we need types, should be fine
     // if we have Symbol Table
-    pub body: Vec<Instruction>,
+    pub body: Vec<WackInstruction>,
 }
 
 #[derive(Clone, Debug)]
-pub enum Instruction {
-    Return(Value),
+pub enum WackInstruction {
+    Return(WackValue),
     ZeroExtend {
-        src: Value,
-        dst: Value,
+        src: WackValue,
+        dst: WackValue,
     },
     Unary {
         op: UnaryOperator,
-        src: Value,
-        dst: Value,
+        src: WackValue,
+        dst: WackValue,
     },
     Binary {
         op: BinaryOperator,
-        src1: Value,
-        src2: Value,
-        dst: Value,
+        src1: WackValue,
+        src2: WackValue,
+        dst: WackValue,
     },
     Copy {
-        src: Value,
-        dst: Value,
+        src: WackValue,
+        dst: WackValue,
     },
     Load {
-        src_ptr: Value,
-        dst: Value,
+        src_ptr: WackValue,
+        dst: WackValue,
     },
     Store {
-        src: Value,
-        dst_ptr: Value,
+        src: WackValue,
+        dst_ptr: WackValue,
     },
     AddPtr {
-        ptr: Value,
-        index: Value,
+        ptr: WackValue,
+        index: WackValue,
         scale: i32,
         dst: MidIdent,
     },
     CopyToOffset {
-        src: Value,
+        src: WackValue,
         dst: MidIdent,
         offset: i32,
     },
     CopyFromOffset {
         src: MidIdent,
         offset: i32,
-        dst: Value,
+        dst: WackValue,
     },
     Jump(MidIdent),
     JumpIfZero {
-        condition: Value,
+        condition: WackValue,
         target: MidIdent,
     },
     JumpIfNotZero {
-        condition: Value,
+        condition: WackValue,
         target: MidIdent,
     },
     Label(MidIdent),
     FunCall {
         fun_name: MidIdent,
-        args: Vec<Value>,
-        dst: Value,
+        args: Vec<WackValue>,
+        dst: WackValue,
     },
     Read {
-        dst: Value,
+        dst: WackValue,
         ty: SemanticType,
     },
-    Free(Value),
-    Exit(Value),
+    Free(WackValue),
+    Exit(WackValue),
     Print {
-        src: Value,
+        src: WackValue,
         ty: SemanticType,
     },
     Println {
-        src: Value,
+        src: WackValue,
         ty: SemanticType,
     },
 }
 
 #[derive(Clone, Debug)]
-pub enum Value {
-    Constant(Const), // My only concern is the error type on SemanticType
+pub enum WackValue {
+    Constant(WackConst), // My only concern is the error type on SemanticType
     Var(MidIdent),
 }
 
-#[derive(Clone, Debug)]
-pub enum Const {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WackConst {
+    // Represent all these as 32 bit integers
     Int(i32),
-    Bool(bool),
-    Char(char),
+    Bool(i32),
+    Char(i32),
     StringLit(ArcIntern<str>),
     NullPair,
 }
@@ -227,6 +228,7 @@ pub enum BinaryOperator {
 }
 
 impl From<BinaryOper> for BinaryOperator {
+    #[inline]
     fn from(binop: BinaryOper) -> Self {
         match binop {
             BinaryOper::Mul => BinaryOperator::Mul,
@@ -247,6 +249,7 @@ impl From<BinaryOper> for BinaryOperator {
 }
 
 impl From<UnaryOper> for UnaryOperator {
+    #[inline]
     fn from(unop: UnaryOper) -> Self {
         match unop {
             UnaryOper::Not => UnaryOperator::Not,
@@ -258,14 +261,16 @@ impl From<UnaryOper> for UnaryOperator {
     }
 }
 
-impl From<Liter> for Const {
+// TODO: check that these give the right answers
+impl From<Liter> for WackConst {
+    #[inline]
     fn from(liter: Liter) -> Self {
         match liter {
-            Liter::IntLiter(i) => Const::Int(i),
-            Liter::BoolLiter(b) => Const::Bool(b),
-            Liter::CharLiter(c) => Const::Char(c),
-            Liter::StrLiter(s) => Const::StringLit(s),
-            Liter::PairLiter => Const::NullPair,
+            Liter::IntLiter(i) => Self::Int(i),
+            Liter::BoolLiter(b) => Self::Bool(b as i32),
+            Liter::CharLiter(c) => Self::Char(c as i32),
+            Liter::StrLiter(s) => Self::StringLit(s),
+            Liter::PairLiter => Self::NullPair,
         }
     }
 }
@@ -315,5 +320,34 @@ impl ConvertToMidIdent for Ident {
     fn to_mid_ident(&self, counter: &mut usize) -> MidIdent {
         *counter += 1;
         MidIdent(self.clone(), *counter)
+    }
+}
+
+/* ====================== TESTS * ====================== */
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_liter_conversion() {
+        // Test integer literal conversion
+        let int_liter = Liter::IntLiter(42);
+        assert_eq!(WackConst::from(int_liter), WackConst::Int(42));
+
+        // Test boolean literal conversion
+        let bool_liter_true = Liter::BoolLiter(true);
+        let bool_liter_false = Liter::BoolLiter(false);
+        assert_eq!(WackConst::from(bool_liter_true), WackConst::Bool(1));
+        assert_eq!(WackConst::from(bool_liter_false), WackConst::Bool(0));
+
+        // Test char literal conversion
+        let char_liter = Liter::CharLiter('A');
+        let char_liter2 = Liter::CharLiter('a');
+        assert_eq!(WackConst::from(char_liter), WackConst::Char(65)); // ASCII value of 'A'
+        assert_eq!(WackConst::from(char_liter2), WackConst::Char(97)); // ASCII value of 'a'
+
+        // Test pair literal conversion
+        let pair_liter = Liter::PairLiter;
+        assert_eq!(WackConst::from(pair_liter), WackConst::NullPair);
     }
 }
