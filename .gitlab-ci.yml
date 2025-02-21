@@ -1,69 +1,76 @@
 stages:
+  - build
   - syntax-check
   - test-syntax
   - test-middle
   - test-backend
   - test-compiler
 
-# Cache configuration to speed up builds
-cache:
-  key: ${CI_COMMIT_REF_SLUG}
-  paths:
-    - target/
-    - .cargo/registry
-    - .cargo/git
+# Common setup template
+.common_setup:
+  before_script:
+    - rustup override set nightly
+
+# Build stage that others can depend on
+build:
+  extends: .common_setup
+  stage: build
+  script:
+    - cargo clean  # Only clean once at the beginning
+    - cargo build --verbose
+  artifacts:
+    paths:
+      - target/debug/
+    expire_in: 1 day
 
 # Syntax Check Stage
 syntax-check:
+  extends: .common_setup
   stage: syntax-check
   script:
-    - rustup override set nightly
     - cargo check --verbose
+  dependencies:
+    - build
   artifacts:
     paths:
       - target/debug/
-    expire_in: 1 week
+    expire_in: 1 day
 
-# Test Syntax Crate
 test-syntax:
+  extends: .common_setup
   stage: test-syntax
   script:
-    - rustup override set nightly
     - cargo test --package syntax --verbose
   dependencies:
-    - syntax-check
+    - build
   artifacts:
     paths:
       - target/debug/
-    expire_in: 1 week
+    expire_in: 1 day
 
-# Test Middle Crate
 test-middle:
+  extends: .common_setup
   stage: test-middle
   script:
-    - rustup override set nightly
     - cargo test --package middle --verbose
   dependencies:
-    - syntax-check
-    - test-syntax
+    - build
   artifacts:
     paths:
       - target/debug/
-    expire_in: 1 week
+    expire_in: 1 day
 
-# Test Backend Crate
 test-backend:
+  extends: .common_setup
   stage: test-backend
   script:
-    - rustup override set nightly
     - cargo test --package backend --verbose
   dependencies:
-    - syntax-check
-    - test-middle
+    - build
   artifacts:
     paths:
       - target/debug/
-    expire_in: 1 week
+    expire_in: 1 day
 
 # # Test Compiler Crate
 # test-compiler:
