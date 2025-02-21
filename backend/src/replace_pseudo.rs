@@ -7,6 +7,10 @@
 // Otherwise we assign assign it the next_stack_offset, update mapping
 // and subtract 4. For now we just consider ints cus its easier for now
 
+// Next pass after this will then fix any move instructions,
+// as this pass may produce mov instructions with 2 memory operands
+// which isn't legal x86-64
+
 use std::collections::HashMap;
 
 use crate::assembly_ast::{AsmInstruction, AsmProgram, Operand};
