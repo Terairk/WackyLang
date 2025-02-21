@@ -1,5 +1,6 @@
 pub mod assembly_ast;
 pub mod assembly_trans;
+pub mod gen_flags;
 
 #[inline]
 pub fn backend() {

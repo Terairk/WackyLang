@@ -34,6 +34,7 @@
 // Top-level structures
 // Use String here for now because i'm getting tired
 // and it'd be easier for me probably
+
 #[derive(Debug, Clone)]
 pub struct AsmProgram {
     pub top_level: Vec<AsmFunction>,

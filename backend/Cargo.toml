@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 middle = { path = "../middle" }
+bitflags = "2.8.0"
 
 [lints]
 workspace = true
