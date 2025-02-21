@@ -108,9 +108,9 @@ pub enum Operand {
     Imm(i32),
     Reg(Register),
     Pseudo(String),
-    Memory(Register, i32),
-    Data(String, i32),
-    PseudoMem(String, i32),
+    Memory(Register, i32),  // I think is used for array/pair access
+    Data(String, i32),      // i think used for RIP relative
+    PseudoMem(String, i32), // I do not remember
     Indexed {
         base: Register,
         index: Register,

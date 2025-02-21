@@ -14,7 +14,7 @@ use crate::{
 
 #[inline]
 #[must_use]
-pub fn tacky_to_assembly(program: WackProgram, counter: usize) -> AsmProgram {
+pub fn tacky_to_assembly(program: WackProgram, counter: usize) -> (AsmProgram, AsmGen) {
     let mut asm_gen = AsmGen::new(counter);
     let mut asm_functions: Vec<AsmFunction> = Vec::new();
     asm_functions.push(asm_gen.lower_main_asm(program.main_body));
@@ -22,14 +22,14 @@ pub fn tacky_to_assembly(program: WackProgram, counter: usize) -> AsmProgram {
         asm_functions.push(asm_gen.lower_function(wack_function));
     }
 
-    AsmProgram { asm_functions }
+    (AsmProgram { asm_functions }, asm_gen)
 }
 
 /* ================== INTERNAL API ================== */
 
-struct AsmGen {
-    counter: usize,
-    gen_flags: GenFlags,
+pub struct AsmGen {
+    pub counter: usize,
+    pub gen_flags: GenFlags,
     // TODO: add counter for string literals
     // and a table to store these literals with their lengths
     // we need to mangle them as well
