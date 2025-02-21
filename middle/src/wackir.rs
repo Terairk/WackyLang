@@ -87,22 +87,20 @@ use std::hash::{Hash, Hasher};
 use syntax::ast::{BinaryOper, Liter, UnaryOper};
 use syntax::{ast::Ident, rename::RenamedName, types::SemanticType};
 
+// Treat WackFunction's slightly differently from main
 #[derive(Clone, Debug)]
-pub enum WackProgram {
-    Program {
-        top_level: Vec<TopLevel>,
-        body: Vec<Instruction>,
-    },
+pub struct WackProgram {
+    pub top_level: Vec<WackFunction>,
+    pub body: Vec<Instruction>,
 }
 
 #[derive(Clone, Debug)]
-pub enum TopLevel {
-    Function {
-        name: MidIdent,
-        params: Vec<MidIdent>, // Not sure if we need types, should be fine if we have
-        // Symbol Table
-        body: Vec<Instruction>,
-    },
+pub struct WackFunction {
+    pub name: MidIdent,
+    pub params: Vec<MidIdent>,
+    // Not sure if we need types, should be fine
+    // if we have Symbol Table
+    pub body: Vec<Instruction>,
 }
 
 #[derive(Clone, Debug)]

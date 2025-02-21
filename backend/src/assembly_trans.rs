@@ -6,7 +6,9 @@ use crate::assembly_ast::AsmProgram;
 
 #[inline]
 pub fn tacky_to_assembly(program: WackProgram) -> AsmProgram {
-    unimplemented!();
+    let wack_functions = program.top_level;
+    let main_wack_function = program.body;
+    unimplemented!()
 }
 
 /* ================== INTERNAL API ================== */

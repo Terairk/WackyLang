@@ -9,7 +9,7 @@ use syntax::typecheck::TypeResolver;
 use syntax::{rename::IdFuncTable, types::SemanticType};
 
 use crate::wackir::{
-    ConvertToMidIdent as _, Instruction, MidIdent, TopLevel, UnaryOperator, Value, WackProgram,
+    ConvertToMidIdent as _, Instruction, MidIdent, UnaryOperator, Value, WackFunction, WackProgram,
 };
 
 /* ================== PUBLIC API ================== */
@@ -73,7 +73,7 @@ impl Lowerer {
         ident.to_mid_ident(&mut self.counter)
     }
 
-    fn lower_func(&mut self, func: TypedFunc) -> TopLevel {
+    fn lower_func(&mut self, func: TypedFunc) -> WackFunction {
         // TODO: Figure out how/when to take in a list of instructions as parameter
         let name = func.name.to_mid_ident(&mut self.counter);
         let params = func
@@ -84,7 +84,7 @@ impl Lowerer {
 
         let mut instructions: Vec<Instruction> = Vec::new();
         self.lower_stat_block(func.body, &mut instructions);
-        TopLevel::Function {
+        WackFunction {
             name,
             params,
             body: instructions,
