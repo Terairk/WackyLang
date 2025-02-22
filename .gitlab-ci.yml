@@ -21,7 +21,9 @@ build:
   artifacts:
     paths:
       - target/debug/
-    expire_in: 1 day
+    exclude:
+      - target/debug/compiler
+    expire_in: 1 hour
 
 # Syntax Check Stage
 syntax-check:
@@ -34,7 +36,7 @@ syntax-check:
   artifacts:
     paths:
       - target/debug/
-    expire_in: 1 day
+    expire_in: 1 hour
 
 test-syntax:
   extends: .common_setup
@@ -46,7 +48,7 @@ test-syntax:
   artifacts:
     paths:
       - target/debug/
-    expire_in: 1 day
+    expire_in: 1 hour
 
 test-middle:
   extends: .common_setup
@@ -58,7 +60,7 @@ test-middle:
   artifacts:
     paths:
       - target/debug/
-    expire_in: 1 day
+    expire_in: 1 hour
 
 test-backend:
   extends: .common_setup
@@ -70,19 +72,20 @@ test-backend:
   artifacts:
     paths:
       - target/debug/
-    expire_in: 1 day
+    expire_in: 1 hour
 
-# # Test Compiler Crate
-# test-compiler:
-#   stage: test-compiler
-#   script:
-#     - rustup override set nightly
-#     - cargo test --package compiler --verbose
-#   dependencies:
-#     - test-syntax
-#     - test-middle
-#     - test-backend
-#   artifacts:
-#     paths:
-#       - target/debug/
-#     expire_in: 1 week
+# Test Compiler Crate
+test-compiler:
+  stage: test-compiler
+  script:
+    - rustup override set nightly
+    - cargo test --package compiler --verbose
+    - rm -f target/debug/compiler
+  dependencies:
+    - test-syntax
+    - test-middle
+    - test-backend
+  artifacts:
+    paths:
+      - target/debug/
+    expire_in: 1 week

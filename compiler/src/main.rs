@@ -3,8 +3,7 @@
 use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
 use chumsky::{Parser, extra};
-use clap::Parser as ClapParser;
-use std::path::PathBuf;
+use clap::{Arg, Parser as ClapParser};
 use std::process::ExitCode;
 use syntax::ast;
 use syntax::parser::program_parser;
@@ -37,7 +36,7 @@ type ProgramOutput<'a> = ParseOutput<'a, ast::Program<ast::Ident, ()>, ProgramEr
 #[command(author, version, about)]
 struct Args {
     /// The input WACC file path
-    input: PathBuf,
+    input: String,
 
     /// Stop after lexing phase and print tokens
     #[arg(long)]
@@ -87,13 +86,11 @@ static SEMANTIC_ERR_CODE: u8 = 200;
 static SYNTAX_ERR_CODE: u8 = 100;
 
 fn main() -> ExitCode {
-    let args = std::env::args().collect::<Vec<String>>();
-    if args.len() != 2 {
-        eprintln!("Usage: {} <path-to-wacc-file>", args[0]);
-        return ExitCode::FAILURE;
-    }
+    let args = Args::parse();
 
-    let file_path = &args[1];
+    // Read the source file.
+    let file_path = &args.input;
+
     let source = match std::fs::read_to_string(file_path) {
         Ok(content) => content,
         Err(e) => {
@@ -101,11 +98,14 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-
     // let source = TEST_PROGRAM;
     // let file_path = "test_cases/invalid/syntaxErr/basic/beginNoend.wacc";
     let source_id = StrSourceId::from_str(file_path);
     let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
+
+    // -------------------------------------------------------------------------
+    //                          Lexing Phase
+    // -------------------------------------------------------------------------
 
     // so the pattern is, make everything generic asf and supply the concrete implementations later :)
     let (tokens, lexing_errs): LexerOutput = Parser::parse(
@@ -115,65 +115,106 @@ fn main() -> ExitCode {
     .into_output_errors();
 
     // Done to appease the borrow checker while displaying errors
-    let lexing_errs_not_empty = !lexing_errs.is_empty();
-    for e in lexing_errs {
-        build_syntactic_report(&e, source.clone());
-    }
-
-    if lexing_errs_not_empty {
+    if !lexing_errs.is_empty() {
+        for e in &lexing_errs {
+            build_syntactic_report(e, source.clone());
+        }
         return ExitCode::from(SYNTAX_ERR_CODE);
     }
 
-    if let Some(tokens) = tokens {
-        // println!("{:#?}", DisplayVec(tokens.clone())); // TODO: remove this later
+    if args.lexing {
+        println!("{tokens:#?}");
+        return ExitCode::SUCCESS;
+    }
+    let tokens = tokens.expect("If lexing errors are not empty, tokens should be Valid");
+    // attach the span of each token to it before parsing, so it is not forgotten
+    let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
 
-        // attach the span of each token to it before parsing, so it is not forgotten
-        #[allow(clippy::pattern_type_mismatch)]
-        let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
-        // println!("\n\nEOI span done!!!");
-        let (parsed, parse_errs): ProgramOutput =
-            Parser::parse(&program_parser::<_, ProgramExtra>(), spanned_tokens)
-                .into_output_errors();
+    // -------------------------------------------------------------------------
+    //                          Parsing Phase
+    // -------------------------------------------------------------------------
 
-        // println!(
-        //     "Done parsing\nParse errors: {:#?}\nParsed: {:#?}",
-        //     parse_errs, parsed
-        // );
+    #[allow(clippy::pattern_type_mismatch)]
+    let (parsed, parse_errs): ProgramOutput =
+        Parser::parse(&program_parser::<_, ProgramExtra>(), spanned_tokens).into_output_errors();
 
-        let parse_errs_not_empty = !parse_errs.is_empty();
-
-        for e in parse_errs {
+    if !parse_errs.is_empty() {
+        for e in &parse_errs {
             build_syntactic_report(&e, source.clone());
         }
-        if parse_errs_not_empty {
-            return ExitCode::from(SYNTAX_ERR_CODE);
-        }
+        return ExitCode::from(SYNTAX_ERR_CODE);
+    }
 
-        let (renamed_ast, renamer) =
-            rename(parsed.expect("If parse errors are not empty, parsed should be Valid"));
+    if args.parsing {
+        println!("{parsed:#?}");
+        return ExitCode::SUCCESS;
+    }
 
-        let renamed_errors = renamer.return_errors();
-        let renamed_errors_not_empty = !renamed_errors.is_empty();
-        if renamed_errors_not_empty {
-            for e in renamed_errors {
-                build_semantic_error_report(file_path, &e, source.clone());
-            }
-        }
+    // -------------------------------------------------------------------------
+    //                          Renaming Phase
+    // -------------------------------------------------------------------------
 
-        let (_typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
-        println!("{_typed_ast:?}");
-        let type_errors = type_resolver.type_errors;
-        if !type_errors.is_empty() {
-            for e in type_errors {
-                build_semantic_error_report(file_path, &e, source.clone());
-            }
-            return ExitCode::from(SEMANTIC_ERR_CODE);
-        }
+    let (renamed_ast, renamer) =
+        rename(parsed.expect("If parse errors are not empty, parsed should be Valid"));
 
-        if renamed_errors_not_empty {
-            return ExitCode::from(SEMANTIC_ERR_CODE);
+    if args.renaming {
+        println!("{renamed_ast:#?}");
+        return ExitCode::from(SEMANTIC_ERR_CODE);
+    }
+    let renamed_errors = renamer.return_errors();
+    // we'll need this info later on so we return if error
+    // but we still continue so we can identify type errors
+    // as well
+    let renamed_errors_not_empty = !renamed_errors.is_empty();
+    if renamed_errors_not_empty {
+        for e in &renamed_errors {
+            build_semantic_error_report(file_path, e, source.clone());
         }
     }
+
+    // -------------------------------------------------------------------------
+    //                          Typechecking Phase
+    // -------------------------------------------------------------------------
+
+    let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
+
+    if args.typechecking {
+        println!("{typed_ast:?}");
+        return ExitCode::from(SEMANTIC_ERR_CODE);
+    }
+    let type_errors = type_resolver.type_errors;
+    if !type_errors.is_empty() {
+        for e in &type_errors {
+            build_semantic_error_report(file_path, e, source.clone());
+        }
+        return ExitCode::from(SEMANTIC_ERR_CODE);
+    }
+
+    if renamed_errors_not_empty {
+        return ExitCode::from(SEMANTIC_ERR_CODE);
+    }
+
+    // -------------------------------------------------------------------------
+    //                          Assembly Pass
+    // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    //                      Replace Pseudoreg Pass
+    // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    //                      Fixing Instructions Pass
+    // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    //                          Code Generation Pass
+    // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    //                          Full Pipeline
+    // -------------------------------------------------------------------------
+
+    // Writes to file
 
     ExitCode::SUCCESS
 }
