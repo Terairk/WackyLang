@@ -75,7 +75,7 @@ mod tests {
          */
 
         let mut function = AsmFunction {
-            name: "example".to_string(),
+            name: "example".to_owned(),
             global: false,
             external: false,
             instructions: vec![

@@ -1,13 +1,13 @@
 use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
-use chumsky::{extra, Parser};
+use chumsky::{Parser, extra};
 use std::fs;
 use std::path::{Path, PathBuf};
 use syntax::ast;
 use syntax::parser::program_parser;
 use syntax::rename::rename;
 use syntax::source::{SourcedSpan, StrSourceId};
-use syntax::token::{lexer, Token};
+use syntax::token::{Token, lexer};
 use syntax::typecheck::typecheck;
 
 static SYNTAX_ERR_STR: &str = "Syntax error(s) found!";

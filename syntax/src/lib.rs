@@ -117,8 +117,8 @@ pub(crate) mod ext {
             }
         }
 
-        /// Just like [`char::to_string`] but takes ownership of the character.
-        fn to_string_owned(self) -> String {
+        /// Just like [`char::to_owned`] but takes ownership of the character.
+        fn to_owned(self) -> String {
             self.to_string()
         }
     }
@@ -229,7 +229,7 @@ where
         .with_config(config)
         .with_message(format!("Syntax error"))
         .with_code(69)
-        .with_label(Label::new(error.span().clone()).with_message(error.reason().to_string()))
+        .with_label(Label::new(error.span().clone()).with_message(error.reason().to_owned()))
         .with_labels(error.contexts().map(|(label, span)| {
             Label::new(span.clone()).with_message(format!("while parsing this {label}"))
         }))
