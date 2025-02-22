@@ -47,7 +47,7 @@ pub struct AsmProgram {
 pub struct AsmFunction {
     pub name: String,
     pub global: bool,
-    pub external: bool,
+    pub external: bool, // Pretty sure I don't need this, I just edit function calls
     pub instructions: Vec<AsmInstruction>,
 }
 
