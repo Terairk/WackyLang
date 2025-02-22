@@ -3,6 +3,8 @@
 use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
 use chumsky::{Parser, extra};
+use clap::Parser as ClapParser;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use syntax::ast;
 use syntax::parser::program_parser;
@@ -11,16 +13,6 @@ use syntax::source::{SourcedSpan, StrSourceId};
 use syntax::token::{Token, lexer};
 use syntax::typecheck::typecheck;
 use syntax::{build_semantic_error_report, build_syntactic_report};
-
-#[allow(dead_code)]
-const TEST_PROGRAM: &str =
-    include_str!("../../test_cases/valid/function/simple_functions/asciiTable.wacc");
-#[allow(dead_code)]
-const SEMANTIC_ERR_PROGRAM: &str =
-    include_str!("../../test_cases/invalid/semanticErr/multiple/ifAndWhileErrs.wacc");
-
-static SEMANTIC_ERR_CODE: u8 = 200;
-static SYNTAX_ERR_CODE: u8 = 100;
 
 // type aliases, because Rust's type inference can't yet handle this, and typing the same
 // stuff over and over is very annoying and unreadable :)
@@ -40,6 +32,59 @@ type LexerOutput<'a> = InputParseOutput<'a, LexerInput<'a>, Vec<(Token, SourcedS
 type ProgramError<'a> = Rich<'a, Token, SourcedSpan>;
 type ProgramExtra<'a> = ErrorExtra<'a, ProgramError<'a>>;
 type ProgramOutput<'a> = ParseOutput<'a, ast::Program<ast::Ident, ()>, ProgramError<'a>>;
+
+#[derive(ClapParser)]
+#[command(author, version, about)]
+struct Args {
+    /// The input WACC file path
+    input: PathBuf,
+
+    /// Stop after lexing phase and print tokens
+    #[arg(long)]
+    lexing: bool,
+
+    /// Stop after initial parsing phase and print AST
+    #[arg(long)]
+    parsing: bool,
+
+    /// Stop after renaming phase and print the renamedAST
+    #[arg(long)]
+    renaming: bool,
+
+    /// Stop after typechecker phase and print the typedAST
+    #[arg(long)]
+    typechecking: bool,
+
+    /// Stop after "Wacky IR" phase and print the IR
+    #[arg(long)]
+    wacky: bool,
+
+    /// Stop after the assembly phase and print the AssemblyAST
+    #[arg(long)]
+    assembly: bool,
+
+    /// Stop after replacing pseudo registers
+    #[arg(long)]
+    pseudo: bool,
+
+    /// Stop after fixing mov instructions
+    #[arg(long)]
+    fixing: bool,
+
+    /// Stop after code generation phase and print the final assembly code
+    #[arg(long)]
+    codegen: bool,
+}
+
+#[allow(dead_code)]
+const TEST_PROGRAM: &str =
+    include_str!("../../test_cases/valid/function/simple_functions/asciiTable.wacc");
+#[allow(dead_code)]
+const SEMANTIC_ERR_PROGRAM: &str =
+    include_str!("../../test_cases/invalid/semanticErr/multiple/ifAndWhileErrs.wacc");
+
+static SEMANTIC_ERR_CODE: u8 = 200;
+static SYNTAX_ERR_CODE: u8 = 100;
 
 fn main() -> ExitCode {
     let args = std::env::args().collect::<Vec<String>>();

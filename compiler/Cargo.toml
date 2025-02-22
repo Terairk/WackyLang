@@ -17,6 +17,7 @@ chumsky = { features = [
   "regex",
   "nightly",
 ], git = "https://github.com/zesterer/chumsky", rev = "282bf5e" } # currently latest chumsky commit
+clap = { version = "4.5.30", features = ["derive"] }
 
 [lints]
 workspace = true
