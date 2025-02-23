@@ -8,8 +8,12 @@ For arrays: need to store the size of the fat pointer + size of elements
 For pairs: I need to store the pointer size + inner elements probs?
 
 3) Implement runtime errors (using our GenStruct flags) when doing some binary operations
+  a) Runtime error when overflowing/underflowing in add/sub/multiple
+  b) Checking that dividend is 0
 
 4) Counter for String Literals
+
+
 
 
 =============== DONE ====================================
