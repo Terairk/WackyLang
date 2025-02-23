@@ -68,7 +68,7 @@ impl AsmGen {
 
     fn lower_function(&mut self, wack_function: WackFunction) -> AsmFunction {
         let mut asm = Vec::new();
-        let func_name: String = wack_function.name.into();
+        let func_name: String = (*wack_function.name).to_owned();
         for instr in wack_function.body {
             self.lower_instruction(instr, &mut asm);
         }

@@ -1,0 +1,9 @@
+When I implement VarDefinition and Assignment:
+  Use the func_table to rename func calls cus they aren't done properly rn
+  Though I will implement lower_rvalue right now (even if its not being used)
+
+Note:
+PairElem on RValue doesn't have a type so I have to either:
+a) Add types to enumPairElem
+b) Add a type to RValue::PairElem (similar to how LValue has it)
+c) Deal with it on caller side and wrangle multiple times

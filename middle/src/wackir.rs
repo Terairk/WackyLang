@@ -96,7 +96,7 @@ pub struct WackProgram {
 
 #[derive(Clone, Debug)]
 pub struct WackFunction {
-    pub name: MidIdent,
+    pub name: Ident,
     pub params: Vec<MidIdent>,
     // Not sure if we need types, should be fine
     // if we have Symbol Table
@@ -160,7 +160,7 @@ pub enum WackInstruction {
     },
     Label(MidIdent),
     FunCall {
-        fun_name: MidIdent,
+        fun_name: Ident,
         args: Vec<WackValue>,
         dst: WackValue,
     },

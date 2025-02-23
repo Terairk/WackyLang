@@ -18,5 +18,6 @@ bitflags! {
         const CHR_BOUNDS    = 0x0000_1000;
         const READ_INT      = 0x0000_2000;
         const READ_CHR      = 0x0000_4000;
+        // TODO: pretty sure we need to add more
     }
 }

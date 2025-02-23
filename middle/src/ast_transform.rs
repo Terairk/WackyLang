@@ -52,30 +52,34 @@ pub fn lower_program(program: TypedAST, type_resolver: TypeResolver) -> (WackPro
 /* ================== INTERNAL API ================== */
 struct Lowerer {
     counter: usize,
-    func_table: HashMap<MidIdent, (SemanticType, Vec<SemanticType>)>,
+    func_table: HashMap<Ident, (SemanticType, Vec<SemanticType>)>,
     symbol_table: HashMap<MidIdent, SemanticType>,
-    // used for function identifiers
-    id_map: HashMap<Ident, MidIdent>,
+    // used to rename function to wacc_function
+    func_map: HashMap<Ident, Ident>,
 }
 
 impl Lowerer {
-    fn counter(&self) -> usize {
+    const fn counter(&self) -> usize {
         self.counter
     }
 }
 
+fn rename_function(ident: &Ident) -> Ident {
+    Ident::from_str(&format!("wacc_{}", ident))
+}
+
 fn create_lowering_context(type_resolver: TypeResolver) -> Lowerer {
     let renamer = type_resolver.renamer;
-    let mut id_map: HashMap<Ident, MidIdent> = HashMap::new();
+    let mut func_map: HashMap<Ident, Ident> = HashMap::new();
     let mut counter = renamer.counter();
     let func_table = renamer
         .id_func_table
         .functions
         .into_iter()
         .map(|(id, (func, params))| {
-            let new_id = id.to_mid_ident(&mut counter);
-            id_map.insert(id.clone(), new_id);
-            (id.to_mid_ident(&mut counter), (func, params))
+            let new_id = rename_function(&id);
+            func_map.insert(id, new_id.clone());
+            (new_id, (func, params))
         })
         .collect();
     let symbol_table: HashMap<MidIdent, SemanticType> = type_resolver
@@ -87,7 +91,7 @@ fn create_lowering_context(type_resolver: TypeResolver) -> Lowerer {
         counter,
         func_table,
         symbol_table,
-        id_map,
+        func_map,
     }
 }
 
@@ -101,12 +105,8 @@ impl Lowerer {
     }
 
     fn lower_func(&mut self, func: TypedFunc) -> WackFunction {
+        let name = func.name.into_inner();
         // TODO: Figure out how/when to take in a list of instructions as parameter
-        let name = self
-            .id_map
-            .get(&func.name)
-            .expect("wacky id_map should have function name")
-            .clone();
         let params = func
             .params
             .into_iter()
@@ -191,6 +191,37 @@ impl Lowerer {
             }
             TypedExpr::Paren(sn_expr, _t) => self.lower_expr(sn_expr.into_inner(), instructions),
             TypedExpr::Error(_) => panic!("Bug somewhere in frontend."),
+        }
+    }
+
+    fn lower_rvalue(&mut self, rvalue: TypedRValue, instructions: &mut Vec<WackInstruction>) {
+        match rvalue {
+            TypedRValue::Expr(_, _) => unimplemented!(),
+            TypedRValue::ArrayLiter(_, _) => unimplemented!(),
+            TypedRValue::NewPair(_, _, _) => unimplemented!(),
+            // TODO: please add types to this
+            TypedRValue::PairElem(_) => unimplemented!(),
+            TypedRValue::Call {
+                func_name,
+                args,
+                return_type,
+            } => {
+                let wacky_args = args
+                    .into_iter()
+                    .map(|arg| self.lower_expr(arg.into_inner(), instructions))
+                    .collect();
+                let dst = WackValue::Var(self.make_temporary());
+                let wacky_func_name = self
+                    .func_map
+                    .get(&func_name)
+                    .expect("Function should be in map");
+                let instr = WackInstruction::FunCall {
+                    fun_name: wacky_func_name.clone(),
+                    args: wacky_args,
+                    dst,
+                };
+                instructions.push(instr);
+            }
         }
     }
 
