@@ -332,9 +332,9 @@ fn main() -> ExitCode {
         .unwrap_or("output")
         .strip_suffix(".wacc")
         .unwrap_or("output");
-    let output_file_path = format!("{file_path}.s");
+    let output_file_path = format!("{file_name}.s");
     match std::fs::write(&output_file_path, formatted_assembly) {
-        Ok(_) => {
+        Ok(()) => {
             println!("Successfully wrote to file {output_file_path}");
         }
         Err(e) => {

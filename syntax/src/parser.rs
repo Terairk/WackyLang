@@ -14,6 +14,7 @@ use chumsky::input::{Checkpoint, Cursor};
 use chumsky::inspector::Inspector;
 use chumsky::pratt::right;
 use chumsky::{
+    Parser,
     combinator::{DelimitedBy, MapWith},
     extra::ParserExtra,
     input::BorrowInput,
@@ -22,7 +23,7 @@ use chumsky::{
     prelude::*,
     primitive::Just,
     recovery::{RecoverWith, ViaParser},
-    select_ref, Parser,
+    select_ref,
 };
 use extend::ext;
 use std::fmt;
@@ -400,7 +401,7 @@ where
     let rvalue = choice((
         array_liter,
         newpair,
-        pair_elem.map(ast::RValue::PairElem),
+        pair_elem.map(|elem| ast::RValue::PairElem(elem, ())),
         function_call,
         // TODO: the expression parser turns errors into error nodes, which makes it
         //       seem like the parser succeeded even if it failed. This messes with

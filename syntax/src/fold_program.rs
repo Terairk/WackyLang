@@ -158,31 +158,28 @@ pub trait Folder {
         &mut self,
         value: SN<RValue<Self::N, Self::T>>,
     ) -> SN<RValue<Self::OutputN, Self::OutputT>> {
-        value.map_inner(|inner| 
-            match inner {
-                RValue::Expr(expr, ty) => {
-                    RValue::Expr(self.fold_expr(expr), self.fold_type(ty))
-                },
-                RValue::ArrayLiter(exprs, ty) => RValue::ArrayLiter(
-                    exprs.fold_with(|expr| self.fold_expr(expr)),
-                    self.fold_type(ty),
-                ),
-                RValue::NewPair(fst, snd, ty) => RValue::NewPair(
-                    self.fold_expr(fst),
-                    self.fold_expr(snd),
-                    self.fold_type(ty),
-                ),
-                RValue::PairElem(pair_elem) => RValue::PairElem(self.fold_pair_elem(pair_elem)),
-                RValue::Call {
-                    func_name,
-                    args,
-                    return_type,
-                } => RValue::Call {
-                    func_name: self.fold_funcname_sn(func_name),
-                    args: args.fold_with(|arg| self.fold_expr(arg)),
-                    return_type: self.fold_type(return_type),
-                },
-            })
+        value.map_inner(|inner| match inner {
+            RValue::Expr(expr, ty) => RValue::Expr(self.fold_expr(expr), self.fold_type(ty)),
+            RValue::ArrayLiter(exprs, ty) => RValue::ArrayLiter(
+                exprs.fold_with(|expr| self.fold_expr(expr)),
+                self.fold_type(ty),
+            ),
+            RValue::NewPair(fst, snd, ty) => {
+                RValue::NewPair(self.fold_expr(fst), self.fold_expr(snd), self.fold_type(ty))
+            }
+            RValue::PairElem(pair_elem, ty) => {
+                RValue::PairElem(self.fold_pair_elem(pair_elem), self.fold_type(ty))
+            }
+            RValue::Call {
+                func_name,
+                args,
+                return_type,
+            } => RValue::Call {
+                func_name: self.fold_funcname_sn(func_name),
+                args: args.fold_with(|arg| self.fold_expr(arg)),
+                return_type: self.fold_type(return_type),
+            },
+        })
     }
 
     #[inline]
@@ -200,26 +197,22 @@ pub trait Folder {
         &mut self,
         expr: SN<Expr<Self::N, Self::T>>,
     ) -> SN<Expr<Self::OutputN, Self::OutputT>> {
-        expr.map_inner(|inner| 
-            match inner {
-                Expr::Liter(lit, ty) => Expr::Liter(lit, self.fold_type(ty)),
-                Expr::Ident(name, ty) => self.fold_expr_ident(name, ty),
-                Expr::ArrayElem(array_elem, ty) => {
-                    Expr::ArrayElem(self.fold_array_elem(array_elem), self.fold_type(ty))
-                }
-                Expr::Unary(op, expr, ty) => {
-                    Expr::Unary(op, self.fold_expr(expr), self.fold_type(ty))
-                }
-                Expr::Binary(lhs, op, rhs, ty) => Expr::Binary(
-                    self.fold_expr(lhs),
-                    op,
-                    self.fold_expr(rhs),
-                    self.fold_type(ty),
-                ),
-                Expr::Paren(expr, ty) => Expr::Paren(self.fold_expr(expr), self.fold_type(ty)),
-                Expr::Error(span) => Expr::Error(span),
+        expr.map_inner(|inner| match inner {
+            Expr::Liter(lit, ty) => Expr::Liter(lit, self.fold_type(ty)),
+            Expr::Ident(name, ty) => self.fold_expr_ident(name, ty),
+            Expr::ArrayElem(array_elem, ty) => {
+                Expr::ArrayElem(self.fold_array_elem(array_elem), self.fold_type(ty))
             }
-        )
+            Expr::Unary(op, expr, ty) => Expr::Unary(op, self.fold_expr(expr), self.fold_type(ty)),
+            Expr::Binary(lhs, op, rhs, ty) => Expr::Binary(
+                self.fold_expr(lhs),
+                op,
+                self.fold_expr(rhs),
+                self.fold_type(ty),
+            ),
+            Expr::Paren(expr, ty) => Expr::Paren(self.fold_expr(expr), self.fold_type(ty)),
+            Expr::Error(span) => Expr::Error(span),
+        })
     }
 
     #[inline]

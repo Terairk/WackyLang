@@ -200,7 +200,7 @@ impl Lowerer {
             TypedRValue::ArrayLiter(_, _) => unimplemented!(),
             TypedRValue::NewPair(_, _, _) => unimplemented!(),
             // TODO: please add types to this
-            TypedRValue::PairElem(_) => unimplemented!(),
+            TypedRValue::PairElem(_, _) => unimplemented!(),
             TypedRValue::Call {
                 func_name,
                 args,

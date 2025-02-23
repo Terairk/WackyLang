@@ -114,7 +114,7 @@ pub enum RValue<N, T> {
     Expr(SN<Expr<N, T>>, T),                    // Type info already in Expr
     ArrayLiter(Box<[SN<Expr<N, T>>]>, T),       // Array needs a type
     NewPair(SN<Expr<N, T>>, SN<Expr<N, T>>, T), // Pair needs a type I think
-    PairElem(SN<PairElem<N, T>>),                   // Type info would come from the inner pair
+    PairElem(SN<PairElem<N, T>>, T),            // Needs a type similar to LValue
     Call {
         func_name: SN<Ident>,
         args: Box<[SN<Expr<N, T>>]>,

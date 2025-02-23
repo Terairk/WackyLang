@@ -67,7 +67,7 @@ impl SN<RValue<RenamedName, SemanticType>> {
             RValue::Expr(_, t) => t,
             RValue::ArrayLiter(_, t) => t,
             RValue::NewPair(_, _, t) => t,
-            RValue::PairElem(pelem) => pelem
+            RValue::PairElem(pelem, _) => pelem
                 .get_type(type_resolver)
                 .unwrap_or(SemanticType::Error(self.span())),
             RValue::Call { return_type, .. } => return_type,
@@ -114,7 +114,7 @@ pub struct TypeResolver {
 
 impl TypeResolver {
     fn new(renamer: Renamer) -> Self {
-        TypeResolver {
+        Self {
             type_errors: Vec::new(),
             renamer,
             curr_func_ret_type: None,
@@ -127,16 +127,16 @@ impl TypeResolver {
 
     fn unary_expect(
         &mut self,
-        expr: SN<Expr<RenamedName, SemanticType>>,
+        expr: &SN<Expr<RenamedName, SemanticType>>,
         expected_type: SemanticType,
         result_type: SemanticType,
     ) -> SemanticType {
-        if expr.get_type(&self).can_coerce_into(&expected_type) {
+        if expr.get_type(self).can_coerce_into(&expected_type) {
             result_type
         } else {
             self.add_error(TypeMismatch(
                 expr.span(),
-                expr.get_type(&self),
+                expr.get_type(self),
                 expected_type,
             ));
             SemanticType::Error(expr.span())
@@ -177,7 +177,7 @@ impl TypeResolver {
 
 fn err_if_not_pair(resolved_type: &SemanticType, span: &WithSourceId, resolver: &mut TypeResolver) {
     if !matches!(
-        resolved_type,
+        *resolved_type,
         SemanticType::Pair(_, _)
             | SemanticType::ErasedPair
             | SemanticType::Error(_)
@@ -200,6 +200,7 @@ impl Folder for TypeResolver {
     type OutputN = RenamedName;
     type OutputT = SemanticType;
 
+    #[inline]
     fn fold_func(&mut self, func: Func<Self::N, Self::T>) -> Func<Self::OutputN, Self::OutputT> {
         self.curr_func_ret_type = Some(func.return_type.inner().clone());
         let func = Func {
@@ -236,8 +237,8 @@ impl Folder for TypeResolver {
             Stat::Assignment { lvalue, rvalue } => {
                 let resolved_lvalue = self.fold_lvalue(lvalue);
                 let resolved_rvalue = self.fold_rvalue(rvalue);
-                let resolved_lval_type = resolved_lvalue.get_type(&self);
-                let resolved_rval_type = resolved_rvalue.get_type(&self);
+                let resolved_lval_type = resolved_lvalue.get_type(self);
+                let resolved_rval_type = resolved_rvalue.get_type(self);
                 if resolved_lval_type == SemanticType::AnyType
                     && resolved_rval_type == SemanticType::AnyType
                 {
@@ -247,8 +248,8 @@ impl Folder for TypeResolver {
                 } else if !&resolved_rval_type.can_coerce_into(&resolved_lval_type) {
                     self.add_error(TypeMismatch(
                         resolved_rvalue.span(),
-                        resolved_rvalue.get_type(&self),
-                        resolved_lvalue.get_type(&self),
+                        resolved_rvalue.get_type(self),
+                        resolved_lvalue.get_type(self),
                     ));
                 }
                 Stat::Assignment {
@@ -449,12 +450,19 @@ impl Folder for TypeResolver {
 
                 RValue::NewPair(resolved_fst, resolved_snd, resolved_type)
             }
-            RValue::PairElem(pair_elem) => RValue::PairElem(self.fold_pair_elem(pair_elem)),
+            RValue::PairElem(pair_elem, _) => {
+                let pair_elem_span = pair_elem.span();
+                let resolved_pair_elem = self.fold_pair_elem(pair_elem);
+                let resolved_type = resolved_pair_elem
+                    .get_type(self)
+                    .unwrap_or(SemanticType::Error(pair_elem_span));
+                RValue::PairElem(resolved_pair_elem, resolved_type)
+            }
             RValue::Call {
                 func_name, args, ..
             } => {
-                let resolved_return_type = self.renamer.lookup_func_return_type(&func_name.clone());
-                let expected_args_types = self.renamer.lookup_func_args(&func_name.clone());
+                let resolved_return_type = self.renamer.lookup_func_return_type(&func_name);
+                let expected_args_types = self.renamer.lookup_func_args(&func_name);
                 let resolved_args = args.fold_with(|arg| self.fold_expr(arg));
                 if expected_args_types.len() != resolved_args.len() {
                     self.add_error(SemanticError::MismatchedArgCount(
@@ -507,38 +515,30 @@ impl Folder for TypeResolver {
             }
             Expr::Unary(op, expr, _) => {
                 let resolved_expr = self.fold_expr(expr);
-                let resolved_type = match op.inner() {
-                    UnaryOper::Not => self.unary_expect(
-                        resolved_expr.clone(),
-                        SemanticType::Bool,
-                        SemanticType::Bool,
-                    ),
-                    UnaryOper::Minus => self.unary_expect(
-                        resolved_expr.clone(),
-                        SemanticType::Int,
-                        SemanticType::Int,
-                    ),
-                    UnaryOper::Len => match resolved_expr.get_type(&self) {
+                let resolved_type = match *op.inner() {
+                    UnaryOper::Not => {
+                        self.unary_expect(&resolved_expr, SemanticType::Bool, SemanticType::Bool)
+                    }
+                    UnaryOper::Minus => {
+                        self.unary_expect(&resolved_expr, SemanticType::Int, SemanticType::Int)
+                    }
+                    UnaryOper::Len => match resolved_expr.get_type(self) {
                         SemanticType::Array(_) => SemanticType::Int,
                         _ => {
                             self.add_error(TypeMismatch(
                                 resolved_expr.span(),
-                                resolved_expr.get_type(&self),
+                                resolved_expr.get_type(self),
                                 SemanticType::Bool,
                             ));
                             SemanticType::Error(resolved_expr.span())
                         }
                     },
-                    UnaryOper::Ord => self.unary_expect(
-                        resolved_expr.clone(),
-                        SemanticType::Char,
-                        SemanticType::Int,
-                    ),
-                    UnaryOper::Chr => self.unary_expect(
-                        resolved_expr.clone(),
-                        SemanticType::Int,
-                        SemanticType::Char,
-                    ),
+                    UnaryOper::Ord => {
+                        self.unary_expect(&resolved_expr, SemanticType::Char, SemanticType::Int)
+                    }
+                    UnaryOper::Chr => {
+                        self.unary_expect(&resolved_expr, SemanticType::Int, SemanticType::Char)
+                    }
                 };
                 Expr::Unary(op, resolved_expr, resolved_type)
             }
@@ -546,7 +546,7 @@ impl Folder for TypeResolver {
                 let resolved_lhs = self.fold_expr(lhs);
                 let resolved_rhs = self.fold_expr(rhs);
 
-                let resolved_type = match op.inner() {
+                let resolved_type = match *op.inner() {
                     // Operations that expect (Int, Int) -> Int
                     BinaryOper::Mul
                     | BinaryOper::Div
@@ -561,7 +561,7 @@ impl Folder for TypeResolver {
 
                     // Comparison ops (Int, Int) -> Bool or (char, char) -> Bool
                     BinaryOper::Lte | BinaryOper::Lt | BinaryOper::Gte | BinaryOper::Gt => {
-                        if resolved_lhs.get_type(&self) != SemanticType::Int {
+                        if resolved_lhs.get_type(self) != SemanticType::Int {
                             self.binary_expect(
                                 resolved_lhs.clone(),
                                 resolved_rhs.clone(),
@@ -579,8 +579,8 @@ impl Folder for TypeResolver {
                     }
                     // Equality ops: (T, T) -> Bool (allow any matching type)
                     BinaryOper::Eq | BinaryOper::Neq => {
-                        let lhs_type = resolved_lhs.get_type(&self);
-                        let rhs_type = resolved_rhs.get_type(&self);
+                        let lhs_type = resolved_lhs.get_type(self);
+                        let rhs_type = resolved_rhs.get_type(self);
                         if lhs_type.can_coerce_into(&rhs_type)
                             || rhs_type.can_coerce_into(&lhs_type)
                         {
@@ -588,8 +588,8 @@ impl Folder for TypeResolver {
                         } else {
                             self.add_error(TypeMismatch(
                                 resolved_lhs.span(),
-                                resolved_rhs.get_type(&self),
-                                resolved_lhs.get_type(&self),
+                                resolved_rhs.get_type(self),
+                                resolved_lhs.get_type(self),
                             ));
                             SemanticType::Error(resolved_lhs.span())
                         }
@@ -606,7 +606,7 @@ impl Folder for TypeResolver {
             }
             Expr::Paren(expr, _) => {
                 let resolved_expr = self.fold_expr(expr);
-                let resolved_type = resolved_expr.get_type(&self);
+                let resolved_type = resolved_expr.get_type(self);
                 Expr::Paren(resolved_expr, resolved_type)
             }
             Expr::Error(span) => Expr::Error(span),
@@ -624,15 +624,15 @@ impl Folder for TypeResolver {
             .map_with(|index| self.fold_expr(index));
         let arr_type = self.lookup_symbol_table(&elem.array_name);
 
-        let mut curr_arr = arr_type.clone();
+        let mut curr_arr = arr_type;
         let length = resolved_indices.len();
         let mut max_possible_index = 0;
-        for i in resolved_indices.iter() {
-            let i_type = i.get_type(&self);
+        for i in &resolved_indices {
+            let i_type = i.get_type(self);
             if !matches!(i_type, SemanticType::Int | SemanticType::Error(_)) {
                 self.add_error(InvalidIndexType(
                     resolved_indices.first().span(),
-                    resolved_indices.first().get_type(&self),
+                    resolved_indices.first().get_type(self),
                 ));
             }
 
@@ -659,36 +659,40 @@ impl Folder for TypeResolver {
         &mut self,
         elem: SN<PairElem<Self::N, Self::T>>,
     ) -> SN<PairElem<Self::OutputN, Self::OutputT>> {
-        let span = elem.span().clone();
+        let span = elem.span();
         elem.map_inner(|inner| match inner {
             PairElem::Fst(expr) => {
                 let lval = self.fold_lvalue(expr);
-                err_if_not_pair(&lval.get_type(&self), &span, self);
+                err_if_not_pair(&lval.get_type(self), &span, self);
 
                 PairElem::Fst(lval)
             }
             PairElem::Snd(expr) => {
                 let lval = self.fold_lvalue(expr);
-                err_if_not_pair(&lval.get_type(&self), &span, self);
+                err_if_not_pair(&lval.get_type(self), &span, self);
 
                 PairElem::Snd(lval)
             }
         })
     }
 
+    #[inline]
     fn fold_name_sn(&mut self, name: SN<Self::N>) -> SN<Self::OutputN> {
         name
     }
 
+    #[inline]
     fn fold_funcname_sn(&mut self, name: SN<Ident>) -> SN<Ident> {
         name
     }
 
+    #[inline]
     fn fold_type(&mut self, _ty: Self::T) -> Self::OutputT {
         unreachable!();
     }
 }
 
+#[inline]
 pub fn typecheck(renamer: Renamer, renamed_ast: RenamedAst) -> (TypedAst, TypeResolver) {
     let mut type_resolver = TypeResolver::new(renamer);
     let typed_ast = type_resolver.fold_program(renamed_ast);
