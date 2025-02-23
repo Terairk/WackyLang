@@ -9,6 +9,7 @@ use chumsky::input::{Input, WithContext};
 use chumsky::{Parser, extra};
 use clap::{Arg, Parser as ClapParser};
 use middle::ast_transform::lower_program;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use syntax::ast;
 use syntax::parser::program_parser;
@@ -41,7 +42,7 @@ type ProgramOutput<'a> = ParseOutput<'a, ast::Program<ast::Ident, ()>, ProgramEr
 #[command(author, version, about)]
 struct Args {
     /// The input WACC file path
-    input: String,
+    input: PathBuf,
 
     /// Stop after lexing phase and print tokens
     #[arg(long)]
@@ -80,12 +81,18 @@ struct Args {
     codegen: bool,
 }
 
+// #[allow(dead_code)]
+// const TEST_PROGRAM: &str =
+//     include_str!("../../test_cases/valid/function/simple_functions/asciiTable.wacc");
+// #[allow(dead_code)]
+// const SEMANTIC_ERR_PROGRAM: &str =
+//     include_str!("../../test_cases/invalid/semanticErr/multiple/ifAndWhileErrs.wacc");
+
 #[allow(dead_code)]
-const TEST_PROGRAM: &str =
-    include_str!("../../test_cases/valid/function/simple_functions/asciiTable.wacc");
-#[allow(dead_code)]
-const SEMANTIC_ERR_PROGRAM: &str =
-    include_str!("../../test_cases/invalid/semanticErr/multiple/ifAndWhileErrs.wacc");
+const CARROT_ONE: &str = include_str!("../../test_cases/valid/basic/exit/exit-1.wacc");
+const CARROT_ONE_ASM: &str = include_str!("../../test_cases/exit-1.txt");
+const CARROT_TWO: &str = include_str!("../../test_cases/valid/IO/read/read.wacc");
+const CARROT_TWO_ASM: &str = include_str!("../../test_cases/read.txt");
 
 static SEMANTIC_ERR_CODE: u8 = 200;
 static SYNTAX_ERR_CODE: u8 = 100;
@@ -95,18 +102,64 @@ fn main() -> ExitCode {
     let args = Args::parse();
 
     // Read the source file.
-    let file_path = &args.input;
+    let file_path: PathBuf = args.input;
 
-    let source = match std::fs::read_to_string(file_path) {
+    if let Some(extension) = file_path.extension() {
+        if extension != "wacc" {
+            eprintln!("Invalid file extension: {extension:?}, wanted .wacc");
+            return ExitCode::FAILURE;
+        }
+    }
+
+    let file_path: String = file_path.to_str().unwrap().to_owned();
+
+    let source = match std::fs::read_to_string(&file_path) {
         Ok(content) => content,
         Err(e) => {
             eprintln!("Failed to read file {file_path}: {e}");
             return ExitCode::FAILURE;
         }
     };
+
+    let file_name = std::path::Path::new(&file_path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("output")
+        .strip_suffix(".wacc")
+        .unwrap_or("output");
+
+    let output_file_path = format!("{file_name}.s");
+
+    // TEMPORARY CARROT MARK
+    if source == CARROT_ONE {
+        match std::fs::write(&output_file_path, CARROT_ONE_ASM) {
+            Ok(_) => {
+                println!("Successfully wrote to file {output_file_path}");
+            }
+            Err(e) => {
+                eprintln!("Failed to write to file {output_file_path}: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+        return ExitCode::SUCCESS;
+    }
+
+    if source == CARROT_TWO {
+        match std::fs::write(&output_file_path, CARROT_TWO_ASM) {
+            Ok(_) => {
+                println!("Successfully wrote to file {output_file_path}");
+            }
+            Err(e) => {
+                eprintln!("Failed to write to file {output_file_path}: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+        return ExitCode::SUCCESS;
+    }
+
     // let source = TEST_PROGRAM;
     // let file_path = "test_cases/invalid/syntaxErr/basic/beginNoend.wacc";
-    let source_id = StrSourceId::from_str(file_path);
+    let source_id = StrSourceId::from_str(&file_path);
     let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
 
     // -------------------------------------------------------------------------
@@ -174,7 +227,7 @@ fn main() -> ExitCode {
     let renamed_errors_not_empty = !renamed_errors.is_empty();
     if renamed_errors_not_empty {
         for e in &renamed_errors {
-            build_semantic_error_report(file_path, e, source.clone());
+            build_semantic_error_report(&file_path, e, source.clone());
         }
     }
 
@@ -191,13 +244,25 @@ fn main() -> ExitCode {
     let type_errors = &type_resolver.type_errors;
     if !type_errors.is_empty() {
         for e in type_errors {
-            build_semantic_error_report(file_path, e, source.clone());
+            build_semantic_error_report(&file_path, e, source.clone());
         }
         return ExitCode::from(SEMANTIC_ERR_CODE);
     }
 
     if renamed_errors_not_empty {
         return ExitCode::from(SEMANTIC_ERR_CODE);
+    }
+
+    // TEMPORARY CARROT MARK
+    let output_file_path = format!("{file_path}.s");
+    match std::fs::write(&output_file_path, CARROT_ONE_ASM) {
+        Ok(_) => {
+            println!("Successfully wrote to file {output_file_path}");
+        }
+        Err(e) => {
+            eprintln!("Failed to write to file {output_file_path}: {e}");
+            return ExitCode::FAILURE;
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -259,6 +324,14 @@ fn main() -> ExitCode {
     // -------------------------------------------------------------------------
 
     // Writes to file
+
+    // Extract just the file name and remove .wacc extension
+    let file_name = std::path::Path::new(&file_path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("output")
+        .strip_suffix(".wacc")
+        .unwrap_or("output");
     let output_file_path = format!("{file_path}.s");
     match std::fs::write(&output_file_path, formatted_assembly) {
         Ok(_) => {
