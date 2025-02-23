@@ -1,9 +1,25 @@
-When I implement VarDefinition and Assignment:
+1) When I implement VarDefinition and Assignment:
   Use the func_table to rename func calls cus they aren't done properly rn
-  Though I will implement lower_rvalue right now (even if its not being used)
+  Though I will implement lower_rvalue right now (even if its not being used) for calls
+
+2) I need to figure out what info i want to store about types:
+Some ideas: their size, their alignment
+For arrays: need to store the size of the fat pointer + size of elements
+For pairs: I need to store the pointer size + inner elements probs?
+
+3) Implement runtime errors (using our GenStruct flags) when doing some binary operations
+
+4) Counter for String Literals
+
+
+=============== DONE ====================================
+
+Need to research how storing a 4 byte value into a 8 byte memory space works (DONE)
 
 Note:
 PairElem on RValue doesn't have a type so I have to either:
 a) Add types to enumPairElem
 b) Add a type to RValue::PairElem (similar to how LValue has it)
 c) Deal with it on caller side and wrangle multiple times
+
+I ended up choosing add types to RValue::PairElem.

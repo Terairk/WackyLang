@@ -98,7 +98,7 @@ impl AssemblyFormatter {
                 let suffix = Self::assembly_type_suffix(typ);
                 let operand_str = Self::format_operand(operand, typ);
                 let op = Self::format_unary_operator(operator);
-                format!("{}{} {}", op, suffix, operand_str)
+                format!("{op}{suffix} {operand_str}")
             }
             AsmInstruction::Binary {
                 operator,
@@ -110,7 +110,7 @@ impl AssemblyFormatter {
                 let op1_str = Self::format_operand(op1, typ);
                 let op2_str = Self::format_operand(op2, typ);
                 let op = Self::format_binary_operator(operator);
-                format!("{}{} {}, {}", op, suffix, op1_str, op2_str)
+                format!("{op}{suffix} {op1_str}, {op2_str}")
             }
             AsmInstruction::Cmp { typ, op1, op2 } => {
                 let suffix = Self::assembly_type_suffix(typ);
@@ -119,9 +119,9 @@ impl AssemblyFormatter {
                 format!("cmp{} {}, {}", suffix, op1_str, op2_str)
             }
             AsmInstruction::Idiv(op) => {
-                // I think in WACC we only support int division and not long long's like in C
+                // idivl because we only work with ints in WACC
                 let op_str = Self::format_operand(op, &AssemblyType::Longword);
-                format!("idiv {}", op_str)
+                format!("idivl {}", op_str)
             }
             AsmInstruction::Cdq => "cdq".to_owned(),
             AsmInstruction::Jmp(label) => format!("jmp {}", label),

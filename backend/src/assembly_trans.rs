@@ -1,11 +1,11 @@
 use middle::wackir::{
-    UnaryOperator, WackConst, WackFunction, WackInstruction, WackProgram, WackValue,
+    BinaryOperator, UnaryOperator, WackConst, WackFunction, WackInstruction, WackProgram, WackValue,
 };
 
 use crate::{
     assembly_ast::{
-        AsmFunction, AsmInstruction, AsmProgram, AsmUnaryOperator, AssemblyType, CondCode, Operand,
-        Register,
+        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AsmUnaryOperator, AssemblyType,
+        CondCode, Operand, Register,
     },
     gen_flags::GenFlags,
 };
@@ -61,7 +61,6 @@ impl AsmGen {
         AsmFunction {
             name: "main".to_owned(),
             global: true,
-            external: false,
             instructions: asm_instructions,
         }
     }
@@ -76,7 +75,6 @@ impl AsmGen {
         AsmFunction {
             name: func_name,
             global: false,
-            external: false,
             instructions: asm,
         }
     }
@@ -87,11 +85,17 @@ impl AsmGen {
         asm_instructions: &mut Vec<AsmInstruction>,
     ) {
         use AsmInstruction as Asm;
-        use WackInstruction::{Return, Unary};
+        use WackInstruction::{Binary, Return, Unary};
         // TODO: finish this scaffolding
         match instr {
             Return(value) => self.lower_return(value, asm_instructions),
             Unary { op, src, dst } => self.lower_unary(&op, src, dst, asm_instructions),
+            Binary {
+                op,
+                src1,
+                src2,
+                dst,
+            } => self.lower_binary(&op, src1, src2, dst, asm_instructions),
             _ => unimplemented!(),
         }
     }
@@ -188,6 +192,64 @@ impl AsmGen {
         }
     }
 
+    fn lower_binary(
+        &mut self,
+        op: &BinaryOperator,
+        src1: WackValue,
+        src2: WackValue,
+        dst: WackValue,
+        asm: &mut Vec<AsmInstruction>,
+    ) {
+        use AsmInstruction as Asm;
+        use BinaryOperator as BinOp;
+
+        let src1_operand = self.lower_value(src1, asm);
+        let src2_operand = self.lower_value(src2, asm);
+        let dst_operand = self.lower_value(dst, asm);
+
+        // We handle Div and Remainder operations differently
+        // than the rest since it has specific semantics in x86-64
+        match *op {
+            BinOp::Div | BinOp::Mod => {
+                // We need to sign extend EAX into EAX:EDX
+                asm.push(Asm::Mov {
+                    typ: AssemblyType::Longword,
+                    src: src1_operand,
+                    dst: Operand::Reg(Register::AX),
+                });
+                asm.push(Asm::Cdq);
+                asm.push(Asm::Idiv(src2_operand));
+                // Result is stored in different registers
+                // Depending on operation
+                let dst_reg = match *op {
+                    BinOp::Div => Operand::Reg(Register::AX),
+                    BinOp::Mod => Operand::Reg(Register::DX),
+                    _ => unreachable!(),
+                };
+                asm.push(Asm::Mov {
+                    typ: AssemblyType::Longword,
+                    src: dst_reg,
+                    dst: dst_operand,
+                });
+            }
+            _ => {
+                // Handle other binary operations in the same way
+                asm.push(Asm::Mov {
+                    typ: AssemblyType::Longword,
+                    src: src1_operand,
+                    dst: dst_operand.clone(),
+                });
+                let asm_op = convert_arith_binop(op.clone());
+                asm.push(Asm::Binary {
+                    operator: asm_op,
+                    typ: AssemblyType::Longword,
+                    op1: src2_operand,
+                    op2: dst_operand,
+                });
+            }
+        }
+    }
+
     // This lowers a WackValue to an Asm Operand
     fn lower_value(
         &mut self,
@@ -210,5 +272,17 @@ impl AsmGen {
             // so I can do either Pseudo or PseudoMem, for now its Pseudo
             Var(ident) => Operand::Pseudo(ident.into()),
         }
+    }
+}
+
+fn convert_arith_binop(wacky_binop: BinaryOperator) -> AsmBinaryOperator {
+    use AsmBinaryOperator as AsmBinOp;
+    use BinaryOperator as BinOp;
+
+    match wacky_binop {
+        BinOp::Add => AsmBinOp::Add,
+        BinOp::Sub => AsmBinOp::Sub,
+        BinOp::Mul => AsmBinOp::Mult,
+        _ => panic!("Invalid binary arithmetic operator for Asm"),
     }
 }

@@ -1,6 +1,6 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
-use backend::assembly_fix::fix_instructions;
+use backend::assembly_fix::fix_program;
 use backend::assembly_trans::wacky_to_assembly;
 use backend::emission::AssemblyFormatter;
 use backend::replace_pseudo::replace_pseudo_in_program;
@@ -303,7 +303,7 @@ fn main() -> ExitCode {
     //                      Fixing Instructions Pass
     // -------------------------------------------------------------------------
 
-    let assembly_ast = fix_instructions(assembly_ast);
+    let assembly_ast = fix_program(assembly_ast);
     if args.fixing {
         println!("{assembly_ast:?}");
         return ExitCode::SUCCESS;

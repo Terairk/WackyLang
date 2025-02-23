@@ -36,7 +36,9 @@
 // and it'd be easier for me probably
 // Change later if you want
 
-use middle::wackir::UnaryOperator;
+use std::fmt::Binary;
+
+use middle::wackir::{BinaryOperator, UnaryOperator};
 
 #[derive(Debug, Clone)]
 pub struct AsmProgram {
@@ -47,7 +49,6 @@ pub struct AsmProgram {
 pub struct AsmFunction {
     pub name: String,
     pub global: bool,
-    pub external: bool, // Pretty sure I don't need this, I just edit function calls
     pub instructions: Vec<AsmInstruction>,
 }
 
@@ -84,8 +85,8 @@ pub enum AsmInstruction {
         op1: Operand,
         op2: Operand,
     },
-    Idiv(Operand),
-    Cdq,
+    Idiv(Operand), // We convert from Binary(Div, _, _, _) -> IDiv
+    Cdq,           // Need this for division
     Jmp(String),
     JmpCC {
         condition: CondCode,
@@ -192,13 +193,14 @@ pub enum AssemblyType {
 /* ================ ASM Impl's for Conversions ============ */
 
 impl From<UnaryOperator> for AsmUnaryOperator {
+    #[inline]
     fn from(op: UnaryOperator) -> Self {
         match op {
-            UnaryOperator::Negate => AsmUnaryOperator::Neg,
-            UnaryOperator::Not => AsmUnaryOperator::Not,
-            UnaryOperator::Len => AsmUnaryOperator::Len,
-            UnaryOperator::Ord => AsmUnaryOperator::Ord,
-            UnaryOperator::Chr => AsmUnaryOperator::Chr,
+            UnaryOperator::Negate => Self::Neg,
+            UnaryOperator::Not => Self::Not,
+            UnaryOperator::Len => Self::Len,
+            UnaryOperator::Ord => Self::Ord,
+            UnaryOperator::Chr => Self::Chr,
         }
     }
 }

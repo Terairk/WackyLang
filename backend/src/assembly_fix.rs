@@ -7,12 +7,13 @@
 // any special purpose
 
 use crate::assembly_ast::{
-    AsmFunction, AsmInstruction, AsmProgram, AssemblyType, Operand, Register,
+    AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, Operand, Register,
 };
 
 #[must_use]
 #[inline]
-pub fn fix_instructions(program: AsmProgram) -> AsmProgram {
+pub fn fix_program(program: AsmProgram) -> AsmProgram {
+    use Operand::Imm;
     // Process each function separately
     let mut new_functions: Vec<AsmFunction> = Vec::new();
 
@@ -23,7 +24,16 @@ pub fn fix_instructions(program: AsmProgram) -> AsmProgram {
                 AsmInstruction::Mov { typ, src, dst } => {
                     fix_move(&mut new_func_body, typ, src, dst);
                 }
-                other => new_func_body.push(other),
+                AsmInstruction::Binary {
+                    operator,
+                    typ,
+                    op1,
+                    op2,
+                } => fix_binary(&mut new_func_body, operator, typ, op1, op2),
+                AsmInstruction::Idiv(Imm(val)) => {
+                    fix_idiv(&mut new_func_body, val);
+                }
+                _ => new_func_body.push(instr),
             }
         }
 
@@ -31,7 +41,6 @@ pub fn fix_instructions(program: AsmProgram) -> AsmProgram {
         new_functions.push(AsmFunction {
             name: func.name,
             global: func.global,
-            external: func.external,
             instructions: new_func_body,
         });
     }
@@ -41,7 +50,29 @@ pub fn fix_instructions(program: AsmProgram) -> AsmProgram {
     }
 }
 
-fn fix_move(func_body: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand, dst: Operand) {
+/* ================== INTERNALS ================== */
+
+fn fix_binary(
+    asm: &mut Vec<AsmInstruction>,
+    operator: AsmBinaryOperator,
+    typ: AssemblyType,
+    op1: Operand,
+    op2: Operand,
+) {
+    use AsmBinaryOperator as AsmBinOp;
+    match operator {
+        AsmBinOp::Add | AsmBinOp::Sub => fix_add_sub(operator, typ, op1, op2, asm),
+        AsmBinOp::Mult => fix_mult(typ, op1, op2, asm),
+        _ => asm.push(AsmInstruction::Binary {
+            operator,
+            typ,
+            op1,
+            op2,
+        }),
+    }
+}
+
+fn fix_move(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand, dst: Operand) {
     match (src.clone(), dst.clone()) {
         (Operand::Stack(_), Operand::Stack(_)) => {
             // We'll use R10D as a scratch register because it usually doesn't serve
@@ -56,11 +87,91 @@ fn fix_move(func_body: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand
                 src: Operand::Reg(Register::R10),
                 dst,
             };
-            func_body.push(first_move);
-            func_body.push(second_move);
+            asm.push(first_move);
+            asm.push(second_move);
         }
-        _ => func_body.push(AsmInstruction::Mov { typ, src, dst }),
+        _ => asm.push(AsmInstruction::Mov { typ, src, dst }),
     }
+}
+
+fn fix_add_sub(
+    operator: AsmBinaryOperator,
+    typ: AssemblyType,
+    op1: Operand,
+    op2: Operand,
+    asm: &mut Vec<AsmInstruction>,
+) {
+    match (op1.clone(), op2.clone()) {
+        (Operand::Stack(_), Operand::Stack(_)) => {
+            // We'll use R10D as a scratch register because it usually doesn't serve
+            // any special purpose
+            let first_instr = AsmInstruction::Mov {
+                typ: typ.clone(),
+                src: op1,
+                dst: Operand::Reg(Register::R10),
+            };
+            let second_instr = AsmInstruction::Binary {
+                operator,
+                typ,
+                op1: Operand::Reg(Register::R10),
+                op2,
+            };
+            asm.push(first_instr);
+            asm.push(second_instr);
+        }
+        _ => asm.push(AsmInstruction::Binary {
+            operator,
+            typ,
+            op1,
+            op2,
+        }),
+    }
+}
+
+// Imul can't use memory address as its destination regardless of its source operand.
+// We'll use R11 register instead of R10 to not conflict with the others
+// This happens when R10 is op1 and op2 is a memory address
+fn fix_mult(typ: AssemblyType, op1: Operand, op2: Operand, asm: &mut Vec<AsmInstruction>) {
+    match (op1.clone(), op2.clone()) {
+        (_, Operand::Stack(_)) => {
+            // We'll use R10D as a scratch register because it usually doesn't serve
+            // any special purpose
+            let first_instr = AsmInstruction::Mov {
+                typ: typ.clone(),
+                src: op2.clone(),
+                dst: Operand::Reg(Register::R11),
+            };
+            let second_instr = AsmInstruction::Binary {
+                operator: AsmBinaryOperator::Mult,
+                typ: typ.clone(),
+                op1,
+                op2: Operand::Reg(Register::R11),
+            };
+            let third_instr = AsmInstruction::Mov {
+                typ,
+                src: Operand::Reg(Register::R11),
+                dst: op2,
+            };
+            asm.push(first_instr);
+            asm.push(second_instr);
+            asm.push(third_instr);
+        }
+        _ => asm.push(AsmInstruction::Binary {
+            operator: AsmBinaryOperator::Mult,
+            typ,
+            op1,
+            op2,
+        }),
+    }
+}
+
+fn fix_idiv(asm: &mut Vec<AsmInstruction>, val: i32) {
+    asm.push(AsmInstruction::Mov {
+        typ: AssemblyType::Longword,
+        src: Operand::Imm(val),
+        dst: Operand::Reg(Register::R10),
+    });
+    asm.push(AsmInstruction::Idiv(Operand::Reg(Register::R10)));
 }
 
 #[cfg(test)]
@@ -74,10 +185,9 @@ mod tests {
          * movl $5, -4(%rbp)
          */
 
-        let mut function = AsmFunction {
+        let function = AsmFunction {
             name: "example".to_owned(),
             global: false,
-            external: false,
             instructions: vec![
                 AsmInstruction::Mov {
                     typ: AssemblyType::Longword,
@@ -97,7 +207,7 @@ mod tests {
         };
 
         // Run the fix instructions pass
-        let fixed_program = fix_instructions(program);
+        let fixed_program = fix_program(program);
 
         // Now inspect the program
         // We expect 3 instructions total with the invalid mov split into 2 instructions

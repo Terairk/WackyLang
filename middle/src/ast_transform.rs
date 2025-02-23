@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
 use syntax::ast::{
-    ArrayElem, Expr, Func, FuncParam, Ident, LValue, Liter, PairElem, Program, RValue, Stat,
-    StatBlock, UnaryOper,
+    ArrayElem, BinaryOper, Expr, Func, FuncParam, Ident, LValue, Liter, PairElem, Program, RValue,
+    Stat, StatBlock, UnaryOper,
 };
 use syntax::rename::RenamedName;
 use syntax::typecheck::TypeResolver;
 use syntax::{rename::IdFuncTable, types::SemanticType};
 
 use crate::wackir::{
-    ConvertToMidIdent as _, MidIdent, UnaryOperator, WackFunction, WackInstruction, WackProgram,
-    WackValue,
+    BinaryOperator, ConvertToMidIdent as _, MidIdent, UnaryOperator, WackFunction, WackInstruction,
+    WackProgram, WackValue,
 };
 
 /* ================== PUBLIC API ================== */
@@ -108,7 +108,7 @@ impl Lowerer {
         let params = func
             .params
             .into_iter()
-            .map(|param| self.lower_func_param(param))
+            .map(|param| self.lower_func_param(&param))
             .collect();
 
         let name = self
@@ -125,7 +125,7 @@ impl Lowerer {
     }
 
     /* TODO: find where we care about the types of params */
-    fn lower_func_param(&mut self, param: TypedFuncParam) -> MidIdent {
+    fn lower_func_param(&mut self, param: &TypedFuncParam) -> MidIdent {
         param.name.to_mid_ident(&mut self.counter)
     }
 
@@ -188,9 +188,12 @@ impl Lowerer {
             TypedExpr::Unary(sn_unary, sn_expr, _t) => {
                 self.lower_unary(sn_unary.into_inner(), sn_expr.into_inner(), instructions)
             }
-            TypedExpr::Binary(sn_expr1, sn_binop, sn_expr2, t) => {
-                panic!("Binary not implemented in Wacky")
-            }
+            TypedExpr::Binary(sn_expr1, sn_binop, sn_expr2, t) => self.lower_binary(
+                sn_expr1.into_inner(),
+                sn_binop.into_inner(),
+                sn_expr2.into_inner(),
+                instructions,
+            ),
             TypedExpr::Paren(sn_expr, _t) => self.lower_expr(sn_expr.into_inner(), instructions),
             TypedExpr::Error(_) => panic!("Bug somewhere in frontend."),
         }
@@ -250,6 +253,28 @@ impl Lowerer {
         let new_instr = WackInstruction::Unary {
             op: wacky_op,
             src,
+            dst: dst.clone(),
+        };
+        instr.push(new_instr);
+        dst
+    }
+
+    fn lower_binary(
+        &mut self,
+        expr1: TypedExpr,
+        binop: BinaryOper,
+        expr2: TypedExpr,
+        instr: &mut Vec<WackInstruction>,
+    ) -> WackValue {
+        let src1 = self.lower_expr(expr1, instr);
+        let src2 = self.lower_expr(expr2, instr);
+        let dst_name = self.make_temporary();
+        let dst = WackValue::Var(dst_name);
+        let wacky_op: BinaryOperator = binop.into();
+        let new_instr = WackInstruction::Binary {
+            op: wacky_op,
+            src1,
+            src2,
             dst: dst.clone(),
         };
         instr.push(new_instr);
