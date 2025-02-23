@@ -81,7 +81,7 @@ fn replace_pseudo_in_instruction(
     }
 }
 
-fn replace_pseudo_in_program(program: &mut AsmProgram) {
+pub fn replace_pseudo_in_program(program: &mut AsmProgram) {
     for func in &mut program.asm_functions {
         // Start fresh for each function.
         let mut mapping: HashMap<String, i32> = HashMap::new();

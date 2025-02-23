@@ -14,7 +14,7 @@ use crate::{
 
 #[inline]
 #[must_use]
-pub fn tacky_to_assembly(program: WackProgram, counter: usize) -> (AsmProgram, AsmGen) {
+pub fn wacky_to_assembly(program: WackProgram, counter: usize) -> (AsmProgram, AsmGen) {
     let mut asm_gen = AsmGen::new(counter);
     let mut asm_functions: Vec<AsmFunction> = Vec::new();
     asm_functions.push(asm_gen.lower_main_asm(program.main_body));

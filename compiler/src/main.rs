@@ -1,9 +1,14 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
+use backend::assembly_fix::fix_instructions;
+use backend::assembly_trans::wacky_to_assembly;
+use backend::emission::AssemblyFormatter;
+use backend::replace_pseudo::replace_pseudo_in_program;
 use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
 use chumsky::{Parser, extra};
 use clap::{Arg, Parser as ClapParser};
+use middle::ast_transform::lower_program;
 use std::process::ExitCode;
 use syntax::ast;
 use syntax::parser::program_parser;
@@ -85,6 +90,7 @@ const SEMANTIC_ERR_PROGRAM: &str =
 static SEMANTIC_ERR_CODE: u8 = 200;
 static SYNTAX_ERR_CODE: u8 = 100;
 
+#[allow(clippy::too_many_lines)]
 fn main() -> ExitCode {
     let args = Args::parse();
 
@@ -94,7 +100,7 @@ fn main() -> ExitCode {
     let source = match std::fs::read_to_string(file_path) {
         Ok(content) => content,
         Err(e) => {
-            eprintln!("Failed to read file {}: {}", file_path, e);
+            eprintln!("Failed to read file {file_path}: {e}");
             return ExitCode::FAILURE;
         }
     };
@@ -140,7 +146,7 @@ fn main() -> ExitCode {
 
     if !parse_errs.is_empty() {
         for e in &parse_errs {
-            build_syntactic_report(&e, source.clone());
+            build_syntactic_report(e, source.clone());
         }
         return ExitCode::from(SYNTAX_ERR_CODE);
     }
@@ -180,11 +186,11 @@ fn main() -> ExitCode {
 
     if args.typechecking {
         println!("{typed_ast:?}");
-        return ExitCode::from(SEMANTIC_ERR_CODE);
+        return ExitCode::SUCCESS;
     }
-    let type_errors = type_resolver.type_errors;
+    let type_errors = &type_resolver.type_errors;
     if !type_errors.is_empty() {
-        for e in &type_errors {
+        for e in type_errors {
             build_semantic_error_report(file_path, e, source.clone());
         }
         return ExitCode::from(SEMANTIC_ERR_CODE);
@@ -195,26 +201,74 @@ fn main() -> ExitCode {
     }
 
     // -------------------------------------------------------------------------
+    //                          Wacky IR Pass
+    // -------------------------------------------------------------------------
+
+    // TODO: add string constant pass to either this pass or assembly pass
+    // may need to modify my Wacky IR / Assembly Ast
+    let (wacky_ir, counter) = lower_program(typed_ast, type_resolver);
+
+    if args.wacky {
+        println!("{wacky_ir:?}");
+        return ExitCode::SUCCESS;
+    }
+
+    // -------------------------------------------------------------------------
     //                          Assembly Pass
     // -------------------------------------------------------------------------
+
+    // TODO: find how to use asm_gen for future passes
+    let (mut assembly_ast, _asm_gen) = wacky_to_assembly(wacky_ir, counter);
+    if args.assembly {
+        println!("{assembly_ast:?}");
+        return ExitCode::SUCCESS;
+    }
 
     // -------------------------------------------------------------------------
     //                      Replace Pseudoreg Pass
     // -------------------------------------------------------------------------
 
+    replace_pseudo_in_program(&mut assembly_ast);
+    if args.pseudo {
+        println!("{assembly_ast:?}");
+        return ExitCode::SUCCESS;
+    }
+
     // -------------------------------------------------------------------------
     //                      Fixing Instructions Pass
     // -------------------------------------------------------------------------
 
+    let assembly_ast = fix_instructions(assembly_ast);
+    if args.fixing {
+        println!("{assembly_ast:?}");
+        return ExitCode::SUCCESS;
+    }
+
     // -------------------------------------------------------------------------
     //                          Code Generation Pass
     // -------------------------------------------------------------------------
+
+    let formatted_assembly = AssemblyFormatter::format_program(&assembly_ast);
+    if args.codegen {
+        println!("{formatted_assembly}");
+        return ExitCode::SUCCESS;
+    }
 
     // -------------------------------------------------------------------------
     //                          Full Pipeline
     // -------------------------------------------------------------------------
 
     // Writes to file
+    let output_file_path = format!("{file_path}.s");
+    match std::fs::write(&output_file_path, formatted_assembly) {
+        Ok(_) => {
+            println!("Successfully wrote to file {output_file_path}");
+        }
+        Err(e) => {
+            eprintln!("Failed to write to file {output_file_path}: {e}");
+            return ExitCode::FAILURE;
+        }
+    }
 
     ExitCode::SUCCESS
 }

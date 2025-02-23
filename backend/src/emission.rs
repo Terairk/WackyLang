@@ -19,7 +19,7 @@ use crate::assembly_ast::{
 pub struct AssemblyFormatter;
 
 // Return has to be handled specially to avoid being indented
-const RETURN_STRING: &str = "\tmovq %rbp, %rsp\n\tpopq %rbp\n\tret\n";
+const RETURN_STRING: &str = "movq %rbp, %rsp\npopq %rbp\nret\n";
 
 impl AssemblyFormatter {
     // Format an entire program by printing each function.
@@ -27,6 +27,10 @@ impl AssemblyFormatter {
     #[inline]
     pub fn format_program(program: &AsmProgram) -> String {
         let mut output = String::new();
+        // TODO: emit string constants here with their length
+
+        // have a .text directive here once per assembly file
+        output.push_str(".text\n");
         for func in &program.asm_functions {
             output.push_str(&Self::format_function(func));
         }
@@ -39,7 +43,7 @@ impl AssemblyFormatter {
         let mut lines = Vec::new();
         if func.global {
             // Global directives start with a dot, so they will have no indent.
-            lines.push(format!(".global {}", func.name));
+            lines.push(format!(".globl {}", func.name));
         }
         // Print function label (ends with ":" so we omit the indent).
         lines.push(format!("{}:", func.name));
@@ -327,11 +331,6 @@ impl AssemblyFormatter {
     #[inline]
     pub fn apply_indentation(line: &str) -> String {
         if line.is_empty() {
-            return line.to_owned();
-        }
-
-        // Return string case
-        if line == RETURN_STRING {
             return line.to_owned();
         }
 
