@@ -103,7 +103,7 @@ pub fn replace_pseudo_in_program(program: &mut AsmProgram) {
         // If last_offset == 0, then no temporary was used
         if last_offset != 0 {
             func.instructions
-                .insert(0, AsmInstruction::AllocateStack(last_offset));
+                .insert(0, AsmInstruction::AllocateStack(-last_offset));
         }
     }
 }

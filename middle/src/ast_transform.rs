@@ -58,14 +58,8 @@ struct Lowerer {
     func_map: HashMap<Ident, Ident>,
 }
 
-impl Lowerer {
-    const fn counter(&self) -> usize {
-        self.counter
-    }
-}
-
-fn rename_function(ident: &Ident) -> Ident {
-    Ident::from_str(&format!("wacc_{}", ident))
+fn rename_function_ident(ident: &Ident) -> Ident {
+    Ident::from_str(&format!("wacc_{ident}"))
 }
 
 fn create_lowering_context(type_resolver: TypeResolver) -> Lowerer {
@@ -77,7 +71,7 @@ fn create_lowering_context(type_resolver: TypeResolver) -> Lowerer {
         .functions
         .into_iter()
         .map(|(id, (func, params))| {
-            let new_id = rename_function(&id);
+            let new_id = rename_function_ident(&id);
             func_map.insert(id, new_id.clone());
             (new_id, (func, params))
         })
@@ -96,6 +90,9 @@ fn create_lowering_context(type_resolver: TypeResolver) -> Lowerer {
 }
 
 impl Lowerer {
+    const fn counter(&self) -> usize {
+        self.counter
+    }
     // Makes a temporary wacky variable
     fn make_temporary(&mut self) -> MidIdent {
         // Eventually we may want to replace temp with a function name
@@ -105,16 +102,21 @@ impl Lowerer {
     }
 
     fn lower_func(&mut self, func: TypedFunc) -> WackFunction {
-        let name = func.name.into_inner();
         // TODO: Figure out how/when to take in a list of instructions as parameter
+        let mut instructions: Vec<WackInstruction> = Vec::new();
+        self.lower_stat_block(func.body, &mut instructions);
         let params = func
             .params
             .into_iter()
             .map(|param| self.lower_func_param(param))
             .collect();
 
-        let mut instructions: Vec<WackInstruction> = Vec::new();
-        self.lower_stat_block(func.body, &mut instructions);
+        let name = self
+            .func_map
+            .get(&func.name)
+            .expect("Function should be in map")
+            .clone();
+
         WackFunction {
             name,
             params,

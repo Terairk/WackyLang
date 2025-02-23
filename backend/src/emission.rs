@@ -46,9 +46,9 @@ impl AssemblyFormatter {
             lines.push(format!(".globl {}", func.name));
         }
         // Print function label (ends with ":" so we omit the indent).
-        lines.push("pushq %rbp\n".to_owned());
-        lines.push("movq %rsp, %rbp\n".to_owned());
         lines.push(format!("{}:", func.name));
+        lines.push(Self::apply_indentation("pushq %rbp"));
+        lines.push(Self::apply_indentation("movq %rsp, %rbp"));
         for inst in &func.instructions {
             let inst_line = Self::format_instruction(inst);
             // For each instruction line, apply the proper indentation.

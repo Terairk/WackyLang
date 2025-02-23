@@ -335,7 +335,7 @@ fn main() -> ExitCode {
     let output_file_path = format!("{file_name}.s");
     match std::fs::write(&output_file_path, formatted_assembly) {
         Ok(()) => {
-            println!("Successfully wrote to file {output_file_path}");
+            println!("Full: Successfully wrote to file {output_file_path}");
         }
         Err(e) => {
             eprintln!("Failed to write to file {output_file_path}: {e}");
