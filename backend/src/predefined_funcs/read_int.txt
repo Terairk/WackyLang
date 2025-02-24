@@ -1,0 +1,27 @@
+.section .rodata
+# length of .L._readi_str0
+	.int 2
+.L._readi_str0:
+	.asciz "%d"
+.text
+_readi:
+	pushq %rbp
+	movq %rsp, %rbp
+	# external calls must be stack-aligned to 16 bytes, accomplished by masking with fffffffffffffff0
+	andq $-16, %rsp
+	# RDI contains the "original" value of the destination of the read
+	# allocate space on the stack to store the read: preserve alignment!
+	# the passed default argument should be stored in case of EOF
+	subq $16, %rsp
+	movl %edi, (%rsp)
+	leaq (%rsp), %rsi
+	leaq .L._readi_str0(%rip), %rdi
+	# on x86, al represents the number of SIMD registers used as variadic arguments
+	movb $0, %al
+	call scanf@plt
+	movl (%rsp), %eax
+	addq $16, %rsp
+	movq %rbp, %rsp
+	popq %rbp
+	ret
+

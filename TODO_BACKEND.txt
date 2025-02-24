@@ -7,12 +7,28 @@ Some ideas: their size, their alignment
 For arrays: need to store the size of the fat pointer + size of elements
 For pairs: I need to store the pointer size + inner elements probs?
 
+============== CURRENT TASK = 3 ============
 3) Implement runtime errors (using our GenStruct flags) when doing some binary operations
   a) Runtime error when overflowing/underflowing in add/sub/multiple
   b) Checking that dividend is 0
 
 4) Counter for String Literals
 
+5) TODO: proper implementation of chars (research is shown below)
+Note that we can use movzbl to move from byte to long word. Might be useful for chars/bools
+ordAndchrExpr.wacc is nice to analyse - movb is used for println chr while we have a
+	movzbl %r12b, %eax
+	movl %eax, %edi
+if we do println ord chr. Which is interesting
+
+Meanwhile with chr, this occurs. -128 will match will all invalid chrs.
+Honestly im surprised these things can even occur with the errors from the frontend
+but ig unsoundness from pair coercion could theoretically occur
+movl %r12d, %eax
+testl $-128, %eax
+cmovne %rax, %rsi # this must be a 64-bit move so that it doesn't truncate if the move fails
+
+6) Research how to do bools by observing the reference compiler
 
 
 

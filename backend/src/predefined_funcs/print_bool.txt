@@ -1,0 +1,37 @@
+.section .rodata
+# length of .L._printb_str0
+	.int 5
+.L._printb_str0:
+	.asciz "false"
+# length of .L._printb_str1
+	.int 4
+.L._printb_str1:
+	.asciz "true"
+# length of .L._printb_str2
+	.int 4
+.L._printb_str2:
+	.asciz "%.*s"
+.text
+_printb:
+	pushq %rbp
+	movq %rsp, %rbp
+	# external calls must be stack-aligned to 16 bytes, accomplished by masking with fffffffffffffff0
+	andq $-16, %rsp
+	cmpb $0, %dil
+	jne .L_printb0
+	leaq .L._printb_str0(%rip), %rdx
+	jmp .L_printb1
+.L_printb0:
+	leaq .L._printb_str1(%rip), %rdx
+.L_printb1:
+	movl -4(%rdx), %esi
+	leaq .L._printb_str2(%rip), %rdi
+	# on x86, al represents the number of SIMD registers used as variadic arguments
+	movb $0, %al
+	call printf@plt
+	movq $0, %rdi
+	call fflush@plt
+	movq %rbp, %rsp
+	popq %rbp
+	ret
+
