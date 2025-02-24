@@ -2,7 +2,7 @@ pub mod assembly_ast;
 pub mod assembly_fix;
 pub mod assembly_trans;
 pub mod emission;
-pub mod gen_flags;
+pub mod gen_predefined;
 pub mod replace_pseudo;
 
 #[inline]

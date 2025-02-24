@@ -30,6 +30,11 @@ cmovne %rax, %rsi # this must be a 64-bit move so that it doesn't truncate if th
 
 6) Research how to do bools by observing the reference compiler
 
+7) Assembly AST doesn't have reads / other functions, is that fine or is that gonna be a
+call by the WackyIR -> AssemblyAST transformation. I feel like GenFlags definitely needs to be
+in a utility crate for sure. Different levels of the IR have an easier time adding flags
+especially when printing. Only the backend needs the actual translation from GenFlags to strings.
+
 
 
 =============== DONE ====================================

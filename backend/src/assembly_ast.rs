@@ -36,8 +36,6 @@
 // and it'd be easier for me probably
 // Change later if you want
 
-use std::fmt::Binary;
-
 use middle::wackir::{BinaryOperator, UnaryOperator};
 
 #[derive(Debug, Clone)]

@@ -1,13 +1,11 @@
 use middle::wackir::{
     BinaryOperator, UnaryOperator, WackConst, WackFunction, WackInstruction, WackProgram, WackValue,
 };
+use util::gen_flags::{GenFlags, insert_flag_gbl};
 
-use crate::{
-    assembly_ast::{
-        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AsmUnaryOperator, AssemblyType,
-        CondCode, Operand, Register,
-    },
-    gen_flags::GenFlags,
+use crate::assembly_ast::{
+    AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AsmUnaryOperator, AssemblyType,
+    CondCode, Operand, Register,
 };
 
 /* ================== PUBLIC API ================== */
@@ -29,7 +27,6 @@ pub fn wacky_to_assembly(program: WackProgram, counter: usize) -> (AsmProgram, A
 
 pub struct AsmGen {
     pub counter: usize,
-    pub gen_flags: GenFlags,
     // TODO: add counter for string literals
     // and a table to store these literals with their lengths
     // we need to mangle them as well
@@ -44,10 +41,7 @@ pub struct AsmGen {
 
 impl AsmGen {
     const fn new(counter: usize) -> Self {
-        Self {
-            counter,
-            gen_flags: GenFlags::empty(),
-        }
+        Self { counter }
     }
 
     fn lower_main_asm(&mut self, instrs: Vec<WackInstruction>) -> AsmFunction {
@@ -211,6 +205,7 @@ impl AsmGen {
         // than the rest since it has specific semantics in x86-64
         match *op {
             BinOp::Div | BinOp::Mod => {
+                insert_flag_gbl(GenFlags::DIV_BY_ZERO);
                 // We need to sign extend EAX into EAX:EDX
                 asm.push(Asm::Mov {
                     typ: AssemblyType::Longword,

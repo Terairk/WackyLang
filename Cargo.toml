@@ -1,9 +1,17 @@
 [workspace]
 resolver = "2"
-members = ["fn_pipe_proc", "fn_pipe", "syntax", "backend", "middle", "compiler"]
+members = [
+  "fn_pipe_proc",
+  "fn_pipe",
+  "syntax",
+  "backend",
+  "middle",
+  "compiler",
+  "util",
+]
 
 [profile.dev]
-opt-level = 2
+opt-level = 1
 
 # Clippy's lint category level configurations;
 # every member crate needs to inherit these by adding
