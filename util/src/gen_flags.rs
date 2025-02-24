@@ -6,6 +6,29 @@ use std::sync::Mutex;
 
 static GLOBAL_FLAGS: Lazy<Mutex<GenFlags>> = Lazy::new(|| Mutex::new(GenFlags::empty()));
 
+bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+    pub struct GenFlags: u32 {
+        const OVERFLOW      = 0x0000_0001;
+        const MALLOC        = 0x0000_0002;
+        const FREE          = 0x0000_0004;
+        const FREE_PAIR     = 0x0000_0008;
+        const OOM           = 0x0000_0010;
+        const PRINT_PTR     = 0x0000_0020;
+        const PRINT_STR     = 0x0000_0040;
+        const PRINT_CHR     = 0x0000_0080;
+        const PRINT_BOOLEAN = 0x0000_0100;
+        const PRINT_INT     = 0x0000_0200;
+        const PRINT_LN      = 0x0000_0400;
+        const ARRAY_ACCESS  = 0x0000_0800; // comes with error message
+        const CHR_BOUNDS    = 0x0000_1000;
+        const READ_INT      = 0x0000_2000;
+        const READ_CHR      = 0x0000_4000;
+        const DIV_BY_ZERO   = 0x0000_8000;
+        const NULL_DEREF    = 0x0001_0000; // handles null free's and null deref
+    }
+}
+
 /// # Panics
 ///
 /// This is fine because our thing is single threaded
@@ -55,28 +78,5 @@ pub fn rewrite_global_flag() {
 
     if global_flags.contains(GenFlags::OOM) {
         *global_flags |= GenFlags::PRINT_STR;
-    }
-}
-
-bitflags! {
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-    pub struct GenFlags: u32 {
-        const OVERFLOW      = 0x0000_0001;
-        const MALLOC        = 0x0000_0002;
-        const FREE          = 0x0000_0004;
-        const FREE_PAIR     = 0x0000_0008;
-        const OOM           = 0x0000_0010;
-        const PRINT_PTR     = 0x0000_0020;
-        const PRINT_STR     = 0x0000_0040;
-        const PRINT_CHR     = 0x0000_0080;
-        const PRINT_BOOLEAN = 0x0000_0100;
-        const PRINT_INT     = 0x0000_0200;
-        const PRINT_LN      = 0x0000_0400;
-        const ARRAY_ACCESS  = 0x0000_0800; // comes with error message
-        const CHR_BOUNDS    = 0x0000_1000;
-        const READ_INT      = 0x0000_2000;
-        const READ_CHR      = 0x0000_4000;
-        const DIV_BY_ZERO   = 0x0000_8000;
-        const NULL_DEREF    = 0x0001_0000; // handles null free's and null deref
     }
 }

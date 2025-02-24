@@ -3,9 +3,12 @@ use middle::wackir::{
 };
 use util::gen_flags::{GenFlags, insert_flag_gbl};
 
-use crate::assembly_ast::{
-    AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AsmUnaryOperator, AssemblyType,
-    CondCode, Operand, Register,
+use crate::{
+    assembly_ast::{
+        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AsmUnaryOperator, AssemblyType,
+        CondCode, Operand, Register,
+    },
+    gen_predefined::ERR_DIVZERO,
 };
 
 /* ================== PUBLIC API ================== */
@@ -207,6 +210,17 @@ impl AsmGen {
             BinOp::Div | BinOp::Mod => {
                 insert_flag_gbl(GenFlags::DIV_BY_ZERO);
                 // We need to sign extend EAX into EAX:EDX
+                // Handle div by zero here
+                asm.push(Asm::Cmp {
+                    typ: AssemblyType::Longword,
+                    op1: Operand::Imm(0),
+                    op2: src2_operand.clone(),
+                });
+                asm.push(Asm::JmpCC {
+                    condition: CondCode::E,
+                    label: ERR_DIVZERO.to_owned(),
+                });
+
                 asm.push(Asm::Mov {
                     typ: AssemblyType::Longword,
                     src: src1_operand,
@@ -235,6 +249,8 @@ impl AsmGen {
                     dst: dst_operand.clone(),
                 });
                 let asm_op = convert_arith_binop(op.clone());
+                // For now its binary operations so insert flag here
+                insert_flag_gbl(GenFlags::OVERFLOW);
                 asm.push(Asm::Binary {
                     operator: asm_op,
                     typ: AssemblyType::Longword,

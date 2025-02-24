@@ -17,6 +17,8 @@ pub fn emit_predefined_asm(flags: GenFlags) -> String {
         .join("\n")
 }
 
+pub const ERR_DIVZERO: &str = "_errDivZero";
+
 /* ================== INTERNALS ================== */
 
 const OVERFLOW_ASM: &str = include_str!("predefined_funcs/overflow.txt");
