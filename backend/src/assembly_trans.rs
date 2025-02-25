@@ -67,6 +67,7 @@ impl AsmGen {
     fn lower_function(&mut self, wack_function: WackFunction) -> AsmFunction {
         // TODO: when we move the pushing to this phase instead of emission
         // add the push and mov instructions for rbp and rsp
+        use AsmInstruction as Asm;
         use Register::{CX, DI, DX, R8, R9, SI};
         let mut asm = Vec::new();
         let func_name: String = wack_function.name.into();
@@ -74,6 +75,10 @@ impl AsmGen {
 
         // Handle parameters finally
         // Pair up the parameters and registers for the first 6 parameters.
+
+        asm.push(Asm::Comment(
+            "Push registers onto stack to prevent clobbering".to_owned(),
+        ));
         let arg_regs = [DI, SI, DX, CX, R8, R9];
         for (param, reg) in params.iter().zip(arg_regs.iter()) {
             let wack_value = WackValue::Var(param.clone());
@@ -87,6 +92,9 @@ impl AsmGen {
 
         // if there are extra parameters beyond the 6 registers
         // move them from the stack into the parameters
+        asm.push(Asm::Comment(
+            "Move remaining parameters from stack into our stack frame".to_owned(),
+        ));
         let mut stack_index = 0;
         for param in params.iter().skip(arg_regs.len()).rev() {
             let wack_value = WackValue::Var(param.clone());
@@ -202,6 +210,7 @@ impl AsmGen {
         };
 
         // used to align the stack to 16 bytes for function calls
+        asm.push(Asm::Comment("This aligns stack to 16 bytes".to_owned()));
         if stack_padding != 0 {
             asm.push(Asm::AllocateStack(stack_padding));
         }
@@ -223,7 +232,11 @@ impl AsmGen {
         // it might not matter now but it will matter if we ever link with C code
         // Note there is an edge case which we don't handle rn which is when we push
         // a 4-byte memory operand and those 4 bytes after it aren't readable memory
+
         if let Some(stack_args) = stack_args {
+            asm.push(Asm::Comment(
+                "Pushing arguments to stack in reverse order".to_owned(),
+            ));
             for tacky_arg in stack_args {
                 let assembly_arg: Operand = self.lower_value(tacky_arg.clone(), asm);
                 let new_instrs: Vec<AsmInstruction> = match assembly_arg {

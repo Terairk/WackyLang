@@ -42,6 +42,12 @@ pub fn replace_pseudo_in_program(program: &mut AsmProgram) {
         if last_offset != 0 {
             func.instructions
                 .insert(0, AsmInstruction::AllocateStack(-last_offset));
+            func.instructions.insert(
+                0,
+                AsmInstruction::Comment(
+                    "This allocate ensures stack is 16-byte aligned".to_owned(),
+                ),
+            );
         }
     }
 }

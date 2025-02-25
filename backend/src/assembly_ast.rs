@@ -98,6 +98,7 @@ pub enum AsmInstruction {
         operand: Operand,
     },
     Label(String),
+    Comment(String),
     // Temporary thing below
     AllocateStack(i32),
     // Temporary thing below

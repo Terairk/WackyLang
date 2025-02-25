@@ -177,6 +177,7 @@ impl AssemblyFormatter {
                 // In AT&T syntax, stack deallocation is often performed by adding to %rsp.
                 format!("addq ${bytes}, %rsp")
             }
+            AsmInstruction::Comment(comment) => format!("# {comment}"),
         }
     }
 
