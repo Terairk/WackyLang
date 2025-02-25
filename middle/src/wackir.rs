@@ -88,13 +88,13 @@ use syntax::ast::{BinaryOper, Liter, UnaryOper};
 use syntax::{ast::Ident, rename::RenamedName, types::SemanticType};
 
 // Treat WackFunction's slightly differently from main
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct WackProgram {
     pub functions: Vec<WackFunction>,
     pub main_body: Vec<WackInstruction>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct WackFunction {
     pub name: Ident,
     pub params: Vec<MidIdent>,
@@ -103,7 +103,7 @@ pub struct WackFunction {
     pub body: Vec<WackInstruction>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum WackInstruction {
     Return(WackValue),
     ZeroExtend {
@@ -327,6 +327,140 @@ impl From<MidIdent> for String {
     #[inline]
     fn from(mid_ident: MidIdent) -> Self {
         format!("{}.{}", mid_ident.0, mid_ident.1)
+    }
+}
+
+/* ====================== PRETTY PRINTER ====================== */
+
+impl fmt::Debug for WackProgram {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "WackProgram {{")?;
+
+        // Print functions
+        writeln!(f, "  functions: [")?;
+        for function in &self.functions {
+            write!(f, "    ")?;
+            function.fmt(f)?;
+            writeln!(f)?;
+        }
+        writeln!(f, "  ]")?;
+
+        // Print main body
+        writeln!(f, "  main_body: [")?;
+        for instruction in &self.main_body {
+            write!(f, "    ")?;
+            instruction.fmt(f)?;
+            writeln!(f)?;
+        }
+        writeln!(f, "  ]")?;
+
+        write!(f, "}}")
+    }
+}
+
+impl fmt::Debug for WackFunction {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "WackFunction {{")?;
+        writeln!(f, "    name: {:?},", self.name)?;
+        writeln!(f, "    params: {:?},", self.params)?;
+        writeln!(f, "    body: [")?;
+        for instruction in &self.body {
+            write!(f, "      ")?;
+            instruction.fmt(f)?;
+            writeln!(f)?;
+        }
+        write!(f, "    ]")?;
+        write!(f, "  }}")
+    }
+}
+
+impl fmt::Debug for WackInstruction {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            WackInstruction::Return(val) => write!(f, "Return({:?})", val),
+            WackInstruction::ZeroExtend { src, dst } => {
+                write!(f, "ZeroExtend {{ src: {:?}, dst: {:?} }}", src, dst)
+            }
+            WackInstruction::Unary { op, src, dst } => write!(
+                f,
+                "Unary {{ op: {:?}, src: {:?}, dst: {:?} }}",
+                op, src, dst
+            ),
+            WackInstruction::Binary {
+                op,
+                src1,
+                src2,
+                dst,
+            } => write!(
+                f,
+                "Binary {{ op: {:?}, src1: {:?}, src2: {:?}, dst: {:?} }}",
+                op, src1, src2, dst
+            ),
+            WackInstruction::Copy { src, dst } => {
+                write!(f, "Copy {{ src: {:?}, dst: {:?} }}", src, dst)
+            }
+            WackInstruction::Load { src_ptr, dst } => {
+                write!(f, "Load {{ src_ptr: {:?}, dst: {:?} }}", src_ptr, dst)
+            }
+            WackInstruction::Store { src, dst_ptr } => {
+                write!(f, "Store {{ src: {:?}, dst_ptr: {:?} }}", src, dst_ptr)
+            }
+            WackInstruction::AddPtr {
+                ptr,
+                index,
+                scale,
+                dst,
+            } => write!(
+                f,
+                "AddPtr {{ ptr: {:?}, index: {:?}, scale: {:?}, dst: {:?} }}",
+                ptr, index, scale, dst
+            ),
+            WackInstruction::CopyToOffset { src, dst, offset } => write!(
+                f,
+                "CopyToOffset {{ src: {:?}, dst: {:?}, offset: {:?} }}",
+                src, dst, offset
+            ),
+            WackInstruction::CopyFromOffset { src, offset, dst } => write!(
+                f,
+                "CopyFromOffset {{ src: {:?}, offset: {:?}, dst: {:?} }}",
+                src, offset, dst
+            ),
+            WackInstruction::Jump(target) => write!(f, "Jump({:?})", target),
+            WackInstruction::JumpIfZero { condition, target } => write!(
+                f,
+                "JumpIfZero {{ condition: {:?}, target: {:?} }}",
+                condition, target
+            ),
+            WackInstruction::JumpIfNotZero { condition, target } => write!(
+                f,
+                "JumpIfNotZero {{ condition: {:?}, target: {:?} }}",
+                condition, target
+            ),
+            WackInstruction::Label(label) => write!(f, "Label({:?})", label),
+            WackInstruction::FunCall {
+                fun_name,
+                args,
+                dst,
+            } => write!(
+                f,
+                "FunCall {{ fun_name: {:?}, args: {:?}, dst: {:?} }}",
+                fun_name, args, dst
+            ),
+            WackInstruction::Read { dst, ty } => {
+                write!(f, "Read {{ dst: {:?}, ty: {:?} }}", dst, ty)
+            }
+            WackInstruction::Free(val) => write!(f, "Free({:?})", val),
+            WackInstruction::Exit(val) => write!(f, "Exit({:?})", val),
+            WackInstruction::Print { src, ty } => {
+                write!(f, "Print {{ src: {:?}, ty: {:?} }}", src, ty)
+            }
+            WackInstruction::Println { src, ty } => {
+                write!(f, "Println {{ src: {:?}, ty: {:?} }}", src, ty)
+            }
+        }
     }
 }
 
