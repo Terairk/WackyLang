@@ -86,11 +86,17 @@ impl AsmGen {
         }
 
         // if there are extra parameters beyond the 6 registers
-        // push them onto the stack in reverse order.
+        // move them from the stack into the parameters
+        let mut stack_index = 0;
         for param in params.iter().skip(arg_regs.len()).rev() {
             let wack_value = WackValue::Var(param.clone());
             let param_name = self.lower_value(wack_value, &mut asm);
-            asm.push(AsmInstruction::Push(param_name));
+            asm.push(AsmInstruction::Mov {
+                typ: AssemblyType::Longword,
+                src: Operand::Stack(16 + stack_index),
+                dst: param_name,
+            });
+            stack_index += 8;
         }
 
         for instr in wack_function.body {

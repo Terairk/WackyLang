@@ -37,8 +37,10 @@
 // Change later if you want
 
 use middle::wackir::{BinaryOperator, UnaryOperator};
+use std::fmt::Debug;
 
-#[derive(Debug, Clone)]
+// implement Debug below
+#[derive(Clone)]
 pub struct AsmProgram {
     pub asm_functions: Vec<AsmFunction>,
 }
@@ -193,6 +195,29 @@ pub enum AssemblyType {
     Longword, // 4 bytes
     Quadword, // 8 bytes
     ByteArray { size: i32, alignment: i32 },
+}
+
+/* ================ PRETTY PRINTER ============== */
+impl Debug for AsmProgram {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "AsmProgram {{")?;
+        for function in &self.asm_functions {
+            writeln!(f, "  Function {} {{", function.name)?;
+            if function.global {
+                writeln!(f, "    global: true")?;
+            }
+            if function.external {
+                writeln!(f, "    external: true")?;
+            }
+            writeln!(f, "    instructions: [")?;
+            for instruction in &function.instructions {
+                writeln!(f, "      {:?},", instruction)?;
+            }
+            writeln!(f, "    ]")?;
+            writeln!(f, "  }}")?;
+        }
+        write!(f, "}}")
+    }
 }
 
 /* ================ ASM Impl's for Conversions ============ */
