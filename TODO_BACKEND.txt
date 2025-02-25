@@ -8,7 +8,9 @@ For arrays: need to store the size of the fat pointer + size of elements
 For pairs: I need to store the pointer size + inner elements probs?
 
 ============== CURRENT TASK = 3 ============
-3) Do more chapters until div works correctly, cmp is invalid currently
+3) Do more stuff until div works correctly, cmp is invalid currently (a)
+Currently doing other boolean operators (but AND,OR are meant for ints) - we can make this better by using
+the fact that we only get bools in WACC (need symbol table for Wacky types)
 
 4) Counter for String Literals
 
@@ -40,6 +42,9 @@ especially when printing. Only the backend needs the actual translation from Gen
 3) Implement runtime errors (using our GenStruct flags) when doing some binary operations
   a) Runtime error when overflowing/underflowing in add/sub/multiple
   b) Checking that dividend is 0
+
+Currently the check that dividend is 0 is done in WackIR -> AstTransformation
+Maybe we should move it earlier up in the hierarchy?
 
 Need to research how storing a 4 byte value into a 8 byte memory space works (DONE)
 

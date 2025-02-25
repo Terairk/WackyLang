@@ -9,8 +9,8 @@ use syntax::typecheck::TypeResolver;
 use syntax::{rename::IdFuncTable, types::SemanticType};
 
 use crate::wackir::{
-    BinaryOperator, ConvertToMidIdent as _, MidIdent, UnaryOperator, WackFunction, WackInstruction,
-    WackProgram, WackValue,
+    BinaryOperator, ConvertToMidIdent as _, MidIdent, UnaryOperator, WackConst, WackFunction,
+    WackInstruction, WackProgram, WackValue,
 };
 
 /* ================== PUBLIC API ================== */
@@ -98,6 +98,12 @@ impl Lowerer {
         // Eventually we may want to replace temp with a function name
         // for better debugging
         let ident = Ident::from_str("temp");
+        ident.to_mid_ident(&mut self.counter)
+    }
+
+    // Makes a label for jump's for now
+    fn make_label(&mut self, name: &str) -> MidIdent {
+        let ident = Ident::from_str(name);
         ident.to_mid_ident(&mut self.counter)
     }
 
@@ -266,6 +272,21 @@ impl Lowerer {
         expr2: TypedExpr,
         instr: &mut Vec<WackInstruction>,
     ) -> WackValue {
+        match binop {
+            BinaryOper::And => self.lower_and_expr(expr1, expr2, instr),
+            BinaryOper::Or => self.lower_or_expr(expr1, expr2, instr),
+            _ => self.lower_normal_binary(expr1, binop, expr2, instr),
+        }
+    }
+
+    fn lower_normal_binary(
+        &mut self,
+        expr1: TypedExpr,
+        binop: BinaryOper,
+        expr2: TypedExpr,
+        instr: &mut Vec<WackInstruction>,
+    ) -> WackValue {
+        // We handle And/Or differently since we'll make them short circuit here
         let src1 = self.lower_expr(expr1, instr);
         let src2 = self.lower_expr(expr2, instr);
         let dst_name = self.make_temporary();
@@ -278,6 +299,105 @@ impl Lowerer {
             dst: dst.clone(),
         };
         instr.push(new_instr);
+        dst
+    }
+
+    fn lower_or_expr(
+        &mut self,
+        expr1: TypedExpr,
+        expr2: TypedExpr,
+        instr: &mut Vec<WackInstruction>,
+    ) -> WackValue {
+        // Makes my life easier
+        use WackInstruction as Instr;
+
+        // Create labels for false branch and end of expr
+        let true_label = self.make_label("or_true");
+        let end_label = self.make_label("or_end");
+
+        // Create a temporary variable to store the result of expression
+        let dst = WackValue::Var(self.make_temporary());
+
+        let left_v = self.lower_expr(expr1, instr);
+
+        instr.push(Instr::JumpIfNotZero {
+            condition: left_v,
+            target: true_label.clone(),
+        });
+
+        let right_v = self.lower_expr(expr2, instr);
+
+        instr.push(Instr::JumpIfNotZero {
+            condition: right_v,
+            target: true_label.clone(),
+        });
+
+        // Both expressions evaluate to False so dst to False
+        instr.push(Instr::Copy {
+            src: WackValue::Constant(WackConst::Bool(0)),
+            dst: dst.clone(),
+        });
+        // Jump over the true branch
+        instr.push(Instr::Jump(end_label.clone()));
+
+        // True branch
+        instr.push(Instr::Label(true_label));
+        instr.push(Instr::Copy {
+            src: WackValue::Constant(WackConst::Bool(1)),
+            dst: dst.clone(),
+        });
+
+        instr.push(Instr::Label(end_label));
+
+        dst
+    }
+
+    fn lower_and_expr(
+        &mut self,
+        expr1: TypedExpr,
+        expr2: TypedExpr,
+        instr: &mut Vec<WackInstruction>,
+    ) -> WackValue {
+        // Makes my life easier
+        use WackInstruction as Instr;
+
+        // Create labels for false branch and end of expr
+        let false_label = self.make_label("and_false");
+        let end_label = self.make_label("and_end");
+
+        // Create a temporary variable to store the result of expression
+        let dst = WackValue::Var(self.make_temporary());
+
+        let left_v = self.lower_expr(expr1, instr);
+
+        instr.push(Instr::JumpIfZero {
+            condition: left_v,
+            target: false_label.clone(),
+        });
+
+        let right_v = self.lower_expr(expr2, instr);
+
+        instr.push(Instr::JumpIfZero {
+            condition: right_v,
+            target: false_label.clone(),
+        });
+
+        // Both expressions evaluate to True so dst to True
+        instr.push(Instr::Copy {
+            src: WackValue::Constant(WackConst::Bool(1)),
+            dst: dst.clone(),
+        });
+
+        // Jump over the false branch
+        instr.push(Instr::Jump(end_label.clone()));
+
+        instr.push(Instr::Label(false_label));
+        instr.push(Instr::Copy {
+            src: WackValue::Constant(WackConst::Bool(0)),
+            dst: dst.clone(),
+        });
+        instr.push(Instr::Label(end_label));
+
         dst
     }
 }

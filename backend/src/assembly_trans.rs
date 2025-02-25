@@ -82,7 +82,9 @@ impl AsmGen {
         asm_instructions: &mut Vec<AsmInstruction>,
     ) {
         use AsmInstruction as Asm;
-        use WackInstruction::{Binary, Return, Unary};
+        use WackInstruction::{
+            Binary, Copy, Jump, JumpIfNotZero, JumpIfZero, Label, Return, Unary,
+        };
         // TODO: finish this scaffolding
         match instr {
             Return(value) => self.lower_return(value, asm_instructions),
@@ -93,6 +95,42 @@ impl AsmGen {
                 src2,
                 dst,
             } => self.lower_binary(&op, src1, src2, dst, asm_instructions),
+            Jump(target) => asm_instructions.push(Asm::Jmp(target.into())),
+            JumpIfZero { condition, target } => {
+                // TODO: experiment with AssemblyType::Byte and Longword
+                let condition = self.lower_value(condition, asm_instructions);
+                asm_instructions.push(Asm::Cmp {
+                    typ: AssemblyType::Longword,
+                    op1: Operand::Imm(0),
+                    op2: condition,
+                });
+                asm_instructions.push(Asm::JmpCC {
+                    condition: CondCode::E,
+                    label: target.into(),
+                });
+            }
+            JumpIfNotZero { condition, target } => {
+                let condition = self.lower_value(condition, asm_instructions);
+                asm_instructions.push(Asm::Cmp {
+                    typ: AssemblyType::Longword,
+                    op1: Operand::Imm(0),
+                    op2: condition,
+                });
+                asm_instructions.push(Asm::JmpCC {
+                    condition: CondCode::NE,
+                    label: target.into(),
+                });
+            }
+            Copy { src, dst } => {
+                let src_operand = self.lower_value(src, asm_instructions);
+                let dst_operand = self.lower_value(dst, asm_instructions);
+                asm_instructions.push(Asm::Mov {
+                    typ: AssemblyType::Longword,
+                    src: src_operand,
+                    dst: dst_operand,
+                });
+            }
+            Label(id) => asm_instructions.push(Asm::Label(id.into())),
             _ => unimplemented!(),
         }
     }
@@ -198,7 +236,7 @@ impl AsmGen {
         asm: &mut Vec<AsmInstruction>,
     ) {
         use AsmInstruction as Asm;
-        use BinaryOperator as BinOp;
+        use BinaryOperator::*;
 
         let src1_operand = self.lower_value(src1, asm);
         let src2_operand = self.lower_value(src2, asm);
@@ -207,41 +245,44 @@ impl AsmGen {
         // We handle Div and Remainder operations differently
         // than the rest since it has specific semantics in x86-64
         match *op {
-            BinOp::Div | BinOp::Mod => {
+            Div | Mod => {
                 insert_flag_gbl(GenFlags::DIV_BY_ZERO);
                 // We need to sign extend EAX into EAX:EDX
                 // Handle div by zero here
-                asm.push(Asm::Cmp {
-                    typ: AssemblyType::Longword,
-                    op1: Operand::Imm(0),
-                    op2: src2_operand.clone(),
-                });
-                asm.push(Asm::JmpCC {
-                    condition: CondCode::E,
-                    label: ERR_DIVZERO.to_owned(),
-                });
 
-                asm.push(Asm::Mov {
-                    typ: AssemblyType::Longword,
-                    src: src1_operand,
-                    dst: Operand::Reg(Register::AX),
-                });
-                asm.push(Asm::Cdq);
-                asm.push(Asm::Idiv(src2_operand));
+                let new_instrs = vec![
+                    Asm::Cmp {
+                        typ: AssemblyType::Longword,
+                        op1: src2_operand.clone(),
+                        op2: Operand::Imm(0),
+                    },
+                    Asm::JmpCC {
+                        condition: CondCode::E,
+                        label: ERR_DIVZERO.to_owned(),
+                    },
+                    Asm::Mov {
+                        typ: AssemblyType::Longword,
+                        src: src1_operand,
+                        dst: Operand::Reg(Register::AX),
+                    },
+                    Asm::Cdq,
+                    Asm::Idiv(src2_operand),
+                ];
                 // Result is stored in different registers
                 // Depending on operation
                 let dst_reg = match *op {
-                    BinOp::Div => Operand::Reg(Register::AX),
-                    BinOp::Mod => Operand::Reg(Register::DX),
+                    Div => Operand::Reg(Register::AX),
+                    Mod => Operand::Reg(Register::DX),
                     _ => unreachable!(),
                 };
+                asm.extend(new_instrs);
                 asm.push(Asm::Mov {
                     typ: AssemblyType::Longword,
                     src: dst_reg,
                     dst: dst_operand,
                 });
             }
-            _ => {
+            Mul | Add | Sub => {
                 // Handle other binary operations in the same way
                 asm.push(Asm::Mov {
                     typ: AssemblyType::Longword,
@@ -258,6 +299,26 @@ impl AsmGen {
                     op2: dst_operand,
                 });
             }
+            Gt | Gte | Lt | Lte | Eq | Neq => {
+                let new_instrs = vec![
+                    Asm::Cmp {
+                        typ: AssemblyType::Longword,
+                        op1: src1_operand,
+                        op2: src2_operand,
+                    },
+                    Asm::Mov {
+                        typ: AssemblyType::Longword,
+                        src: Operand::Imm(0),
+                        dst: dst_operand.clone(),
+                    },
+                    Asm::SetCC {
+                        condition: convert_code(op.clone()),
+                        operand: dst_operand,
+                    },
+                ];
+                asm.extend(new_instrs);
+            }
+            _ => unimplemented!(),
         }
     }
 
@@ -295,5 +356,20 @@ fn convert_arith_binop(wacky_binop: BinaryOperator) -> AsmBinaryOperator {
         BinOp::Sub => AsmBinOp::Sub,
         BinOp::Mul => AsmBinOp::Mult,
         _ => panic!("Invalid binary arithmetic operator for Asm"),
+    }
+}
+
+fn convert_code(code: BinaryOperator) -> CondCode {
+    use BinaryOperator::*;
+    use CondCode as CC;
+
+    match code {
+        Gt => CC::G,
+        Gte => CC::GE,
+        Lt => CC::L,
+        Lte => CC::LE,
+        Eq => CC::E,
+        Neq => CC::NE,
+        _ => panic!("Invalid binary comparison operator for Asm"),
     }
 }
