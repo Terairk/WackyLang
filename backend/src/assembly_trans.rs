@@ -65,8 +65,34 @@ impl AsmGen {
     }
 
     fn lower_function(&mut self, wack_function: WackFunction) -> AsmFunction {
+        // TODO: when we move the pushing to this phase instead of emission
+        // add the push and mov instructions for rbp and rsp
+        use Register::{CX, DI, DX, R8, R9, SI};
         let mut asm = Vec::new();
-        let func_name: String = (*wack_function.name).to_owned();
+        let func_name: String = wack_function.name.into();
+        let params = wack_function.params;
+
+        // Handle parameters finally
+        // Pair up the parameters and registers for the first 6 parameters.
+        let arg_regs = [DI, SI, DX, CX, R8, R9];
+        for (param, reg) in params.iter().zip(arg_regs.iter()) {
+            let wack_value = WackValue::Var(param.clone());
+            let param_name = self.lower_value(wack_value, &mut asm);
+            asm.push(AsmInstruction::Mov {
+                typ: AssemblyType::Longword,
+                src: Operand::Reg(*reg),
+                dst: param_name,
+            });
+        }
+
+        // if there are extra parameters beyond the 6 registers
+        // push them onto the stack in reverse order.
+        for param in params.iter().skip(arg_regs.len()).rev() {
+            let wack_value = WackValue::Var(param.clone());
+            let param_name = self.lower_value(wack_value, &mut asm);
+            asm.push(AsmInstruction::Push(param_name));
+        }
+
         for instr in wack_function.body {
             self.lower_instruction(instr, &mut asm);
         }
@@ -135,48 +161,100 @@ impl AsmGen {
                 fun_name,
                 args,
                 dst,
-            } => {
-                use Register::*;
-                let arg_regs = [DI, SI, DX, CX, R8, R9];
-
-                // adjust stack alignment
-
-                // Determine the split index (at most 6 arguments for register_args)
-                let split_index = args.len().min(arg_regs.len());
-
-                // Split the slice into register_args and stack_args
-                let (register_args, rest) = args.split_at(split_index);
-                let stack_args = if rest.is_empty() { None } else { Some(rest) };
-
-                // register_args is a slice of WackValues up to 6 values
-                // stack_args is an Option of a slice of WackValues
-                let stack_padding = if stack_args.iter().len() % 2 != 0 {
-                    8
-                } else {
-                    0
-                };
-
-                if stack_padding != 0 {
-                    asm.push(Asm::AllocateStack(stack_padding));
-                }
-
-                // pass args in registers
-                let mut reg_index = 0;
-                for tacky_arg in register_args {
-                    let r = arg_regs[reg_index];
-                    let assembly_arg = self.lower_value(tacky_arg.clone(), asm);
-                    asm.push(Asm::Mov {
-                        typ: AssemblyType::Longword,
-                        src: assembly_arg,
-                        dst: Operand::Reg(r),
-                    });
-                    reg_index += 1;
-                }
-
-                // pass rest of args on stack
-            }
+            } => self.lower_fun_call(&fun_name, &args, dst, asm),
             _ => unimplemented!(),
         }
+    }
+
+    fn lower_fun_call(
+        &mut self,
+        fun_name: &str,
+        args: &[WackValue],
+        dst: WackValue,
+        asm: &mut Vec<AsmInstruction>,
+    ) {
+        use AsmInstruction as Asm;
+        use Operand::{Imm, Reg};
+        use Register::{AX, CX, DI, DX, R8, R9, SI};
+        let arg_regs = [DI, SI, DX, CX, R8, R9];
+
+        // adjust stack alignment
+
+        // Determine the split index (at most 6 arguments for register_args)
+        let split_index = args.len().min(arg_regs.len());
+
+        // Split the slice into register_args and stack_args
+        let (register_args, rest) = args.split_at(split_index);
+        let stack_args: Option<&[WackValue]> = if rest.is_empty() { None } else { Some(rest) };
+
+        // register_args is a slice of WackValues up to 6 values
+        // stack_args is an Option of a slice of WackValues
+        let stack_padding = if stack_args.iter().len() % 2 != 0 {
+            8
+        } else {
+            0
+        };
+
+        if stack_padding != 0 {
+            asm.push(Asm::AllocateStack(stack_padding));
+        }
+
+        // pass args in registers
+        for (reg_index, tacky_arg) in register_args.iter().enumerate() {
+            let r = arg_regs[reg_index];
+            let assembly_arg = self.lower_value(tacky_arg.clone(), asm);
+            asm.push(Asm::Mov {
+                typ: AssemblyType::Longword,
+                src: assembly_arg,
+                dst: Operand::Reg(r),
+            });
+        }
+
+        // pass rest of args on stack
+        // Note that the SystemV ABI requires that the stack is 16-byte aligned
+        // and that each argument is 8-byte aligned
+        // it might not matter now but it will matter if we ever link with C code
+        // Note there is an edge case which we don't handle rn which is when we push
+        // a 4-byte memory operand and those 4 bytes after it aren't readable memory
+        if let Some(stack_args) = stack_args {
+            for tacky_arg in stack_args {
+                let assembly_arg: Operand = self.lower_value(tacky_arg.clone(), asm);
+                let new_instrs: Vec<AsmInstruction> = match assembly_arg {
+                    Imm(_) | Reg(_) => vec![Asm::Push(assembly_arg)],
+                    _ => vec![
+                        // Use register AX here as temporary storage
+                        // Note this is the only register that can be used here
+                        // We can't use callee saved registers here
+                        Asm::Mov {
+                            typ: AssemblyType::Longword,
+                            src: assembly_arg,
+                            dst: Operand::Reg(AX),
+                        },
+                        Asm::Push(Reg(AX)),
+                    ],
+                };
+                asm.extend(new_instrs);
+            }
+        }
+
+        // Any function call that the user makes will only call
+        // other wacc functions which are all internal, hence external flag is false
+        asm.push(Asm::Call(fun_name.into(), false));
+
+        // adjust stack pointer
+        #[allow(clippy::cast_possible_truncation)]
+        let bytes_to_remove: i32 = 8 * stack_args.map_or(0, |args| args.len()) as i32;
+        if bytes_to_remove != 0 {
+            asm.push(Asm::DeallocateStack(bytes_to_remove));
+        }
+
+        // handle return value
+        let assembly_dst = self.lower_value(dst, asm);
+        asm.push(Asm::Mov {
+            typ: AssemblyType::Longword,
+            src: Reg(AX),
+            dst: assembly_dst,
+        });
     }
 
     fn lower_return(&mut self, value: WackValue, asm_instructions: &mut Vec<AsmInstruction>) {
