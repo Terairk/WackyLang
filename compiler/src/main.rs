@@ -274,7 +274,7 @@ fn main() -> ExitCode {
     let (wacky_ir, counter) = lower_program(typed_ast, type_resolver);
 
     if args.wacky {
-        println!("{wacky_ir:?}");
+        println!("{wacky_ir:#?}");
         return ExitCode::SUCCESS;
     }
 
@@ -285,7 +285,7 @@ fn main() -> ExitCode {
     // TODO: find how to use asm_gen for future passes
     let (mut assembly_ast, _asm_gen) = wacky_to_assembly(wacky_ir, counter);
     if args.assembly {
-        println!("{assembly_ast:?}");
+        println!("{assembly_ast:#?}");
         return ExitCode::SUCCESS;
     }
 
@@ -295,7 +295,7 @@ fn main() -> ExitCode {
 
     replace_pseudo_in_program(&mut assembly_ast);
     if args.pseudo {
-        println!("{assembly_ast:?}");
+        println!("{assembly_ast:#?}");
         return ExitCode::SUCCESS;
     }
 
@@ -305,7 +305,7 @@ fn main() -> ExitCode {
 
     let assembly_ast = fix_program(assembly_ast);
     if args.fixing {
-        println!("{assembly_ast:?}");
+        println!("{assembly_ast:#?}");
         return ExitCode::SUCCESS;
     }
 

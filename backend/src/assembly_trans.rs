@@ -55,46 +55,213 @@ impl AsmGen {
 
         asm_instructions.push(AsmInstruction::Ret);
 
+        // any functions we generate ourselves are not external
         AsmFunction {
             name: "main".to_owned(),
             global: true,
+            external: false,
             instructions: asm_instructions,
         }
     }
 
     fn lower_function(&mut self, wack_function: WackFunction) -> AsmFunction {
+        // TODO: when we move the pushing to this phase instead of emission
+        // add the push and mov instructions for rbp and rsp
+        use Register::{CX, DI, DX, R8, R9, SI};
         let mut asm = Vec::new();
-        let func_name: String = (*wack_function.name).to_owned();
+        let func_name: String = wack_function.name.into();
+        let params = wack_function.params;
+
+        // Handle parameters finally
+        // Pair up the parameters and registers for the first 6 parameters.
+        let arg_regs = [DI, SI, DX, CX, R8, R9];
+        for (param, reg) in params.iter().zip(arg_regs.iter()) {
+            let wack_value = WackValue::Var(param.clone());
+            let param_name = self.lower_value(wack_value, &mut asm);
+            asm.push(AsmInstruction::Mov {
+                typ: AssemblyType::Longword,
+                src: Operand::Reg(*reg),
+                dst: param_name,
+            });
+        }
+
+        // if there are extra parameters beyond the 6 registers
+        // move them from the stack into the parameters
+        let mut stack_index = 0;
+        for param in params.iter().skip(arg_regs.len()).rev() {
+            let wack_value = WackValue::Var(param.clone());
+            let param_name = self.lower_value(wack_value, &mut asm);
+            asm.push(AsmInstruction::Mov {
+                typ: AssemblyType::Longword,
+                src: Operand::Stack(16 + stack_index),
+                dst: param_name,
+            });
+            stack_index += 8;
+        }
+
         for instr in wack_function.body {
             self.lower_instruction(instr, &mut asm);
         }
 
+        // any functions we generate ourselves are not external
         AsmFunction {
             name: func_name,
             global: false,
+            external: false,
             instructions: asm,
         }
     }
 
-    fn lower_instruction(
-        &mut self,
-        instr: WackInstruction,
-        asm_instructions: &mut Vec<AsmInstruction>,
-    ) {
+    fn lower_instruction(&mut self, instr: WackInstruction, asm: &mut Vec<AsmInstruction>) {
         use AsmInstruction as Asm;
-        use WackInstruction::{Binary, Return, Unary};
+        use WackInstruction::{
+            Binary, Copy, FunCall, Jump, JumpIfNotZero, JumpIfZero, Label, Return, Unary,
+        };
         // TODO: finish this scaffolding
         match instr {
-            Return(value) => self.lower_return(value, asm_instructions),
-            Unary { op, src, dst } => self.lower_unary(&op, src, dst, asm_instructions),
+            Return(value) => self.lower_return(value, asm),
+            Unary { op, src, dst } => self.lower_unary(&op, src, dst, asm),
             Binary {
                 op,
                 src1,
                 src2,
                 dst,
-            } => self.lower_binary(&op, src1, src2, dst, asm_instructions),
+            } => self.lower_binary(&op, src1, src2, dst, asm),
+            Jump(target) => asm.push(Asm::Jmp(target.into())),
+            JumpIfZero { condition, target } => {
+                // TODO: experiment with AssemblyType::Byte and Longword
+                let condition = self.lower_value(condition, asm);
+                asm.push(Asm::Cmp {
+                    typ: AssemblyType::Longword,
+                    op1: Operand::Imm(0),
+                    op2: condition,
+                });
+                asm.push(Asm::JmpCC {
+                    condition: CondCode::E,
+                    label: target.into(),
+                });
+            }
+            JumpIfNotZero { condition, target } => {
+                let condition = self.lower_value(condition, asm);
+                asm.push(Asm::Cmp {
+                    typ: AssemblyType::Longword,
+                    op1: Operand::Imm(0),
+                    op2: condition,
+                });
+                asm.push(Asm::JmpCC {
+                    condition: CondCode::NE,
+                    label: target.into(),
+                });
+            }
+            Copy { src, dst } => {
+                let src_operand = self.lower_value(src, asm);
+                let dst_operand = self.lower_value(dst, asm);
+                asm.push(Asm::Mov {
+                    typ: AssemblyType::Longword,
+                    src: src_operand,
+                    dst: dst_operand,
+                });
+            }
+            Label(id) => asm.push(Asm::Label(id.into())),
+            FunCall {
+                fun_name,
+                args,
+                dst,
+            } => self.lower_fun_call(&fun_name, &args, dst, asm),
             _ => unimplemented!(),
         }
+    }
+
+    fn lower_fun_call(
+        &mut self,
+        fun_name: &str,
+        args: &[WackValue],
+        dst: WackValue,
+        asm: &mut Vec<AsmInstruction>,
+    ) {
+        use AsmInstruction as Asm;
+        use Operand::{Imm, Reg};
+        use Register::{AX, CX, DI, DX, R8, R9, SI};
+        let arg_regs = [DI, SI, DX, CX, R8, R9];
+
+        // adjust stack alignment
+
+        // Determine the split index (at most 6 arguments for register_args)
+        let split_index = args.len().min(arg_regs.len());
+
+        // Split the slice into register_args and stack_args
+        let (register_args, rest) = args.split_at(split_index);
+        let stack_args: Option<&[WackValue]> = if rest.is_empty() { None } else { Some(rest) };
+
+        // register_args is a slice of WackValues up to 6 values
+        // stack_args is an Option of a slice of WackValues
+        let stack_padding = if stack_args.iter().len() % 2 != 0 {
+            8
+        } else {
+            0
+        };
+
+        // used to align the stack to 16 bytes for function calls
+        if stack_padding != 0 {
+            asm.push(Asm::AllocateStack(stack_padding));
+        }
+
+        // pass args in registers
+        for (reg_index, tacky_arg) in register_args.iter().enumerate() {
+            let r = arg_regs[reg_index];
+            let assembly_arg = self.lower_value(tacky_arg.clone(), asm);
+            asm.push(Asm::Mov {
+                typ: AssemblyType::Longword,
+                src: assembly_arg,
+                dst: Operand::Reg(r),
+            });
+        }
+
+        // pass rest of args on stack
+        // Note that the SystemV ABI requires that the stack is 16-byte aligned
+        // and that each argument is 8-byte aligned
+        // it might not matter now but it will matter if we ever link with C code
+        // Note there is an edge case which we don't handle rn which is when we push
+        // a 4-byte memory operand and those 4 bytes after it aren't readable memory
+        if let Some(stack_args) = stack_args {
+            for tacky_arg in stack_args {
+                let assembly_arg: Operand = self.lower_value(tacky_arg.clone(), asm);
+                let new_instrs: Vec<AsmInstruction> = match assembly_arg {
+                    Imm(_) | Reg(_) => vec![Asm::Push(assembly_arg)],
+                    _ => vec![
+                        // Use register AX here as temporary storage
+                        // Note this is the only register that can be used here
+                        // We can't use callee saved registers here
+                        Asm::Mov {
+                            typ: AssemblyType::Longword,
+                            src: assembly_arg,
+                            dst: Operand::Reg(AX),
+                        },
+                        Asm::Push(Reg(AX)),
+                    ],
+                };
+                asm.extend(new_instrs);
+            }
+        }
+
+        // Any function call that the user makes will only call
+        // other wacc functions which are all internal, hence external flag is false
+        asm.push(Asm::Call(fun_name.into(), false));
+
+        // adjust stack pointer
+        #[allow(clippy::cast_possible_truncation)]
+        let bytes_to_remove: i32 = 8 * stack_args.map_or(0, |args| args.len()) as i32;
+        if bytes_to_remove != 0 {
+            asm.push(Asm::DeallocateStack(bytes_to_remove));
+        }
+
+        // handle return value
+        let assembly_dst = self.lower_value(dst, asm);
+        asm.push(Asm::Mov {
+            typ: AssemblyType::Longword,
+            src: Reg(AX),
+            dst: assembly_dst,
+        });
     }
 
     fn lower_return(&mut self, value: WackValue, asm_instructions: &mut Vec<AsmInstruction>) {
@@ -198,7 +365,7 @@ impl AsmGen {
         asm: &mut Vec<AsmInstruction>,
     ) {
         use AsmInstruction as Asm;
-        use BinaryOperator as BinOp;
+        use BinaryOperator::*;
 
         let src1_operand = self.lower_value(src1, asm);
         let src2_operand = self.lower_value(src2, asm);
@@ -207,41 +374,44 @@ impl AsmGen {
         // We handle Div and Remainder operations differently
         // than the rest since it has specific semantics in x86-64
         match *op {
-            BinOp::Div | BinOp::Mod => {
+            Div | Mod => {
                 insert_flag_gbl(GenFlags::DIV_BY_ZERO);
                 // We need to sign extend EAX into EAX:EDX
                 // Handle div by zero here
-                asm.push(Asm::Cmp {
-                    typ: AssemblyType::Longword,
-                    op1: Operand::Imm(0),
-                    op2: src2_operand.clone(),
-                });
-                asm.push(Asm::JmpCC {
-                    condition: CondCode::E,
-                    label: ERR_DIVZERO.to_owned(),
-                });
 
-                asm.push(Asm::Mov {
-                    typ: AssemblyType::Longword,
-                    src: src1_operand,
-                    dst: Operand::Reg(Register::AX),
-                });
-                asm.push(Asm::Cdq);
-                asm.push(Asm::Idiv(src2_operand));
+                let new_instrs = vec![
+                    Asm::Cmp {
+                        typ: AssemblyType::Longword,
+                        op1: src2_operand.clone(),
+                        op2: Operand::Imm(0),
+                    },
+                    Asm::JmpCC {
+                        condition: CondCode::E,
+                        label: ERR_DIVZERO.to_owned(),
+                    },
+                    Asm::Mov {
+                        typ: AssemblyType::Longword,
+                        src: src1_operand,
+                        dst: Operand::Reg(Register::AX),
+                    },
+                    Asm::Cdq,
+                    Asm::Idiv(src2_operand),
+                ];
                 // Result is stored in different registers
                 // Depending on operation
                 let dst_reg = match *op {
-                    BinOp::Div => Operand::Reg(Register::AX),
-                    BinOp::Mod => Operand::Reg(Register::DX),
+                    Div => Operand::Reg(Register::AX),
+                    Mod => Operand::Reg(Register::DX),
                     _ => unreachable!(),
                 };
+                asm.extend(new_instrs);
                 asm.push(Asm::Mov {
                     typ: AssemblyType::Longword,
                     src: dst_reg,
                     dst: dst_operand,
                 });
             }
-            _ => {
+            Mul | Add | Sub => {
                 // Handle other binary operations in the same way
                 asm.push(Asm::Mov {
                     typ: AssemblyType::Longword,
@@ -258,6 +428,26 @@ impl AsmGen {
                     op2: dst_operand,
                 });
             }
+            Gt | Gte | Lt | Lte | Eq | Neq => {
+                let new_instrs = vec![
+                    Asm::Cmp {
+                        typ: AssemblyType::Longword,
+                        op1: src1_operand,
+                        op2: src2_operand,
+                    },
+                    Asm::Mov {
+                        typ: AssemblyType::Longword,
+                        src: Operand::Imm(0),
+                        dst: dst_operand.clone(),
+                    },
+                    Asm::SetCC {
+                        condition: convert_code(op.clone()),
+                        operand: dst_operand,
+                    },
+                ];
+                asm.extend(new_instrs);
+            }
+            _ => unimplemented!(),
         }
     }
 
@@ -295,5 +485,20 @@ fn convert_arith_binop(wacky_binop: BinaryOperator) -> AsmBinaryOperator {
         BinOp::Sub => AsmBinOp::Sub,
         BinOp::Mul => AsmBinOp::Mult,
         _ => panic!("Invalid binary arithmetic operator for Asm"),
+    }
+}
+
+fn convert_code(code: BinaryOperator) -> CondCode {
+    use BinaryOperator::*;
+    use CondCode as CC;
+
+    match code {
+        Gt => CC::G,
+        Gte => CC::GE,
+        Lt => CC::L,
+        Lte => CC::LE,
+        Eq => CC::E,
+        Neq => CC::NE,
+        _ => panic!("Invalid binary comparison operator for Asm"),
     }
 }

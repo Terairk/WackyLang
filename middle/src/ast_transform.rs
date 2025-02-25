@@ -9,8 +9,8 @@ use syntax::typecheck::TypeResolver;
 use syntax::{rename::IdFuncTable, types::SemanticType};
 
 use crate::wackir::{
-    BinaryOperator, ConvertToMidIdent as _, MidIdent, UnaryOperator, WackFunction, WackInstruction,
-    WackProgram, WackValue,
+    BinaryOperator, ConvertToMidIdent as _, MidIdent, UnaryOperator, WackConst, WackFunction,
+    WackInstruction, WackProgram, WackValue,
 };
 
 /* ================== PUBLIC API ================== */
@@ -101,6 +101,12 @@ impl Lowerer {
         ident.to_mid_ident(&mut self.counter)
     }
 
+    // Makes a label for jump's for now
+    fn make_label(&mut self, name: &str) -> MidIdent {
+        let ident = Ident::from_str(name);
+        ident.to_mid_ident(&mut self.counter)
+    }
+
     fn lower_func(&mut self, func: TypedFunc) -> WackFunction {
         // TODO: Figure out how/when to take in a list of instructions as parameter
         let mut instructions: Vec<WackInstruction> = Vec::new();
@@ -146,15 +152,24 @@ impl Lowerer {
                 r#type,
                 name,
                 rvalue,
-            } => panic!("VarDefinition not implemented in Wacky"),
+            } => {
+                let mid_ident = name.into_inner().to_mid_ident(&mut self.counter);
+                let lhs = WackValue::Var(mid_ident);
+                let sem_type = r#type;
+                let rhs = self.lower_rvalue(rvalue.into_inner(), instructions);
+                let instr = WackInstruction::Copy { src: rhs, dst: lhs };
+                instructions.push(instr);
+            }
             TypedStat::Assignment { lvalue, rvalue } => {
-                panic!("Assignment not implemented in Wacky")
+                let lhs = self.lower_lvalue(lvalue.into_inner(), instructions);
+                let rhs = self.lower_rvalue(rvalue.into_inner(), instructions);
+                let instr = WackInstruction::Copy { src: rhs, dst: lhs };
+                instructions.push(instr);
             }
             TypedStat::Read(lvalue) => panic!("Read not implemented in Wacky"),
             TypedStat::Free(expr) => panic!("Write not implemented in Wacky"),
             TypedStat::Return(expr) => {
-                // TODO: look into if we need the type
-                // let sem_type = expr.inner().get_type();
+                let sem_type = expr.inner().get_type();
                 let value = self.lower_expr(expr.into_inner(), instructions);
                 let instr = WackInstruction::Return(value);
                 instructions.push(instr);
@@ -166,10 +181,51 @@ impl Lowerer {
                 if_cond,
                 then_body,
                 else_body,
-            } => panic!("If not implemented in Wacky"),
-            TypedStat::WhileDo { while_cond, body } => panic!("While not implemented in Wacky"),
-            // Not sure if scoped is implemented correctly here
-            // TODO: check this later
+            } => {
+                // Makes my life easier
+                use WackInstruction as Instr;
+
+                let else_label = self.make_label("if_else");
+                let end_label = self.make_label("if_end");
+
+                // Evaluate the condition
+                let condition = self.lower_expr(if_cond.into_inner(), instructions);
+
+                // Jump to true branch if condition is true
+                instructions.push(Instr::JumpIfZero {
+                    condition,
+                    target: else_label.clone(),
+                });
+
+                // Evaluate then branch
+                self.lower_stat_block(then_body, instructions);
+
+                // Jump to end of if
+                instructions.push(Instr::Jump(end_label.clone()));
+
+                // else branch
+                instructions.push(Instr::Label(else_label));
+                self.lower_stat_block(else_body, instructions);
+
+                // End of if
+                instructions.push(Instr::Label(end_label));
+            }
+            TypedStat::WhileDo { while_cond, body } => {
+                // Makes my life easier
+                use WackInstruction as Instr;
+                let start_label = self.make_label("while_start");
+                let end_label = self.make_label("while_end");
+
+                instructions.push(Instr::Label(start_label.clone()));
+                let val = self.lower_expr(while_cond.into_inner(), instructions);
+                instructions.push(Instr::JumpIfZero {
+                    condition: val,
+                    target: end_label.clone(),
+                });
+                self.lower_stat_block(body, instructions);
+                instructions.push(Instr::Jump(start_label));
+                instructions.push(Instr::Label(end_label));
+            }
             TypedStat::Scoped(stat_block) => self.lower_stat_block(stat_block, instructions),
         }
     }
@@ -183,7 +239,9 @@ impl Lowerer {
     ) -> WackValue {
         match expr {
             TypedExpr::Liter(liter, _t) => Self::lower_literal(liter),
-            TypedExpr::Ident(sn_ident, t) => panic!("Ident not implemented in Wacky"),
+            TypedExpr::Ident(sn_ident, _t) => {
+                WackValue::Var(sn_ident.into_inner().to_mid_ident(&mut self.counter))
+            }
             TypedExpr::ArrayElem(array_elem, t) => panic!("ArrayElem not implem in Wacky"),
             TypedExpr::Unary(sn_unary, sn_expr, _t) => {
                 self.lower_unary(sn_unary.into_inner(), sn_expr.into_inner(), instructions)
@@ -199,9 +257,13 @@ impl Lowerer {
         }
     }
 
-    fn lower_rvalue(&mut self, rvalue: TypedRValue, instructions: &mut Vec<WackInstruction>) {
+    fn lower_rvalue(
+        &mut self,
+        rvalue: TypedRValue,
+        instructions: &mut Vec<WackInstruction>,
+    ) -> WackValue {
         match rvalue {
-            TypedRValue::Expr(_, _) => unimplemented!(),
+            TypedRValue::Expr(expr, _) => self.lower_expr(expr.into_inner(), instructions),
             TypedRValue::ArrayLiter(_, _) => unimplemented!(),
             TypedRValue::NewPair(_, _, _) => unimplemented!(),
             // TODO: please add types to this
@@ -223,10 +285,25 @@ impl Lowerer {
                 let instr = WackInstruction::FunCall {
                     fun_name: wacky_func_name.clone(),
                     args: wacky_args,
-                    dst,
+                    dst: dst.clone(),
                 };
                 instructions.push(instr);
+                dst
             }
+        }
+    }
+
+    fn lower_lvalue(
+        &mut self,
+        lvalue: TypedLValue,
+        instructions: &mut Vec<WackInstruction>,
+    ) -> WackValue {
+        match lvalue {
+            TypedLValue::Ident(ident, _) => {
+                WackValue::Var(ident.into_inner().to_mid_ident(&mut self.counter))
+            }
+            TypedLValue::ArrayElem(array_elem, _) => panic!("ArrayElem not implemented in Wacky"),
+            TypedLValue::PairElem(pair_elem, _) => panic!("PairElem not implemented in Wacky"),
         }
     }
 
@@ -266,6 +343,21 @@ impl Lowerer {
         expr2: TypedExpr,
         instr: &mut Vec<WackInstruction>,
     ) -> WackValue {
+        match binop {
+            BinaryOper::And => self.lower_and_expr(expr1, expr2, instr),
+            BinaryOper::Or => self.lower_or_expr(expr1, expr2, instr),
+            _ => self.lower_normal_binary(expr1, binop, expr2, instr),
+        }
+    }
+
+    fn lower_normal_binary(
+        &mut self,
+        expr1: TypedExpr,
+        binop: BinaryOper,
+        expr2: TypedExpr,
+        instr: &mut Vec<WackInstruction>,
+    ) -> WackValue {
+        // We handle And/Or differently since we'll make them short circuit here
         let src1 = self.lower_expr(expr1, instr);
         let src2 = self.lower_expr(expr2, instr);
         let dst_name = self.make_temporary();
@@ -278,6 +370,105 @@ impl Lowerer {
             dst: dst.clone(),
         };
         instr.push(new_instr);
+        dst
+    }
+
+    fn lower_or_expr(
+        &mut self,
+        expr1: TypedExpr,
+        expr2: TypedExpr,
+        instr: &mut Vec<WackInstruction>,
+    ) -> WackValue {
+        // Makes my life easier
+        use WackInstruction as Instr;
+
+        // Create labels for false branch and end of expr
+        let true_label = self.make_label("or_true");
+        let end_label = self.make_label("or_end");
+
+        // Create a temporary variable to store the result of expression
+        let dst = WackValue::Var(self.make_temporary());
+
+        let left_v = self.lower_expr(expr1, instr);
+
+        instr.push(Instr::JumpIfNotZero {
+            condition: left_v,
+            target: true_label.clone(),
+        });
+
+        let right_v = self.lower_expr(expr2, instr);
+
+        instr.push(Instr::JumpIfNotZero {
+            condition: right_v,
+            target: true_label.clone(),
+        });
+
+        // Both expressions evaluate to False so dst to False
+        instr.push(Instr::Copy {
+            src: WackValue::Constant(WackConst::Bool(0)),
+            dst: dst.clone(),
+        });
+        // Jump over the true branch
+        instr.push(Instr::Jump(end_label.clone()));
+
+        // True branch
+        instr.push(Instr::Label(true_label));
+        instr.push(Instr::Copy {
+            src: WackValue::Constant(WackConst::Bool(1)),
+            dst: dst.clone(),
+        });
+
+        instr.push(Instr::Label(end_label));
+
+        dst
+    }
+
+    fn lower_and_expr(
+        &mut self,
+        expr1: TypedExpr,
+        expr2: TypedExpr,
+        instr: &mut Vec<WackInstruction>,
+    ) -> WackValue {
+        // Makes my life easier
+        use WackInstruction as Instr;
+
+        // Create labels for false branch and end of expr
+        let false_label = self.make_label("and_false");
+        let end_label = self.make_label("and_end");
+
+        // Create a temporary variable to store the result of expression
+        let dst = WackValue::Var(self.make_temporary());
+
+        let left_v = self.lower_expr(expr1, instr);
+
+        instr.push(Instr::JumpIfZero {
+            condition: left_v,
+            target: false_label.clone(),
+        });
+
+        let right_v = self.lower_expr(expr2, instr);
+
+        instr.push(Instr::JumpIfZero {
+            condition: right_v,
+            target: false_label.clone(),
+        });
+
+        // Both expressions evaluate to True so dst to True
+        instr.push(Instr::Copy {
+            src: WackValue::Constant(WackConst::Bool(1)),
+            dst: dst.clone(),
+        });
+
+        // Jump over the false branch
+        instr.push(Instr::Jump(end_label.clone()));
+
+        instr.push(Instr::Label(false_label));
+        instr.push(Instr::Copy {
+            src: WackValue::Constant(WackConst::Bool(0)),
+            dst: dst.clone(),
+        });
+        instr.push(Instr::Label(end_label));
+
         dst
     }
 }

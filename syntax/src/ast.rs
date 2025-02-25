@@ -386,6 +386,14 @@ impl Deref for Ident {
         self.0.deref()
     }
 }
+
+impl From<Ident> for String {
+    #[inline]
+    fn from(ident: Ident) -> Self {
+        ident.0.to_string()
+    }
+}
+
 // TODO: change this to a type alias perhaps
 impl<N, T> ArrayElem<N, T> {
     #[must_use]

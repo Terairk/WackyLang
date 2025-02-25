@@ -138,34 +138,44 @@ impl AssemblyFormatter {
             AsmInstruction::Idiv(op) => {
                 // idivl because we only work with ints in WACC
                 let op_str = Self::format_operand(op, &AssemblyType::Longword);
-                format!("idivl {}", op_str)
+                format!("idivl {op_str}")
             }
             AsmInstruction::Cdq => "cdq".to_owned(),
-            AsmInstruction::Jmp(label) => format!("jmp {}", label),
+            AsmInstruction::Jmp(label) => format!("jmp .L_{label}"),
             AsmInstruction::JmpCC { condition, label } => {
                 let cond = Self::format_cond_code(condition);
-                format!("j{} {}", cond, label)
+                format!("j{cond} .L_{label}")
             }
             AsmInstruction::SetCC { condition, operand } => {
                 let cond = Self::format_cond_code(condition);
                 let op_str = Self::format_operand(operand, &AssemblyType::Byte);
                 format!("set{} {}", cond, op_str)
             }
-            AsmInstruction::Label(name) => format!("{}:", name),
+            AsmInstruction::Label(name) => format!(".L_{name}:"),
             AsmInstruction::AllocateStack(bytes) => {
                 // In AT&T syntax, stack allocation is often performed by subtracting from %rsp.
-                format!("subq ${}, %rsp", bytes)
+                format!("subq ${bytes}, %rsp")
             }
             AsmInstruction::Push(op) => {
                 let op_str = Self::format_operand(op, &AssemblyType::Quadword);
-                format!("push {}", op_str)
+                format!("push {op_str}")
             }
             // Note these are our own calls so these don't need to be with @PLT
             // all @PLT external calls are already pre-generated
-            AsmInstruction::Call(name) => format!("call {}", name),
+            AsmInstruction::Call(name, external) => {
+                if *external {
+                    format!("call {name}@PLT")
+                } else {
+                    format!("call {name}")
+                }
+            }
             AsmInstruction::Ret => {
                 // Since return is special we'll have to handle it specially
                 RETURN_STRING.to_owned()
+            }
+            AsmInstruction::DeallocateStack(bytes) => {
+                // In AT&T syntax, stack deallocation is often performed by adding to %rsp.
+                format!("addq ${bytes}, %rsp")
             }
         }
     }

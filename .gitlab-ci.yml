@@ -88,4 +88,4 @@ test-compiler:
   artifacts:
     paths:
       - target/debug/
-    expire_in: 1 week
+    expire_in: 1 hour

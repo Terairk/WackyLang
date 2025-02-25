@@ -33,6 +33,7 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
                 AsmInstruction::Idiv(Imm(val)) => {
                     fix_idiv(&mut new_func_body, val);
                 }
+                AsmInstruction::Cmp { typ, op1, op2 } => fix_cmp(&mut new_func_body, typ, op1, op2),
                 _ => new_func_body.push(instr),
             }
         }
@@ -41,6 +42,7 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
         new_functions.push(AsmFunction {
             name: func.name,
             global: func.global,
+            external: func.external,
             instructions: new_func_body,
         });
     }
@@ -73,25 +75,22 @@ fn fix_binary(
 }
 
 fn fix_move(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand, dst: Operand) {
-    match (src.clone(), dst.clone()) {
-        (Operand::Stack(_), Operand::Stack(_)) => {
-            // We'll use R10D as a scratch register because it usually doesn't serve
-            // any special purpose
-            let first_move = AsmInstruction::Mov {
+    let new_instrs = match (src.clone(), dst.clone()) {
+        (Operand::Stack(_), Operand::Stack(_)) => vec![
+            AsmInstruction::Mov {
                 typ: typ.clone(),
                 src,
                 dst: Operand::Reg(Register::R10),
-            };
-            let second_move = AsmInstruction::Mov {
+            },
+            AsmInstruction::Mov {
                 typ,
                 src: Operand::Reg(Register::R10),
                 dst,
-            };
-            asm.push(first_move);
-            asm.push(second_move);
-        }
-        _ => asm.push(AsmInstruction::Mov { typ, src, dst }),
-    }
+            },
+        ],
+        _ => vec![AsmInstruction::Mov { typ, src, dst }],
+    };
+    asm.extend(new_instrs);
 }
 
 fn fix_add_sub(
@@ -101,77 +100,101 @@ fn fix_add_sub(
     op2: Operand,
     asm: &mut Vec<AsmInstruction>,
 ) {
-    match (op1.clone(), op2.clone()) {
-        (Operand::Stack(_), Operand::Stack(_)) => {
-            // We'll use R10D as a scratch register because it usually doesn't serve
-            // any special purpose
-            let first_instr = AsmInstruction::Mov {
+    let new_instrs = match (op1.clone(), op2.clone()) {
+        (Operand::Stack(_), Operand::Stack(_)) => vec![
+            AsmInstruction::Mov {
                 typ: typ.clone(),
                 src: op1,
                 dst: Operand::Reg(Register::R10),
-            };
-            let second_instr = AsmInstruction::Binary {
+            },
+            AsmInstruction::Binary {
                 operator,
                 typ,
                 op1: Operand::Reg(Register::R10),
                 op2,
-            };
-            asm.push(first_instr);
-            asm.push(second_instr);
-        }
-        _ => asm.push(AsmInstruction::Binary {
+            },
+        ],
+        _ => vec![AsmInstruction::Binary {
             operator,
             typ,
             op1,
             op2,
-        }),
-    }
+        }],
+    };
+    asm.extend(new_instrs);
 }
 
-// Imul can't use memory address as its destination regardless of its source operand.
-// We'll use R11 register instead of R10 to not conflict with the others
-// This happens when R10 is op1 and op2 is a memory address
 fn fix_mult(typ: AssemblyType, op1: Operand, op2: Operand, asm: &mut Vec<AsmInstruction>) {
-    match (op1.clone(), op2.clone()) {
-        (_, Operand::Stack(_)) => {
-            // We'll use R10D as a scratch register because it usually doesn't serve
-            // any special purpose
-            let first_instr = AsmInstruction::Mov {
+    let new_instrs = match (op1.clone(), op2.clone()) {
+        (_, Operand::Stack(_)) => vec![
+            AsmInstruction::Mov {
                 typ: typ.clone(),
                 src: op2.clone(),
                 dst: Operand::Reg(Register::R11),
-            };
-            let second_instr = AsmInstruction::Binary {
+            },
+            AsmInstruction::Binary {
                 operator: AsmBinaryOperator::Mult,
                 typ: typ.clone(),
                 op1,
                 op2: Operand::Reg(Register::R11),
-            };
-            let third_instr = AsmInstruction::Mov {
+            },
+            AsmInstruction::Mov {
                 typ,
                 src: Operand::Reg(Register::R11),
                 dst: op2,
-            };
-            asm.push(first_instr);
-            asm.push(second_instr);
-            asm.push(third_instr);
-        }
-        _ => asm.push(AsmInstruction::Binary {
+            },
+        ],
+        _ => vec![AsmInstruction::Binary {
             operator: AsmBinaryOperator::Mult,
             typ,
             op1,
             op2,
-        }),
-    }
+        }],
+    };
+    asm.extend(new_instrs);
 }
 
 fn fix_idiv(asm: &mut Vec<AsmInstruction>, val: i32) {
-    asm.push(AsmInstruction::Mov {
-        typ: AssemblyType::Longword,
-        src: Operand::Imm(val),
-        dst: Operand::Reg(Register::R10),
-    });
-    asm.push(AsmInstruction::Idiv(Operand::Reg(Register::R10)));
+    let new_instrs = vec![
+        AsmInstruction::Mov {
+            typ: AssemblyType::Longword,
+            src: Operand::Imm(val),
+            dst: Operand::Reg(Register::R10),
+        },
+        AsmInstruction::Idiv(Operand::Reg(Register::R10)),
+    ];
+    asm.extend(new_instrs);
+}
+
+fn fix_cmp(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, op1: Operand, op2: Operand) {
+    let new_instrs = match (op1.clone(), op2.clone()) {
+        (Operand::Stack(_), Operand::Stack(_)) => vec![
+            AsmInstruction::Mov {
+                typ: typ.clone(),
+                src: op1,
+                dst: Operand::Reg(Register::R10),
+            },
+            AsmInstruction::Cmp {
+                typ,
+                op1: Operand::Reg(Register::R10),
+                op2,
+            },
+        ],
+        (_, Operand::Imm(_)) => vec![
+            AsmInstruction::Mov {
+                typ: typ.clone(),
+                src: op2,
+                dst: Operand::Reg(Register::R11),
+            },
+            AsmInstruction::Cmp {
+                typ,
+                op1,
+                op2: Operand::Reg(Register::R11),
+            },
+        ],
+        _ => vec![AsmInstruction::Cmp { typ, op1, op2 }],
+    };
+    asm.extend(new_instrs);
 }
 
 #[cfg(test)]
@@ -188,6 +211,7 @@ mod tests {
         let function = AsmFunction {
             name: "example".to_owned(),
             global: false,
+            external: false,
             instructions: vec![
                 AsmInstruction::Mov {
                     typ: AssemblyType::Longword,
