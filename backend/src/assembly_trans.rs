@@ -201,6 +201,7 @@ impl AsmGen {
             0
         };
 
+        // used to align the stack to 16 bytes for function calls
         if stack_padding != 0 {
             asm.push(Asm::AllocateStack(stack_padding));
         }

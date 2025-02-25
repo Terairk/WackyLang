@@ -35,8 +35,10 @@ pub fn replace_pseudo_in_program(program: &mut AsmProgram) {
 
         // Prepend an AllocateStack instruction to reserve the required stack space.
         // Note this doesn't take into account parameters just yet
-        // TODO: handle parameters
-        // If last_offset == 0, then no temporary was used
+        // TODO: fix magic number here
+
+        // rounds up to nearest multiple of 16 (negative version)
+        last_offset = round_down_16(last_offset);
         if last_offset != 0 {
             func.instructions
                 .insert(0, AsmInstruction::AllocateStack(-last_offset));
@@ -94,4 +96,10 @@ fn replace_pseudo_in_instruction(
         // Other instructions which don't have operands that need replacement are left unchanged.
         _ => {}
     }
+}
+
+// rounds down to neartest multiple of 16
+// meant for negative numbers
+const fn round_down_16(x: i32) -> i32 {
+    x & !15
 }
