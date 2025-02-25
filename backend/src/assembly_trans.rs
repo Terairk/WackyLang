@@ -55,9 +55,11 @@ impl AsmGen {
 
         asm_instructions.push(AsmInstruction::Ret);
 
+        // any functions we generate ourselves are not external
         AsmFunction {
             name: "main".to_owned(),
             global: true,
+            external: false,
             instructions: asm_instructions,
         }
     }
@@ -69,68 +71,110 @@ impl AsmGen {
             self.lower_instruction(instr, &mut asm);
         }
 
+        // any functions we generate ourselves are not external
         AsmFunction {
             name: func_name,
             global: false,
+            external: false,
             instructions: asm,
         }
     }
 
-    fn lower_instruction(
-        &mut self,
-        instr: WackInstruction,
-        asm_instructions: &mut Vec<AsmInstruction>,
-    ) {
+    fn lower_instruction(&mut self, instr: WackInstruction, asm: &mut Vec<AsmInstruction>) {
         use AsmInstruction as Asm;
         use WackInstruction::{
-            Binary, Copy, Jump, JumpIfNotZero, JumpIfZero, Label, Return, Unary,
+            Binary, Copy, FunCall, Jump, JumpIfNotZero, JumpIfZero, Label, Return, Unary,
         };
         // TODO: finish this scaffolding
         match instr {
-            Return(value) => self.lower_return(value, asm_instructions),
-            Unary { op, src, dst } => self.lower_unary(&op, src, dst, asm_instructions),
+            Return(value) => self.lower_return(value, asm),
+            Unary { op, src, dst } => self.lower_unary(&op, src, dst, asm),
             Binary {
                 op,
                 src1,
                 src2,
                 dst,
-            } => self.lower_binary(&op, src1, src2, dst, asm_instructions),
-            Jump(target) => asm_instructions.push(Asm::Jmp(target.into())),
+            } => self.lower_binary(&op, src1, src2, dst, asm),
+            Jump(target) => asm.push(Asm::Jmp(target.into())),
             JumpIfZero { condition, target } => {
                 // TODO: experiment with AssemblyType::Byte and Longword
-                let condition = self.lower_value(condition, asm_instructions);
-                asm_instructions.push(Asm::Cmp {
+                let condition = self.lower_value(condition, asm);
+                asm.push(Asm::Cmp {
                     typ: AssemblyType::Longword,
                     op1: Operand::Imm(0),
                     op2: condition,
                 });
-                asm_instructions.push(Asm::JmpCC {
+                asm.push(Asm::JmpCC {
                     condition: CondCode::E,
                     label: target.into(),
                 });
             }
             JumpIfNotZero { condition, target } => {
-                let condition = self.lower_value(condition, asm_instructions);
-                asm_instructions.push(Asm::Cmp {
+                let condition = self.lower_value(condition, asm);
+                asm.push(Asm::Cmp {
                     typ: AssemblyType::Longword,
                     op1: Operand::Imm(0),
                     op2: condition,
                 });
-                asm_instructions.push(Asm::JmpCC {
+                asm.push(Asm::JmpCC {
                     condition: CondCode::NE,
                     label: target.into(),
                 });
             }
             Copy { src, dst } => {
-                let src_operand = self.lower_value(src, asm_instructions);
-                let dst_operand = self.lower_value(dst, asm_instructions);
-                asm_instructions.push(Asm::Mov {
+                let src_operand = self.lower_value(src, asm);
+                let dst_operand = self.lower_value(dst, asm);
+                asm.push(Asm::Mov {
                     typ: AssemblyType::Longword,
                     src: src_operand,
                     dst: dst_operand,
                 });
             }
-            Label(id) => asm_instructions.push(Asm::Label(id.into())),
+            Label(id) => asm.push(Asm::Label(id.into())),
+            FunCall {
+                fun_name,
+                args,
+                dst,
+            } => {
+                use Register::*;
+                let arg_regs = [DI, SI, DX, CX, R8, R9];
+
+                // adjust stack alignment
+
+                // Determine the split index (at most 6 arguments for register_args)
+                let split_index = args.len().min(arg_regs.len());
+
+                // Split the slice into register_args and stack_args
+                let (register_args, rest) = args.split_at(split_index);
+                let stack_args = if rest.is_empty() { None } else { Some(rest) };
+
+                // register_args is a slice of WackValues up to 6 values
+                // stack_args is an Option of a slice of WackValues
+                let stack_padding = if stack_args.iter().len() % 2 != 0 {
+                    8
+                } else {
+                    0
+                };
+
+                if stack_padding != 0 {
+                    asm.push(Asm::AllocateStack(stack_padding));
+                }
+
+                // pass args in registers
+                let mut reg_index = 0;
+                for tacky_arg in register_args {
+                    let r = arg_regs[reg_index];
+                    let assembly_arg = self.lower_value(tacky_arg.clone(), asm);
+                    asm.push(Asm::Mov {
+                        typ: AssemblyType::Longword,
+                        src: assembly_arg,
+                        dst: Operand::Reg(r),
+                    });
+                    reg_index += 1;
+                }
+
+                // pass rest of args on stack
+            }
             _ => unimplemented!(),
         }
     }

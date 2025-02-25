@@ -169,8 +169,7 @@ impl Lowerer {
             TypedStat::Read(lvalue) => panic!("Read not implemented in Wacky"),
             TypedStat::Free(expr) => panic!("Write not implemented in Wacky"),
             TypedStat::Return(expr) => {
-                // TODO: look into if we need the type
-                // let sem_type = expr.inner().get_type();
+                let sem_type = expr.inner().get_type();
                 let value = self.lower_expr(expr.into_inner(), instructions);
                 let instr = WackInstruction::Return(value);
                 instructions.push(instr);

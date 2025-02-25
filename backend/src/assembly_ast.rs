@@ -47,6 +47,7 @@ pub struct AsmProgram {
 pub struct AsmFunction {
     pub name: String,
     pub global: bool,
+    pub external: bool,
     pub instructions: Vec<AsmInstruction>,
 }
 
@@ -97,8 +98,11 @@ pub enum AsmInstruction {
     Label(String),
     // Temporary thing below
     AllocateStack(i32),
+    // Temporary thing below
+    DeallocateStack(i32),
     Push(Operand),
-    Call(String),
+    // True = external call, false
+    Call(String, bool),
     Ret,
 }
 
@@ -165,7 +169,10 @@ pub enum CondCode {
     BE,
 }
 
-#[derive(Debug, Clone)]
+// Other registers are callee saved
+// which will be added later
+// when optimisations are done
+#[derive(Debug, Clone, Copy)]
 pub enum Register {
     AX,
     CX,
