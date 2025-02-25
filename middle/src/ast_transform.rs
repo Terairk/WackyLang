@@ -152,9 +152,19 @@ impl Lowerer {
                 r#type,
                 name,
                 rvalue,
-            } => panic!("VarDefinition not implemented in Wacky"),
+            } => {
+                let mid_ident = name.into_inner().to_mid_ident(&mut self.counter);
+                let lhs = WackValue::Var(mid_ident);
+                let sem_type = r#type;
+                let rhs = self.lower_rvalue(rvalue.into_inner(), instructions);
+                let instr = WackInstruction::Copy { src: rhs, dst: lhs };
+                instructions.push(instr);
+            }
             TypedStat::Assignment { lvalue, rvalue } => {
-                panic!("Assignment not implemented in Wacky")
+                let lhs = self.lower_lvalue(lvalue.into_inner(), instructions);
+                let rhs = self.lower_rvalue(rvalue.into_inner(), instructions);
+                let instr = WackInstruction::Copy { src: rhs, dst: lhs };
+                instructions.push(instr);
             }
             TypedStat::Read(lvalue) => panic!("Read not implemented in Wacky"),
             TypedStat::Free(expr) => panic!("Write not implemented in Wacky"),
@@ -172,10 +182,51 @@ impl Lowerer {
                 if_cond,
                 then_body,
                 else_body,
-            } => panic!("If not implemented in Wacky"),
-            TypedStat::WhileDo { while_cond, body } => panic!("While not implemented in Wacky"),
-            // Not sure if scoped is implemented correctly here
-            // TODO: check this later
+            } => {
+                // Makes my life easier
+                use WackInstruction as Instr;
+
+                let else_label = self.make_label("if_else");
+                let end_label = self.make_label("if_end");
+
+                // Evaluate the condition
+                let condition = self.lower_expr(if_cond.into_inner(), instructions);
+
+                // Jump to true branch if condition is true
+                instructions.push(Instr::JumpIfZero {
+                    condition,
+                    target: else_label.clone(),
+                });
+
+                // Evaluate then branch
+                self.lower_stat_block(then_body, instructions);
+
+                // Jump to end of if
+                instructions.push(Instr::Jump(end_label.clone()));
+
+                // else branch
+                instructions.push(Instr::Label(else_label));
+                self.lower_stat_block(else_body, instructions);
+
+                // End of if
+                instructions.push(Instr::Label(end_label));
+            }
+            TypedStat::WhileDo { while_cond, body } => {
+                // Makes my life easier
+                use WackInstruction as Instr;
+                let start_label = self.make_label("while_start");
+                let end_label = self.make_label("while_end");
+
+                instructions.push(Instr::Label(start_label.clone()));
+                let val = self.lower_expr(while_cond.into_inner(), instructions);
+                instructions.push(Instr::JumpIfZero {
+                    condition: val,
+                    target: end_label.clone(),
+                });
+                self.lower_stat_block(body, instructions);
+                instructions.push(Instr::Jump(start_label));
+                instructions.push(Instr::Label(end_label));
+            }
             TypedStat::Scoped(stat_block) => self.lower_stat_block(stat_block, instructions),
         }
     }
@@ -189,7 +240,9 @@ impl Lowerer {
     ) -> WackValue {
         match expr {
             TypedExpr::Liter(liter, _t) => Self::lower_literal(liter),
-            TypedExpr::Ident(sn_ident, t) => panic!("Ident not implemented in Wacky"),
+            TypedExpr::Ident(sn_ident, _t) => {
+                WackValue::Var(sn_ident.into_inner().to_mid_ident(&mut self.counter))
+            }
             TypedExpr::ArrayElem(array_elem, t) => panic!("ArrayElem not implem in Wacky"),
             TypedExpr::Unary(sn_unary, sn_expr, _t) => {
                 self.lower_unary(sn_unary.into_inner(), sn_expr.into_inner(), instructions)
@@ -205,9 +258,13 @@ impl Lowerer {
         }
     }
 
-    fn lower_rvalue(&mut self, rvalue: TypedRValue, instructions: &mut Vec<WackInstruction>) {
+    fn lower_rvalue(
+        &mut self,
+        rvalue: TypedRValue,
+        instructions: &mut Vec<WackInstruction>,
+    ) -> WackValue {
         match rvalue {
-            TypedRValue::Expr(_, _) => unimplemented!(),
+            TypedRValue::Expr(expr, _) => self.lower_expr(expr.into_inner(), instructions),
             TypedRValue::ArrayLiter(_, _) => unimplemented!(),
             TypedRValue::NewPair(_, _, _) => unimplemented!(),
             // TODO: please add types to this
@@ -229,10 +286,25 @@ impl Lowerer {
                 let instr = WackInstruction::FunCall {
                     fun_name: wacky_func_name.clone(),
                     args: wacky_args,
-                    dst,
+                    dst: dst.clone(),
                 };
                 instructions.push(instr);
+                dst
             }
+        }
+    }
+
+    fn lower_lvalue(
+        &mut self,
+        lvalue: TypedLValue,
+        instructions: &mut Vec<WackInstruction>,
+    ) -> WackValue {
+        match lvalue {
+            TypedLValue::Ident(ident, _) => {
+                WackValue::Var(ident.into_inner().to_mid_ident(&mut self.counter))
+            }
+            TypedLValue::ArrayElem(array_elem, _) => panic!("ArrayElem not implemented in Wacky"),
+            TypedLValue::PairElem(pair_elem, _) => panic!("PairElem not implemented in Wacky"),
         }
     }
 

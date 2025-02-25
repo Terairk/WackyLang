@@ -141,17 +141,17 @@ impl AssemblyFormatter {
                 format!("idivl {}", op_str)
             }
             AsmInstruction::Cdq => "cdq".to_owned(),
-            AsmInstruction::Jmp(label) => format!("jmp .L{}", label),
+            AsmInstruction::Jmp(label) => format!("jmp .L_{}", label),
             AsmInstruction::JmpCC { condition, label } => {
                 let cond = Self::format_cond_code(condition);
-                format!("j{} .L{}", cond, label)
+                format!("j{} .L_{}", cond, label)
             }
             AsmInstruction::SetCC { condition, operand } => {
                 let cond = Self::format_cond_code(condition);
                 let op_str = Self::format_operand(operand, &AssemblyType::Byte);
                 format!("set{} {}", cond, op_str)
             }
-            AsmInstruction::Label(name) => format!(".L{}:", name),
+            AsmInstruction::Label(name) => format!(".L_{}:", name),
             AsmInstruction::AllocateStack(bytes) => {
                 // In AT&T syntax, stack allocation is often performed by subtracting from %rsp.
                 format!("subq ${}, %rsp", bytes)
