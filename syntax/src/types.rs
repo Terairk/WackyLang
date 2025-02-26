@@ -279,7 +279,20 @@ impl SemanticType {
         // extract the semantic types
         match self {
             Self::Array(elems_ty) => *elems_ty,
-            _ => unreachable!("The type is assumed to be ."),
+            _ => unreachable!("The type is assumed to be array, but wasn't."),
+        }
+    }
+
+    /// # Safety
+    /// If you are _sure_ the semantic type is that of a pair, you can unsafely extract
+    /// the inner element types; if it isn't a pair-type, a runtime panic will occur.
+    #[inline]
+    #[must_use]
+    pub unsafe fn into_pair_elem_types(self) -> (Self, Self) {
+        // extract the semantic types
+        match self {
+            Self::Pair(fst, snd) => (*fst, *snd),
+            _ => unreachable!("The type is assumed to be pair, but wasn't."),
         }
     }
 }

@@ -375,9 +375,15 @@ pub(crate) mod ast_lowering_ctx {
                     unsafe { sym_type.into_array_elem_type() },
                     instructions,
                 ),
-                TypedRValue::NewPair(_, _, _) => unimplemented!(),
-                // TODO: please add types to this
+                TypedRValue::NewPair(fst, snd, sym_type) => self.lower_newpair(
+                    (fst.into_inner(), snd.into_inner()),
+                    // SAFETY: by this point, type checking has concluded and the semantic type
+                    //         HAS to be a pair-type, so this operation is safe.
+                    unsafe { sym_type.into_pair_elem_types() },
+                    instructions,
+                ),
                 TypedRValue::PairElem(_, _) => unimplemented!(),
+                // TODO: please add types to this
                 TypedRValue::Call {
                     func_name,
                     args,
@@ -461,6 +467,64 @@ pub(crate) mod ast_lowering_ctx {
 
             // return variable holding pointer to allocated array
             wrapped_array_value
+        }
+
+        #[allow(clippy::arithmetic_side_effects)]
+        fn lower_newpair(
+            &mut self,
+            elems: (TypedExpr, TypedExpr),
+            elem_types: (SemanticType, SemanticType),
+            instructions: &mut Vec<WackInstr>,
+        ) -> WackValue {
+            // 1. allocate enough memory on the heap to store the pair (see section 2.3.1); if allocation fails,
+            // this MAY produce a runtime error
+            // 2. evaluate both provided expressions (order-of-evaluation is unspecified)
+            // 3. store each evaluated element into its corresponding slot in the pair
+
+            // compute the amount of memory this pair literal needs:
+            //   `alloc_size_bytes = fst_bytes + snd_bytes`
+            // the pair is stored on the heap as two directly-adjacent regions of memory
+            // which represent either the first or second elements, respectively.
+            let fst_bytes = elem_types.0.size_of();
+            let snd_bytes = elem_types.1.size_of();
+            let alloc_size_bytes = fst_bytes + snd_bytes;
+
+            //  allocate enough memory on the heap to store both elements and of the pair
+            let pair_dst_ptr = self.make_temporary();
+            let wrapped_pair_value = WackValue::Var(pair_dst_ptr.clone());
+            instructions.push(WackInstr::Alloc {
+                size: alloc_size_bytes,
+                dst_ptr: wrapped_pair_value.clone(),
+            });
+
+            // it should never be the case that these types disagree
+            // TODO: it may be the case that element types can be coerced safely to the
+            //       overall array type, so this assert may trigger false-positives
+            assert_eq!(elems.0.get_type(), elem_types.0);
+            assert_eq!(elems.1.get_type(), elem_types.1);
+
+            // evaluate expressions of both elements
+            let elem_values = (
+                self.lower_expr(elems.0, instructions),
+                self.lower_expr(elems.1, instructions),
+            );
+
+            // insert each element to their corresponding slots in the allocated pair
+            let mut offset = 0; // the first element has zero-offset from start of pair
+            instructions.push(WackInstr::CopyToOffset {
+                src: elem_values.0,
+                dst: pair_dst_ptr.clone(),
+                offset,
+            });
+            offset += fst_bytes; // the second element follows directly after the first
+            instructions.push(WackInstr::CopyToOffset {
+                src: elem_values.1,
+                dst: pair_dst_ptr.clone(),
+                offset,
+            });
+
+            // return variable holding pointer to allocated pair
+            wrapped_pair_value
         }
 
         // Very confusing but converts a syntax literal to Wacky Value
