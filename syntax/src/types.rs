@@ -42,14 +42,6 @@ pub struct ArrayType {
     pub elem_type: Type,
 }
 
-impl ArrayType {
-    #[must_use]
-    #[inline]
-    pub const fn new(elem_type: Type) -> Self {
-        Self { elem_type }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub enum PairElemType {
     ArrayType(SN<ArrayType>),
@@ -82,12 +74,14 @@ impl Type {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn size_of(&self) -> usize {
-        match self {
-            Type::BaseType(b) => todo!(),
-            Type::ArrayType(_) => todo!(),
-            Type::PairType(_, _) => todo!(),
-            Type::Error(_) => todo!(),
+        match *self {
+            Self::BaseType(ref b) => b.size_of(),
+            Self::ArrayType(ref a) => a.size_of(),
+            Self::PairType(_, _) => BaseType::PAIR_PTR_BYTES,
+            Self::Error(_) => unreachable!("This branch should always be caught during parsing."),
         }
     }
 }
@@ -107,7 +101,24 @@ impl BaseType {
 
     /// The string-type is merely a pointer to the data of the string-body:
     /// a length-prefixed contiguous array of characters.
-    pub const STRING_BYTES: usize = 8;
+    pub const STRING_PTR_BYTES: usize = Self::PTR_BYTES;
+
+    /// The length of the string is a pointer-sized value.
+    pub const STRING_LEN_BYTES: usize = Self::PTR_BYTES;
+
+    /// The string's "elements" are characters.
+    pub const STRING_ELEM_BYTES: usize = Self::CHAR_BYTES;
+
+    /// The array-type is merely a pointer to the data of the array-body:
+    /// a length-prefixed contiguous array of homogeneously-sized elements.
+    pub const ARRAY_PTR_BYTES: usize = Self::PTR_BYTES;
+
+    /// The length of the array is a pointer-sized value.
+    pub const ARRAY_LEN_BYTES: usize = Self::PTR_BYTES;
+
+    /// A pair is a pointer to two contiguous values on the heap.
+    /// A pair null-literal is simply an all-zero null pointer.
+    pub const PAIR_PTR_BYTES: usize = Self::PTR_BYTES;
 
     #[inline]
     #[must_use]
@@ -116,7 +127,7 @@ impl BaseType {
             Self::Int => Self::INT_BYTES,
             Self::Bool => Self::BOOL_BYTES,
             Self::Char => Self::CHAR_BYTES,
-            Self::String => Self::STRING_BYTES,
+            Self::String => Self::STRING_PTR_BYTES,
         }
     }
 
@@ -126,7 +137,37 @@ impl BaseType {
     #[inline]
     #[must_use]
     pub const fn string_body_bytes(len: usize) -> usize {
-        Self::PTR_BYTES + len * Self::CHAR_BYTES
+        Self::STRING_LEN_BYTES + len * Self::STRING_ELEM_BYTES
+    }
+}
+
+impl ArrayType {
+    #[must_use]
+    #[inline]
+    pub const fn new(elem_type: Type) -> Self {
+        Self { elem_type }
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn size_of(&self) -> usize {
+        BaseType::ARRAY_PTR_BYTES
+    }
+
+    /// The array-body is a value in the heap which begins with a pointer-sized length value,
+    /// followed by a contiguous array of elements which corresponds to that length value.
+    #[allow(clippy::arithmetic_side_effects)]
+    #[inline]
+    #[must_use]
+    pub fn array_body_bytes(&self, len: usize) -> usize {
+        BaseType::ARRAY_LEN_BYTES + len * self.elem_size_of()
+    }
+
+    /// The size (in bytes) of the elements of this array
+    #[inline]
+    #[must_use]
+    pub fn elem_size_of(&self) -> usize {
+        self.elem_type.size_of()
     }
 }
 
@@ -145,6 +186,16 @@ impl PairElemType {
                 SemanticType::Array(Box::new(elem_type))
             }
             PairElemType::Pair(_span) => SemanticType::ErasedPair,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn size_of(&self) -> usize {
+        match *self {
+            Self::ArrayType(ref a) => a.size_of(),
+            Self::BaseType(ref b) => b.size_of(),
+            Self::Pair(_) => BaseType::PAIR_PTR_BYTES,
         }
     }
 }
