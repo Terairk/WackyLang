@@ -42,7 +42,7 @@ impl AssemblyFormatter {
         for (string, label) in str_literals {
             output.push_str(format!("# length of {}\n", label).as_str());
             output.push_str(format!("   .int {}\n", string.len()).as_str());
-            output.push_str(format!("{}\n", label).as_str());
+            output.push_str(format!("{}:\n", label).as_str());
             output.push_str(format!("   .asciz \"{}\"\n", string).as_str());
         }
 
