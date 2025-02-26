@@ -551,16 +551,14 @@ pub struct WackTempIdent(ast::Ident, usize);
 
 // impls relating to `WackTempIdent`
 pub mod wack_temp_ident {
+    use crate::ast_transform::ast_lowering_ctx::With;
+    use crate::ast_transform::AstLoweringCtx;
     use crate::wackir::WackTempIdent;
     use std::fmt;
     use std::fmt::{Debug, Formatter};
     use std::hash::{Hash, Hasher};
     use syntax::ast;
     use syntax::rename::RenamedName;
-
-    pub trait ConvertToWackIdent {
-        fn to_wack_ident(&self, counter: &mut usize) -> WackTempIdent;
-    }
 
     impl Debug for WackTempIdent {
         #[inline]
@@ -585,19 +583,27 @@ pub mod wack_temp_ident {
         }
     }
 
-    impl ConvertToWackIdent for RenamedName {
+    impl From<RenamedName> for WackTempIdent {
         #[inline]
-        fn to_wack_ident(&self, _counter: &mut usize) -> WackTempIdent {
-            WackTempIdent(self.ident.clone(), self.uuid)
+        fn from(value: RenamedName) -> Self {
+            Self(value.ident.clone(), value.uuid)
         }
     }
 
-    impl ConvertToWackIdent for ast::Ident {
-        #[allow(clippy::arithmetic_side_effects)]
+    impl From<With<ast::Ident, &mut usize>> for WackTempIdent {
         #[inline]
-        fn to_wack_ident(&self, counter: &mut usize) -> WackTempIdent {
+        fn from(value: With<ast::Ident, &mut usize>) -> Self {
+            let (ident, counter) = value.into_components();
             *counter += 1;
-            WackTempIdent(self.clone(), *counter)
+            Self(ident, *counter)
+        }
+    }
+
+    impl From<With<ast::Ident, &mut AstLoweringCtx>> for WackTempIdent {
+        #[inline]
+        fn from(mut value: With<ast::Ident, &mut AstLoweringCtx>) -> Self {
+            let counter = value.ctx_mut().inc_ident_counter();
+            Self(value.into_inner(), counter)
         }
     }
 

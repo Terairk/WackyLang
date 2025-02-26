@@ -16,4 +16,5 @@ workspace = true
 syntax = { workspace = true }
 internment = { workspace = true, features = ["arc"] }
 thiserror = { workspace = true }
+extend = { workspace = true }
 util = { workspace = true }
