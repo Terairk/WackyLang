@@ -166,7 +166,12 @@ impl Lowerer {
                 let instr = WackInstruction::Copy { src: rhs, dst: lhs };
                 instructions.push(instr);
             }
-            TypedStat::Read(lvalue) => panic!("Read not implemented in Wacky"),
+            TypedStat::Read(lvalue) => {
+                let sem_type = lvalue.inner().get_type();
+                let value = self.lower_lvalue(lvalue.into_inner(), instructions);
+                let instr = WackInstruction::Read { dst: value, ty: sem_type };
+                instructions.push(instr);
+            },
             TypedStat::Free(expr) => panic!("Write not implemented in Wacky"),
             TypedStat::Return(expr) => {
                 let sem_type = expr.inner().get_type();
@@ -175,7 +180,6 @@ impl Lowerer {
                 instructions.push(instr);
             }
             TypedStat::Exit(expr) => {
-                let sem_type = expr.inner().get_type();
                 let value = self.lower_expr(expr.into_inner(), instructions);
                 let instr = WackInstruction::Exit(value);
                 instructions.push(instr);
