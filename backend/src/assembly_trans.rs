@@ -249,8 +249,7 @@ impl AsmGen {
                 asm.push(AsmInstruction::Call("_println".to_string(), false));
             }
             WackInstruction::Exit(value) => {
-                todo!("add GenFlag for EXIT");
-                // insert_flag_gbl(GenFlags::EXIT);
+                insert_flag_gbl(GenFlags::EXIT);
                 let operand = self.lower_value(value, asm);
                 asm.push(AsmInstruction::Mov {typ: Longword, src: operand, dst: Operand::Reg(DI) });
                 asm.push(AsmInstruction::Call("_exit".to_string(), false));

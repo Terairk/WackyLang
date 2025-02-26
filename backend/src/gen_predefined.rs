@@ -39,6 +39,8 @@ const READ_CHR_ASM: &str = include_str!("predefined_funcs/read_chr.txt");
 const DIV_BY_ZERO_ASM: &str = include_str!("predefined_funcs/div_zero.txt");
 const NULL_DEREF_ASM: &str = include_str!("predefined_funcs/null_access.txt");
 
+const EXIT : &str = include_str!("predefined_funcs/exit.txt");
+
 static PREDEFINED_FUNCTIONS: Lazy<HashMap<GenFlags, &'static str>> = Lazy::new(|| {
     let mut m = HashMap::new();
     m.insert(GenFlags::OVERFLOW, OVERFLOW_ASM);
@@ -58,5 +60,6 @@ static PREDEFINED_FUNCTIONS: Lazy<HashMap<GenFlags, &'static str>> = Lazy::new(|
     m.insert(GenFlags::READ_CHR, READ_CHR_ASM);
     m.insert(GenFlags::DIV_BY_ZERO, DIV_BY_ZERO_ASM);
     m.insert(GenFlags::NULL_DEREF, NULL_DEREF_ASM);
+    m.insert(GenFlags::EXIT, EXIT);
     m
 });
