@@ -108,6 +108,17 @@ pub enum LValue<N, T> {
     PairElem(SN<PairElem<N, T>>, T),
 }
 
+impl<N, T: Clone> LValue<N, T> {
+    #[inline]
+    pub fn get_type(&self) -> T {
+        match *self {
+            Self::Ident(_, ref t) | Self::ArrayElem(_, ref t) | Self::PairElem(_, ref t) => {
+                t.clone()
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum RValue<N, T> {
     Expr(SN<Expr<N, T>>, T),                    // Type info already in Expr
@@ -126,7 +137,6 @@ pub enum PairElem<N, T> {
     Fst(SN<LValue<N, T>>),
     Snd(SN<LValue<N, T>>),
 }
-
 #[derive(Clone, Debug)]
 pub struct ArrayElem<N, T> {
     pub array_name: SN<N>,

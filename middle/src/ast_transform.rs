@@ -56,8 +56,8 @@ pub(crate) struct AstLoweringCtx {
 // impls relating to `AstLoweringCtx`
 pub(crate) mod ast_lowering_ctx {
     use crate::ast_transform::{
-        AstLoweringCtx, TypedExpr, TypedFunc, TypedFuncParam, TypedLValue, TypedRValue, TypedStat,
-        TypedStatBlock,
+        AstLoweringCtx, TypedExpr, TypedFunc, TypedFuncParam, TypedLValue, TypedPairElem,
+        TypedRValue, TypedStat, TypedStatBlock,
     };
     use crate::wackir::{
         BinaryOp, UnaryOp, WackBool, WackFunction, WackInstr, WackLiteral, WackTempIdent, WackValue,
@@ -382,7 +382,9 @@ pub(crate) mod ast_lowering_ctx {
                     unsafe { sym_type.into_pair_elem_types() },
                     instructions,
                 ),
-                TypedRValue::PairElem(_, _) => unimplemented!(),
+                TypedRValue::PairElem(elem, sem_type) => {
+                    self.lower_pair_elem(elem.into_inner(), sem_type, instructions)
+                }
                 // TODO: please add types to this
                 TypedRValue::Call {
                     func_name,
@@ -476,11 +478,6 @@ pub(crate) mod ast_lowering_ctx {
             elem_types: (SemanticType, SemanticType),
             instructions: &mut Vec<WackInstr>,
         ) -> WackValue {
-            // 1. allocate enough memory on the heap to store the pair (see section 2.3.1); if allocation fails,
-            // this MAY produce a runtime error
-            // 2. evaluate both provided expressions (order-of-evaluation is unspecified)
-            // 3. store each evaluated element into its corresponding slot in the pair
-
             // compute the amount of memory this pair literal needs:
             //   `alloc_size_bytes = fst_bytes + snd_bytes`
             // the pair is stored on the heap as two directly-adjacent regions of memory
@@ -499,7 +496,7 @@ pub(crate) mod ast_lowering_ctx {
 
             // it should never be the case that these types disagree
             // TODO: it may be the case that element types can be coerced safely to the
-            //       overall array type, so this assert may trigger false-positives
+            //       overall pair type, so this assert may trigger false-positives
             assert_eq!(elems.0.get_type(), elem_types.0);
             assert_eq!(elems.1.get_type(), elem_types.1);
 
@@ -519,12 +516,79 @@ pub(crate) mod ast_lowering_ctx {
             offset += fst_bytes; // the second element follows directly after the first
             instructions.push(WackInstr::CopyToOffset {
                 src: elem_values.1,
-                dst: pair_dst_ptr.clone(),
+                dst: pair_dst_ptr,
                 offset,
             });
 
             // return variable holding pointer to allocated pair
             wrapped_pair_value
+        }
+
+        fn lower_pair_elem(
+            &mut self,
+            elem: TypedPairElem,
+            elem_sem_type: SemanticType,
+            instructions: &mut Vec<WackInstr>,
+        ) -> WackValue {
+            // match on elem to obtain:
+            //   1: the value which reduces to a pair-type pointer,
+            //   2: the type that the pair-element represents
+            //   3: the offset into the pair at which the pair-element value can be found
+            // TODO: make sure I am using `SemanticType`s correctly, and not misunderstanding anything
+            let (operand_value, operand_element_type, offset) = match elem {
+                TypedPairElem::Fst(lvalue) => {
+                    let lvalue = lvalue.into_inner();
+
+                    // SAFETY: by this point, type checking has concluded and the semantic type
+                    //         of the operand to pair extractions HAS to be a pair-type,
+                    //         so this operation is safe.
+                    let (fst_type, _) = unsafe { lvalue.get_type().into_pair_elem_types() };
+                    let offset = 0; // the first element has zero-offset from start of pair
+                    (lvalue, fst_type, offset)
+                }
+                TypedPairElem::Snd(lvalue) => {
+                    let lvalue = lvalue.into_inner();
+
+                    // SAFETY: by this point, type checking has concluded and the semantic type
+                    //         of the operand to pair extractions HAS to be a pair-type,
+                    //         so this operation is safe.
+                    let (fst_type, snd_type) = unsafe { lvalue.get_type().into_pair_elem_types() };
+                    let offset = fst_type.size_of(); // the second element follows directly after the first
+                    (lvalue, snd_type, offset)
+                }
+            };
+
+            // it should never be the case that these types disagree
+            // TODO: it may be the case that element types can be coerced safely to the
+            //       overall pair type, so this assert may trigger false-positives
+            assert_eq!(operand_element_type, elem_sem_type);
+            let pair_src_ptr = self.lower_lvalue(operand_value, instructions);
+
+            // check that the obtained pointer isn't null pair literal,
+            // and if not, obtain the pointer to the element value
+            let pair_elem_src_ptr = self.make_temporary();
+            instructions.push(WackInstr::NullPtrGuard(pair_src_ptr.clone()));
+            instructions.push(WackInstr::add_ptr_offset(
+                pair_src_ptr,
+                offset,
+                pair_elem_src_ptr.clone(),
+            ));
+
+            // extract the first/second element of pair to underlying runtime representation
+            // by performing pointer dereferencing.
+            //
+            // NOTE: the value will always be a type representable by an integer:
+            //         - integers, booleans, characters, etc. can fit within integer registers
+            //         - arrays, strings, pairs, etc., are actually pointers hence fit within integer registers
+            //       therefore dereferencing is sufficient to obtain the underlying value
+            let dst_value_wrapper = WackValue::Var(self.make_temporary());
+            instructions.push(WackInstr::Load {
+                src_ptr: WackValue::Var(pair_elem_src_ptr),
+                dst: dst_value_wrapper.clone(),
+            });
+
+            // returned the obtained value
+            dst_value_wrapper
         }
 
         // Very confusing but converts a syntax literal to Wacky Value

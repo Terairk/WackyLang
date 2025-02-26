@@ -163,7 +163,7 @@ pub enum WackInstr {
 
     /// USAGE: `dst = *src_ptr`
     ///
-    /// NOTE: [`src_ptr`] must be a pointer/memory address.
+    /// NOTE: [`src_ptr`] must be a pointer/memory address.h
     Load {
         src_ptr: WackValue,
         dst: WackValue,
@@ -251,6 +251,10 @@ pub enum WackInstr {
     /// If it is `null`, a runtime null-pointer-dereference error occurs.
     FreeChecked(WackValue),
 
+    /// Checks that the pointer represented by this value isn't `null`.
+    /// If it is `null`, a runtime null-pointer-dereference error occurs.
+    NullPtrGuard(WackValue),
+
     Exit(WackValue),
     Print {
         src: WackValue,
@@ -260,6 +264,49 @@ pub enum WackInstr {
         src: WackValue,
         ty: SemanticType,
     },
+}
+
+impl WackInstr {
+    // The default index for pointer arithmetic is zero, i.e. the very start
+    const DEFAULT_ADD_PTR_INDEX: WackValue = WackValue::Literal(WackLiteral::Int(0));
+
+    // The default scale for pointer arithmetic should be one byte.
+    const DEFAULT_ADD_PTR_SCALE: usize = 1;
+
+    // The default offset for pointer arithmetic is zero, i.e. no offset
+    const DEFAULT_ADD_PTR_OFFSET: usize = 0;
+
+    /// Creates a pointer-arithmetic instruction that simply adds a fixed offset.
+    #[inline]
+    #[must_use]
+    pub const fn add_ptr_offset(src_ptr: WackValue, offset: usize, dst_ptr: WackTempIdent) -> Self {
+        Self::AddPtr {
+            src_ptr,
+            index: Self::DEFAULT_ADD_PTR_INDEX,
+            scale: Self::DEFAULT_ADD_PTR_SCALE,
+            offset,
+            dst_ptr,
+        }
+    }
+
+    /// Creates a pointer-arithmetic instruction that, provided the scale (in bytes) of each index,
+    /// simply indexes into the array-like region with no offset.
+    #[inline]
+    #[must_use]
+    pub const fn add_ptr_index(
+        src_ptr: WackValue,
+        index: WackValue,
+        scale: usize,
+        dst_ptr: WackTempIdent,
+    ) -> Self {
+        Self::AddPtr {
+            src_ptr,
+            index,
+            scale,
+            offset: Self::DEFAULT_ADD_PTR_OFFSET,
+            dst_ptr,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -756,7 +803,7 @@ impl fmt::Debug for WackInstr {
             Self::Copy { src, dst } => {
                 write!(f, "Copy {{ src: {:?}, dst: {:?} }}", src, dst)
             }
-            WackInstr::Load { src_ptr, dst } => {
+            Self::Load { src_ptr, dst } => {
                 write!(f, "Load {{ src_ptr: {:?}, dst: {:?} }}", src_ptr, dst)
             }
             Self::Store { src, dst_ptr } => {
