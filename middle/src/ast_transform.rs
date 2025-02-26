@@ -98,7 +98,7 @@ pub(crate) mod ast_lowering_ctx {
     impl<T, C> With<T, &C> {
         #[inline]
         #[must_use]
-        pub fn ctx_ref(&self) -> &C {
+        pub const fn ctx_ref(&self) -> &C {
             self.ctx
         }
     }
@@ -137,7 +137,7 @@ pub(crate) mod ast_lowering_ctx {
         pub(crate) fn new_from(type_resolver: TypeResolver) -> AstLoweringCtx {
             let renamer = type_resolver.renamer;
             let mut func_map: HashMap<Ident, Ident> = HashMap::new();
-            let mut ident_counter = renamer.counter();
+            let ident_counter = renamer.counter();
             let func_table = renamer
                 .id_func_table
                 .functions
@@ -151,9 +151,9 @@ pub(crate) mod ast_lowering_ctx {
             let symbol_table: HashMap<WackTempIdent, SemanticType> = type_resolver
                 .symid_table
                 .into_iter()
-                .map(|(id, symid)| (id.into(), symid))
+                .map(|(id, sym_ty)| (id.into(), sym_ty))
                 .collect();
-            AstLoweringCtx {
+            Self {
                 ident_counter,
                 func_table,
                 symbol_table,
@@ -335,7 +335,9 @@ pub(crate) mod ast_lowering_ctx {
             match expr {
                 TypedExpr::Liter(liter, _t) => Self::lower_literal(liter),
                 TypedExpr::Ident(sn_ident, _t) => WackValue::Var(sn_ident.into_inner().into()),
-                TypedExpr::ArrayElem(array_elem, t) => panic!("ArrayElem not implem in Wacky"),
+                TypedExpr::ArrayElem(array_elem, t) => {
+                    unreachable!("ArrayElem not implem in Wacky")
+                }
                 TypedExpr::Unary(sn_unary, sn_expr, _t) => {
                     self.lower_unary(sn_unary.into_inner(), sn_expr.into_inner(), instructions)
                 }
@@ -348,7 +350,9 @@ pub(crate) mod ast_lowering_ctx {
                 TypedExpr::Paren(sn_expr, _t) => {
                     self.lower_expr(sn_expr.into_inner(), instructions)
                 }
-                TypedExpr::Error(_) => panic!("Bug somewhere in frontend."),
+                TypedExpr::Error(_) => unreachable!(
+                    "Unless there is a bug somewhere in frontend, this should not be reachable."
+                ),
             }
         }
 

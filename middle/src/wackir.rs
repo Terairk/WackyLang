@@ -106,57 +106,104 @@ pub struct WackFunction {
 #[derive(Clone)]
 pub enum WackInstr {
     // TODO: at the end of this, remove redundant instructions
+    // TODO: change any `src` and `dst` from "WackValue" bc it might not make sense to e.g. to "store" into a constant value
+    // TODO: add code-docs to these instructions
+    /// This instruction returns a value from within a function body.
     Return(WackValue),
+
+    /// Extends a 32-bit signed integer value to a 64-bit signed integer value,
+    /// preserving the sign-bit in the process.
     SignExtend {
         src: WackValue,
         dst: WackValue,
     },
+
+    /// Converts a 64-bit integer value to a 32-bit integer value, by moving the
+    /// lowest 4 bytes to the [`dst`].
     Truncate {
         src: WackValue,
         dst: WackValue,
     },
+
+    /// Extends a 32-bit integer value to a 64-bit integer value, by filling the
+    /// new highest 4 bytes with zeros, without regard to any sign-bit in [`src`].
     ZeroExtend {
         src: WackValue,
         dst: WackValue,
     },
+
+    /// USAGE: `dst = op(src)`
     Unary {
         op: UnaryOp,
         src: WackValue,
         dst: WackValue,
     },
+
+    /// USAGE: `dst = op(src1, src2)`
     Binary {
         op: BinaryOp,
         src1: WackValue,
         src2: WackValue,
         dst: WackValue,
     },
+
+    /// USAGE: `dst = src`
     Copy {
         src: WackValue,
         dst: WackValue,
     },
+
+    /// USAGE: `dst = &src`
+    ///
+    /// NOTE: [`src`] must be a variable, not constant.
     GetAddress {
         src: WackValue,
         dst: WackValue,
     },
+
+    /// USAGE: `dst = *src_ptr`
+    ///
+    /// NOTE: [`src_ptr`] must be a pointer/memory address.
     Load {
         src_ptr: WackValue,
         dst: WackValue,
     },
+
+    /// USAGE: `*dst_ptr = src`
+    ///
+    /// NOTE: [`dst_ptr`] must be a pointer/memory address.
     Store {
         src: WackValue,
         dst_ptr: WackValue,
     },
+
+    /// USAGE: `dst_ptr = offset + src_ptr + (index * scale)`
+    ///
+    /// NOTE: [`src_ptr`] and [`dst_ptr`] must be a pointers/memory addresses;
+    ///       the base unit of the pointer-arithmetic is 1 byte, which is scaled by [`scale`].
+    ///
+    /// INTERNAL NOTE: DELETE LATER... -> this is a slightly modified version of `AddPtr(..)` that also includes offset
+    ///                which I think is acceptable [since `LEA` can support that](https://stackoverflow.com/a/32011131/9700478),
+    ///                e.g. `lea OFF(%rax, %rbx, SCALE), %rcx   # rcx = OFF + (rax + rbx*SCALE)`
     AddPtr {
-        ptr: WackValue,
+        src_ptr: WackValue,
         index: WackValue,
-        scale: u32,
-        dst: WackTempIdent,
+        scale: usize,
+        offset: usize,
+        dst_ptr: WackTempIdent,
     },
+
+    /// Copies the bytes of scalar value represented by [`src`], to the memory location (plus offset)
+    /// of the object represented by variable [`dst`].
+    ///
+    /// It can be seen as an automated version of C's `memcpy`.
     CopyToOffset {
         src: WackValue,
         dst: WackTempIdent,
         offset: u32,
     },
+
+    /// ??
     CopyFromOffset {
         src: WackTempIdent,
         dst: WackValue,
@@ -180,6 +227,14 @@ pub enum WackInstr {
     Read {
         dst: WackValue,
         ty: SemanticType,
+    },
+    /// Allocates [`size`] bytes on the heap (or crashes with out-of-memory runtime error) and
+    /// stores the memory address of the start of the allocated memory-region in [`dst`].
+    ///
+    /// It can be seen as an automated version of C's `malloc`.
+    Alloc {
+        size: usize,
+        dst_ptr: WackValue,
     },
     Free(WackValue),
     Exit(WackValue),
@@ -665,16 +720,16 @@ impl fmt::Debug for WackInstr {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            WackInstr::Return(val) => write!(f, "Return({:?})", val),
-            WackInstr::ZeroExtend { src, dst } => {
+            Self::Return(val) => write!(f, "Return({:?})", val),
+            Self::ZeroExtend { src, dst } => {
                 write!(f, "ZeroExtend {{ src: {:?}, dst: {:?} }}", src, dst)
             }
-            WackInstr::Unary { op, src, dst } => write!(
+            Self::Unary { op, src, dst } => write!(
                 f,
                 "Unary {{ op: {:?}, src: {:?}, dst: {:?} }}",
                 op, src, dst
             ),
-            WackInstr::Binary {
+            Self::Binary {
                 op,
                 src1,
                 src2,
@@ -684,48 +739,49 @@ impl fmt::Debug for WackInstr {
                 "Binary {{ op: {:?}, src1: {:?}, src2: {:?}, dst: {:?} }}",
                 op, src1, src2, dst
             ),
-            WackInstr::Copy { src, dst } => {
+            Self::Copy { src, dst } => {
                 write!(f, "Copy {{ src: {:?}, dst: {:?} }}", src, dst)
             }
             WackInstr::Load { src_ptr, dst } => {
                 write!(f, "Load {{ src_ptr: {:?}, dst: {:?} }}", src_ptr, dst)
             }
-            WackInstr::Store { src, dst_ptr } => {
+            Self::Store { src, dst_ptr } => {
                 write!(f, "Store {{ src: {:?}, dst_ptr: {:?} }}", src, dst_ptr)
             }
-            WackInstr::AddPtr {
-                ptr,
+            Self::AddPtr {
+                src_ptr,
                 index,
                 scale,
-                dst,
+                offset,
+                dst_ptr,
             } => write!(
                 f,
-                "AddPtr {{ ptr: {:?}, index: {:?}, scale: {:?}, dst: {:?} }}",
-                ptr, index, scale, dst
+                "AddPtr {{ src_ptr: {:?}, index: {:?}, scale: {:?}, offset: {:?}, dst_ptr: {:?} }}",
+                src_ptr, index, scale, offset, dst_ptr
             ),
-            WackInstr::CopyToOffset { src, dst, offset } => write!(
+            Self::CopyToOffset { src, dst, offset } => write!(
                 f,
                 "CopyToOffset {{ src: {:?}, dst: {:?}, offset: {:?} }}",
                 src, dst, offset
             ),
-            WackInstr::CopyFromOffset { src, offset, dst } => write!(
+            Self::CopyFromOffset { src, offset, dst } => write!(
                 f,
                 "CopyFromOffset {{ src: {:?}, offset: {:?}, dst: {:?} }}",
                 src, offset, dst
             ),
-            WackInstr::Jump(target) => write!(f, "Jump({:?})", target),
-            WackInstr::JumpIfZero { condition, target } => write!(
+            Self::Jump(target) => write!(f, "Jump({:?})", target),
+            Self::JumpIfZero { condition, target } => write!(
                 f,
                 "JumpIfZero {{ condition: {:?}, target: {:?} }}",
                 condition, target
             ),
-            WackInstr::JumpIfNotZero { condition, target } => write!(
+            Self::JumpIfNotZero { condition, target } => write!(
                 f,
                 "JumpIfNotZero {{ condition: {:?}, target: {:?} }}",
                 condition, target
             ),
-            WackInstr::Label(label) => write!(f, "Label({:?})", label),
-            WackInstr::FunCall {
+            Self::Label(label) => write!(f, "Label({:?})", label),
+            Self::FunCall {
                 fun_name,
                 args,
                 dst,
@@ -734,18 +790,18 @@ impl fmt::Debug for WackInstr {
                 "FunCall {{ fun_name: {:?}, args: {:?}, dst: {:?} }}",
                 fun_name, args, dst
             ),
-            WackInstr::Read { dst, ty } => {
+            Self::Read { dst, ty } => {
                 write!(f, "Read {{ dst: {:?}, ty: {:?} }}", dst, ty)
             }
-            WackInstr::Free(val) => write!(f, "Free({:?})", val),
-            WackInstr::Exit(val) => write!(f, "Exit({:?})", val),
-            WackInstr::Print { src, ty } => {
+            Self::Free(val) => write!(f, "Free({:?})", val),
+            Self::Exit(val) => write!(f, "Exit({:?})", val),
+            Self::Print { src, ty } => {
                 write!(f, "Print {{ src: {:?}, ty: {:?} }}", src, ty)
             }
-            WackInstr::Println { src, ty } => {
+            Self::Println { src, ty } => {
                 write!(f, "Println {{ src: {:?}, ty: {:?} }}", src, ty)
             }
-            _ => unimplemented!(),
+            _ => todo!("Implement these later"),
         }
     }
 }
