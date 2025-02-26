@@ -81,6 +81,53 @@ impl Type {
             Self::Error(span) => SemanticType::Error(span.clone()),
         }
     }
+
+    pub fn size_of(&self) -> usize {
+        match self {
+            Type::BaseType(b) => todo!(),
+            Type::ArrayType(_) => todo!(),
+            Type::PairType(_, _) => todo!(),
+            Type::Error(_) => todo!(),
+        }
+    }
+}
+
+impl BaseType {
+    /// A pointer on a 64-bit machine is 8 bytes.
+    pub const PTR_BYTES: usize = 8;
+
+    /// A signed 32-bit integer takes up 4 bytes.
+    pub const INT_BYTES: usize = 4;
+
+    /// A boolean can be represented with 1 byte.
+    pub const BOOL_BYTES: usize = 1;
+
+    /// A 7-bit ASCII character can be represented with one byte.
+    pub const CHAR_BYTES: usize = 1;
+
+    /// The string-type is merely a pointer to the data of the string-body:
+    /// a length-prefixed contiguous array of characters.
+    pub const STRING_BYTES: usize = 8;
+
+    #[inline]
+    #[must_use]
+    pub const fn size_of(&self) -> usize {
+        match *self {
+            Self::Int => Self::INT_BYTES,
+            Self::Bool => Self::BOOL_BYTES,
+            Self::Char => Self::CHAR_BYTES,
+            Self::String => Self::STRING_BYTES,
+        }
+    }
+
+    /// The string-body is a value in the heap which begins with a pointer-sized length value,
+    /// followed by a contiguous array of characters which corresponds to that length value.
+    #[allow(clippy::arithmetic_side_effects)]
+    #[inline]
+    #[must_use]
+    pub const fn string_body_bytes(len: usize) -> usize {
+        Self::PTR_BYTES + len * Self::CHAR_BYTES
+    }
 }
 
 impl PairElemType {
@@ -115,7 +162,7 @@ impl SemanticType {
             }
         }
 
-        return from == to;
+        from == to
     }
 
     pub fn can_coerce_into(&self, to: &SemanticType) -> bool {
@@ -165,4 +212,3 @@ impl Display for SemanticType {
         }
     }
 }
-
