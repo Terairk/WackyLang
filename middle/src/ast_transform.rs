@@ -56,8 +56,8 @@ pub(crate) struct AstLoweringCtx {
 // impls relating to `AstLoweringCtx`
 pub(crate) mod ast_lowering_ctx {
     use crate::ast_transform::{
-        AstLoweringCtx, TypedExpr, TypedFunc, TypedFuncParam, TypedLValue, TypedPairElem,
-        TypedRValue, TypedStat, TypedStatBlock,
+        AstLoweringCtx, TypedArrayElem, TypedExpr, TypedFunc, TypedFuncParam, TypedLValue,
+        TypedPairElem, TypedRValue, TypedStat, TypedStatBlock,
     };
     use crate::wackir::{
         BinaryOp, UnaryOp, WackBool, WackFunction, WackInstr, WackLiteral, WackTempIdent, WackValue,
@@ -135,7 +135,7 @@ pub(crate) mod ast_lowering_ctx {
     }
 
     impl AstLoweringCtx {
-        pub(crate) fn new_from(type_resolver: TypeResolver) -> AstLoweringCtx {
+        pub(crate) fn new_from(type_resolver: TypeResolver) -> Self {
             let renamer = type_resolver.renamer;
             let mut func_map: HashMap<Ident, Ident> = HashMap::new();
             let ident_counter = renamer.counter();
@@ -341,7 +341,25 @@ pub(crate) mod ast_lowering_ctx {
                 TypedExpr::Liter(liter, _t) => Self::lower_literal(liter),
                 TypedExpr::Ident(sn_ident, _t) => WackValue::Var(sn_ident.into_inner().into()),
                 TypedExpr::ArrayElem(array_elem, t) => {
-                    unreachable!("ArrayElem not implem in Wacky")
+                    // obtain pointer to the correct array element
+                    let array_elem_src_ptr =
+                        self.lower_array_elem_to_ptr(array_elem.into_inner(), t, instructions);
+
+                    // dereference pointer to array-element, to extract its value to underlying
+                    // runtime representation.
+                    //
+                    // NOTE: the value will always be a type representable by an integer:
+                    //         - integers, booleans, characters, etc. can fit within integer registers
+                    //         - arrays, strings, pairs, etc., are actually pointers hence fit within integer registers
+                    //       therefore dereferencing is sufficient to obtain the underlying value
+                    let dst_value = WackValue::Var(self.make_temporary());
+                    instructions.push(WackInstr::Load {
+                        src_ptr: array_elem_src_ptr,
+                        dst: dst_value.clone(),
+                    });
+
+                    // returned the obtained value
+                    dst_value
                 }
                 TypedExpr::Unary(sn_unary, sn_expr, _t) => {
                     self.lower_unary(sn_unary.into_inner(), sn_expr.into_inner(), instructions)
@@ -368,14 +386,14 @@ pub(crate) mod ast_lowering_ctx {
         ) -> WackValue {
             match rvalue {
                 TypedRValue::Expr(expr, _) => self.lower_expr(expr.into_inner(), instructions),
-                TypedRValue::ArrayLiter(elems, sym_type) => self.lower_array_liter(
+                TypedRValue::ArrayLiter(elems, sym_type) => self.lower_array_liter_to_ptr(
                     elems.into_iter().map(Node::into_inner).collect(),
                     // SAFETY: by this point, type checking has concluded and the semantic type
                     //         HAS to be an array type, so this operation is safe.
                     unsafe { sym_type.into_array_elem_type() },
                     instructions,
                 ),
-                TypedRValue::NewPair(fst, snd, sym_type) => self.lower_newpair(
+                TypedRValue::NewPair(fst, snd, sym_type) => self.lower_newpair_to_ptr(
                     (fst.into_inner(), snd.into_inner()),
                     // SAFETY: by this point, type checking has concluded and the semantic type
                     //         HAS to be a pair-type, so this operation is safe.
@@ -383,7 +401,25 @@ pub(crate) mod ast_lowering_ctx {
                     instructions,
                 ),
                 TypedRValue::PairElem(elem, sem_type) => {
-                    self.lower_pair_elem(elem.into_inner(), sem_type, instructions)
+                    // obtain pointer to the correct pair element
+                    let pair_elem_src_ptr =
+                        self.lower_pair_elem_to_ptr(elem.into_inner(), sem_type, instructions);
+
+                    // extract the first/second element of pair to underlying runtime representation
+                    // by performing pointer dereferencing.
+                    //
+                    // NOTE: the value will always be a type representable by an integer:
+                    //         - integers, booleans, characters, etc. can fit within integer registers
+                    //         - arrays, strings, pairs, etc., are actually pointers hence fit within integer registers
+                    //       therefore dereferencing is sufficient to obtain the underlying value
+                    let dst_value = WackValue::Var(self.make_temporary());
+                    instructions.push(WackInstr::Load {
+                        src_ptr: pair_elem_src_ptr,
+                        dst: dst_value.clone(),
+                    });
+
+                    // returned the obtained value
+                    dst_value
                 }
                 // TODO: please add types to this
                 TypedRValue::Call {
@@ -418,15 +454,19 @@ pub(crate) mod ast_lowering_ctx {
         ) -> WackValue {
             match lvalue {
                 TypedLValue::Ident(ident, _) => WackValue::Var(ident.into_inner().into()),
-                TypedLValue::ArrayElem(array_elem, _) => {
-                    panic!("ArrayElem not implemented in Wacky")
+                TypedLValue::ArrayElem(array_elem, t) => {
+                    // the lvalue evaluation only needs to return the pointer to the array element
+                    self.lower_array_elem_to_ptr(array_elem.into_inner(), t, instructions)
                 }
-                TypedLValue::PairElem(pair_elem, _) => panic!("PairElem not implemented in Wacky"),
+                TypedLValue::PairElem(elem, sem_type) => {
+                    // the rvalue evaluation only needs to return the pointer to the pair element
+                    self.lower_pair_elem_to_ptr(elem.into_inner(), sem_type, instructions)
+                }
             }
         }
 
         #[allow(clippy::arithmetic_side_effects)]
-        fn lower_array_liter(
+        fn lower_array_liter_to_ptr(
             &mut self,
             elems: Box<[TypedExpr]>,
             elem_type: SemanticType,
@@ -472,7 +512,7 @@ pub(crate) mod ast_lowering_ctx {
         }
 
         #[allow(clippy::arithmetic_side_effects)]
-        fn lower_newpair(
+        fn lower_newpair_to_ptr(
             &mut self,
             elems: (TypedExpr, TypedExpr),
             elem_types: (SemanticType, SemanticType),
@@ -524,7 +564,7 @@ pub(crate) mod ast_lowering_ctx {
             wrapped_pair_value
         }
 
-        fn lower_pair_elem(
+        fn lower_pair_elem_to_ptr(
             &mut self,
             elem: TypedPairElem,
             elem_sem_type: SemanticType,
@@ -566,29 +606,24 @@ pub(crate) mod ast_lowering_ctx {
 
             // check that the obtained pointer isn't null pair literal,
             // and if not, obtain the pointer to the element value
-            let pair_elem_src_ptr = self.make_temporary();
+            let pair_elem_dst_ptr = self.make_temporary();
             instructions.push(WackInstr::NullPtrGuard(pair_src_ptr.clone()));
             instructions.push(WackInstr::add_ptr_offset(
                 pair_src_ptr,
                 offset,
-                pair_elem_src_ptr.clone(),
+                pair_elem_dst_ptr.clone(),
             ));
 
-            // extract the first/second element of pair to underlying runtime representation
-            // by performing pointer dereferencing.
-            //
-            // NOTE: the value will always be a type representable by an integer:
-            //         - integers, booleans, characters, etc. can fit within integer registers
-            //         - arrays, strings, pairs, etc., are actually pointers hence fit within integer registers
-            //       therefore dereferencing is sufficient to obtain the underlying value
-            let dst_value_wrapper = WackValue::Var(self.make_temporary());
-            instructions.push(WackInstr::Load {
-                src_ptr: WackValue::Var(pair_elem_src_ptr),
-                dst: dst_value_wrapper.clone(),
-            });
+            WackValue::Var(pair_elem_dst_ptr)
+        }
 
-            // returned the obtained value
-            dst_value_wrapper
+        fn lower_array_elem_to_ptr(
+            &mut self,
+            array_elem: TypedArrayElem,
+            sem_type: SemanticType,
+            instructions: &mut Vec<WackInstr>,
+        ) -> WackValue {
+            todo!()
         }
 
         // Very confusing but converts a syntax literal to Wacky Value
