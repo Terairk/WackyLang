@@ -224,8 +224,8 @@ pub mod wack_bool {
     pub struct NonBooleanByteError(u8);
 
     impl WackBool {
-        pub const TRUE: WackBool = WackBool(1);
-        pub const FALSE: WackBool = WackBool(0);
+        pub const TRUE: Self = Self(1);
+        pub const FALSE: Self = Self(0);
 
         #[allow(clippy::as_conversions)]
         #[inline]
@@ -315,10 +315,17 @@ pub mod wack_char {
     pub struct NonAsciiByteError(u8);
 
     impl WackChar {
+        /// # Safety
+        /// Only use this if you are _sure_ the [`char`] is actually ASCII.
+        #[inline]
+        #[must_use]
         pub const unsafe fn from_char_unchecked(r#char: char) -> Self {
             Self(r#char as u8)
         }
 
+        /// # Errors
+        /// Only [`char`]s which are _actually_ ASCII can be used to create [`WackChar`].
+        #[inline]
         pub const fn try_from_char(r#char: char) -> Result<Self, NonAsciiCharError> {
             match r#char {
                 '\x00'..='\x7F' => Ok(Self(r#char as u8)),
@@ -326,14 +333,24 @@ pub mod wack_char {
             }
         }
 
+        #[allow(clippy::as_conversions)]
+        #[inline]
+        #[must_use]
         pub const fn into_char(self) -> char {
             self.0 as char
         }
 
+        /// # Safety
+        /// Only use this if you are _sure_ the [`u8`] byte is actually ASCII.
+        #[inline]
+        #[must_use]
         pub const unsafe fn from_u8_unchecked(r#u8: u8) -> Self {
             Self(r#u8)
         }
 
+        /// # Errors
+        /// Only [`u8`] bytes which are _actually_ ASCII can be used to create [`WackChar`].
+        #[inline]
         pub const fn try_from_u8(r#u8: u8) -> Result<Self, NonAsciiByteError> {
             match r#u8 {
                 0x00..=0x7F => Ok(Self(r#u8)),
@@ -341,45 +358,25 @@ pub mod wack_char {
             }
         }
 
+        #[inline]
+        #[must_use]
         pub const fn into_u8(self) -> u8 {
             self.0
         }
-
-        //
-        // /// # Safety
-        // /// Only use this if you are _sure_ the [`u8`] byte is actually a boolean.
-        // #[inline]
-        // #[must_use]
-        // pub const unsafe fn from_u8_unchecked(r#u8: u8) -> Self {
-        //     Self(r#u8)
-        // }
-        //
-        // /// # Errors
-        // /// Only [`u8`] bytes which are _actually_ booleans can be used to create [`WackBool`].
-        // #[inline]
-        // pub const fn try_from_u8(r#u8: u8) -> Result<Self, NonBooleanByteError> {
-        //     match r#u8 {
-        //         0 | 1 => Ok(Self(r#u8)),
-        //         _ => Err(NonBooleanByteError(r#u8)),
-        //     }
-        // }
-        //
-        // #[inline]
-        // #[must_use]
-        // pub const fn into_u8(self) -> u8 {
-        //     self.0
-        // }
     }
 
     impl TryFrom<char> for WackChar {
         type Error = NonAsciiCharError;
 
+        #[inline]
         fn try_from(value: char) -> Result<Self, Self::Error> {
             Self::try_from_char(value)
         }
     }
 
     impl From<WackChar> for char {
+        #[inline]
+        #[must_use]
         fn from(value: WackChar) -> Self {
             value.into_char()
         }
@@ -394,6 +391,8 @@ pub mod wack_char {
     }
 
     impl From<WackChar> for u8 {
+        #[inline]
+        #[must_use]
         fn from(value: WackChar) -> Self {
             value.into_u8()
         }
@@ -476,7 +475,11 @@ impl From<ast::Liter> for WackLiteral {
         match liter {
             ast::Liter::IntLiter(i) => Self::Int(i),
             ast::Liter::BoolLiter(b) => Self::Bool(b.into()),
-            ast::Liter::CharLiter(c) => Self::Char(unsafe { WackChar::from_char_unchecked(c) }),
+            ast::Liter::CharLiter(c) =>
+            // SAFETY: literal characters from the parser are guaranteed to be ASCII
+            {
+                Self::Char(unsafe { WackChar::from_char_unchecked(c) })
+            }
             ast::Liter::StrLiter(s) => Self::StringLit(s),
             ast::Liter::PairLiter => Self::NullPair,
         }
@@ -678,6 +681,7 @@ impl fmt::Debug for WackInstr {
 mod tests {
     use super::*;
 
+    #[allow(clippy::undocumented_unsafe_blocks)]
     #[test]
     fn test_liter_conversion() {
         // Test integer literal conversion
