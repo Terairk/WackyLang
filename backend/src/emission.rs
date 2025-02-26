@@ -1,5 +1,5 @@
 use core::panic;
-
+use std::collections::BTreeMap;
 use util::gen_flags::get_flags_gbl;
 
 use crate::{
@@ -34,9 +34,17 @@ impl AssemblyFormatter {
     // Format an entire program by printing each function.
 
     #[inline]
-    pub fn format_program(program: &AsmProgram) -> String {
+    pub fn format_program(program: &AsmProgram, str_literals: BTreeMap<String, String>) -> String {
         let mut output = String::new();
-        // TODO: emit string constants here with their length
+        // Printing string literals with their respective lengths
+        // output.push_str(".globl main\n");
+        output.push_str(".section .rodata\n");
+        for (string, label) in str_literals {
+            output.push_str(format!("# length of {}\n", label).as_str());
+            output.push_str(format!("   .int {}\n", string.len()).as_str());
+            output.push_str(format!("{}\n", label).as_str());
+            output.push_str(format!("   .asciz \"{}\"\n", string).as_str());
+        }
 
         // have a .text directive here once per assembly file
         output.push_str(".text\n");

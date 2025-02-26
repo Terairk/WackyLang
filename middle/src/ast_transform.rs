@@ -7,7 +7,7 @@ use syntax::ast::{
 use syntax::rename::RenamedName;
 use syntax::typecheck::TypeResolver;
 use syntax::{rename::IdFuncTable, types::SemanticType};
-
+use syntax::source::SourcedNode;
 use crate::wackir::{
     BinaryOperator, ConvertToMidIdent as _, MidIdent, UnaryOperator, WackConst, WackFunction,
     WackInstruction, WackProgram, WackValue,
@@ -174,9 +174,30 @@ impl Lowerer {
                 let instr = WackInstruction::Return(value);
                 instructions.push(instr);
             }
-            TypedStat::Exit(expr) => panic!("Exit not implemented in Wacky"),
-            TypedStat::Print(expr) => panic!("Print not implemented in Wacky"),
-            TypedStat::Println(expr) => panic!("Println not implemented in Wacky"),
+            TypedStat::Exit(expr) => {
+                let sem_type = expr.inner().get_type();
+                let value = self.lower_expr(expr.into_inner(), instructions);
+                let instr = WackInstruction::Exit(value);
+                instructions.push(instr);
+            },
+            TypedStat::Print(expr) => {
+                let sem_type = expr.inner().get_type();
+                let value = self.lower_expr(expr.into_inner(), instructions);
+                let instr = WackInstruction::Print {
+                    src: value,
+                    ty: sem_type,
+                };
+                instructions.push(instr);
+            },
+            TypedStat::Println(expr) => {
+                let sem_type = expr.inner().get_type();
+                let value = self.lower_expr(expr.into_inner(), instructions);
+                let instr = WackInstruction::Println {
+                    src: value,
+                    ty: sem_type,
+                };
+                instructions.push(instr);
+            },
             TypedStat::IfThenElse {
                 if_cond,
                 then_body,
