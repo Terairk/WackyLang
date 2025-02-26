@@ -66,8 +66,9 @@ pub(crate) mod ast_lowering_ctx {
     use std::collections::HashMap;
     use syntax::ast;
     use syntax::ast::{BinaryOper, Ident, UnaryOper};
+    use syntax::node::Node;
     use syntax::typecheck::TypeResolver;
-    use syntax::types::SemanticType;
+    use syntax::types::{BaseType, SemanticType};
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub struct With<T, C> {
@@ -231,10 +232,14 @@ pub(crate) mod ast_lowering_ctx {
                     name,
                     rvalue,
                 } => {
-                    let mid_ident = name.into_inner().into();
-                    let lhs = WackValue::Var(mid_ident);
-                    let sem_type = r#type;
+                    // extract LHS
+                    let lhs_type = r#type.into_inner();
+                    let lhs = WackValue::Var(name.into_inner().into());
+
+                    // evaluate RHS, store into temp `rhs` variable
                     let rhs = self.lower_rvalue(rvalue.into_inner(), instructions);
+
+                    // copy value at `rhs` to `lhs` identifier
                     let instr = WackInstr::Copy { src: rhs, dst: lhs };
                     instructions.push(instr);
                 }
@@ -363,7 +368,13 @@ pub(crate) mod ast_lowering_ctx {
         ) -> WackValue {
             match rvalue {
                 TypedRValue::Expr(expr, _) => self.lower_expr(expr.into_inner(), instructions),
-                TypedRValue::ArrayLiter(_, _) => unimplemented!(),
+                TypedRValue::ArrayLiter(elems, sym_type) => self.lower_array_liter(
+                    elems.into_iter().map(Node::into_inner).collect(),
+                    // SAFETY: by this point, type checking has concluded and the semantic type
+                    //         HAS to be an array type, so this operation is safe.
+                    unsafe { sym_type.into_array_elem_type() },
+                    instructions,
+                ),
                 TypedRValue::NewPair(_, _, _) => unimplemented!(),
                 // TODO: please add types to this
                 TypedRValue::PairElem(_, _) => unimplemented!(),
@@ -404,6 +415,52 @@ pub(crate) mod ast_lowering_ctx {
                 }
                 TypedLValue::PairElem(pair_elem, _) => panic!("PairElem not implemented in Wacky"),
             }
+        }
+
+        #[allow(clippy::arithmetic_side_effects)]
+        fn lower_array_liter(
+            &mut self,
+            elems: Box<[TypedExpr]>,
+            elem_type: SemanticType,
+            instructions: &mut Vec<WackInstr>,
+        ) -> WackValue {
+            // compute the amount of memory this array literal needs:
+            //   `alloc_size_bytes = array_len_bytes + (array_len * array_elem_bytes)`
+            // the array is stored on the heap prefixed with its length, so it needs to allocate
+            // memory to store that length-value as well.
+            let array_len_bytes = BaseType::ARRAY_LEN_BYTES;
+            let array_len = elems.len();
+            let array_elem_bytes = elem_type.size_of();
+            let alloc_size_bytes = array_len_bytes + array_len * array_elem_bytes;
+
+            //  allocate enough memory on the heap to store all elements and the size of the array
+            let array_dst_ptr = self.make_temporary();
+            let wrapped_array_value = WackValue::Var(array_dst_ptr.clone());
+            instructions.push(WackInstr::Alloc {
+                size: alloc_size_bytes,
+                dst_ptr: wrapped_array_value.clone(),
+            });
+
+            // one-by-one, evaluate each element of the array and then
+            // store it to the corresponding slot in the array
+            for (i, elem) in elems.into_iter().enumerate() {
+                // it should never be the case that these types disagree
+                // TODO: it may be the case that element types can be coerced safely to the
+                //       overall array type, so this assert may trigger false-positives
+                assert_eq!(elem.get_type(), elem_type);
+                let elem_value = self.lower_expr(elem, instructions);
+
+                // compute offset into array, and copy element to that location
+                let offset = array_len_bytes + i * array_elem_bytes;
+                instructions.push(WackInstr::CopyToOffset {
+                    src: elem_value,
+                    dst: array_dst_ptr.clone(),
+                    offset,
+                });
+            }
+
+            // return variable holding pointer to allocated array
+            wrapped_array_value
         }
 
         // Very confusing but converts a syntax literal to Wacky Value

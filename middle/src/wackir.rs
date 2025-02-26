@@ -196,11 +196,15 @@ pub enum WackInstr {
     /// Copies the bytes of scalar value represented by [`src`], to the memory location (plus offset)
     /// of the object represented by variable [`dst`].
     ///
+    /// TODO: >its unclear which of these are pointers, and which are values...
+    ///       >its ALSO unclear how exactly the size-information (which is based on types) is meant
+    ///        to propagate to ASM generation?? how are we looking up the size of [`src`]
+    ///
     /// It can be seen as an automated version of C's `memcpy`.
     CopyToOffset {
         src: WackValue,
         dst: WackTempIdent,
-        offset: u32,
+        offset: usize,
     },
 
     /// ??
@@ -236,7 +240,17 @@ pub enum WackInstr {
         size: usize,
         dst_ptr: WackValue,
     },
-    Free(WackValue),
+
+    /// This frees the memory associated with the pointer that the value holds, without
+    /// checking if the pointer is `null` or not.
+    /// If it is `null`, nothing is done and no runtime errors occur.
+    FreeUnchecked(WackValue),
+
+    /// This frees the memory associated with the pointer that the value holds, checking that
+    /// the pointer isn't `null`.
+    /// If it is `null`, a runtime null-pointer-dereference error occurs.
+    FreeChecked(WackValue),
+
     Exit(WackValue),
     Print {
         src: WackValue,
@@ -793,7 +807,7 @@ impl fmt::Debug for WackInstr {
             Self::Read { dst, ty } => {
                 write!(f, "Read {{ dst: {:?}, ty: {:?} }}", dst, ty)
             }
-            Self::Free(val) => write!(f, "Free({:?})", val),
+            Self::FreeUnchecked(val) => write!(f, "FreeUnchecked({:?})", val),
             Self::Exit(val) => write!(f, "Exit({:?})", val),
             Self::Print { src, ty } => {
                 write!(f, "Print {{ src: {:?}, ty: {:?} }}", src, ty)

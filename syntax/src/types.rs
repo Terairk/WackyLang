@@ -87,6 +87,10 @@ impl Type {
 }
 
 impl BaseType {
+    // TODO: the frontend is supposed to be backend-agnostic. The precise sizes of these types
+    //       should be moved elsewhere/to the backend, make the frontend more agnostic to e.g.
+    //       if the target is 64-bit or 32-bit.
+
     /// A pointer on a 64-bit machine is 8 bytes.
     pub const PTR_BYTES: usize = 8;
 
@@ -263,6 +267,19 @@ impl SemanticType {
             Self::Error(_) => {
                 unreachable!("The error type should not propogate beyond semantic analysis.")
             }
+        }
+    }
+
+    /// # Safety
+    /// If you are _sure_ the semantic type is that of an array, you can unsafely extract
+    /// the inner element type; if it isn't an array-type, a runtime panic will occur.
+    #[inline]
+    #[must_use]
+    pub unsafe fn into_array_elem_type(self) -> Self {
+        // extract the semantic types
+        match self {
+            Self::Array(elems_ty) => *elems_ty,
+            _ => unreachable!("The type is assumed to be ."),
         }
     }
 }
