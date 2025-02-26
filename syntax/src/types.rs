@@ -246,9 +246,29 @@ impl SemanticType {
             _ => false,
         }
     }
+
+    #[inline]
+    #[must_use]
+    pub fn size_of(&self) -> usize {
+        match *self {
+            Self::Int => BaseType::INT_BYTES,
+            Self::Bool => BaseType::BOOL_BYTES,
+            Self::Char => BaseType::CHAR_BYTES,
+            Self::String => BaseType::STRING_PTR_BYTES,
+            Self::Array(_) => BaseType::ARRAY_PTR_BYTES,
+            Self::Pair(_, _) | Self::ErasedPair => BaseType::PAIR_PTR_BYTES,
+            Self::AnyType => {
+                unreachable!("We should not be checking the size of the any-type.")
+            }
+            Self::Error(_) => {
+                unreachable!("The error type should not propogate beyond semantic analysis.")
+            }
+        }
+    }
 }
 
 impl Display for SemanticType {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             SemanticType::Int => write!(f, "int"),
