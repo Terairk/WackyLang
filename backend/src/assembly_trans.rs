@@ -8,8 +8,7 @@ use crate::{
     gen_predefined::ERR_DIVZERO,
 };
 use middle::wackir::{
-    BinaryOperator, UnaryOperator, WackFunction, WackInstruction, WackLiteral, WackProgram,
-    WackValue,
+    BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackProgram, WackValue,
 };
 use std::collections::BTreeMap;
 use syntax::types::SemanticType;
@@ -66,7 +65,7 @@ impl AsmGen {
         label
     }
 
-    fn lower_main_asm(&mut self, instrs: Vec<WackInstruction>) -> AsmFunction {
+    fn lower_main_asm(&mut self, instrs: Vec<WackInstr>) -> AsmFunction {
         let mut asm_instructions = Vec::new();
         for wack_instr in instrs {
             self.lower_instruction(wack_instr, &mut asm_instructions);
@@ -191,9 +190,9 @@ impl AsmGen {
         asm.push(AsmInstruction::Call(func_name.to_string(), false));
     }
 
-    fn lower_instruction(&mut self, instr: WackInstruction, asm: &mut Vec<AsmInstruction>) {
+    fn lower_instruction(&mut self, instr: WackInstr, asm: &mut Vec<AsmInstruction>) {
         use AsmInstruction as Asm;
-        use WackInstruction::{
+        use WackInstr::{
             Binary, Copy, FunCall, Jump, JumpIfNotZero, JumpIfZero, Label, Return, Unary,
         };
         // TODO: finish this scaffolding
@@ -250,13 +249,13 @@ impl AsmGen {
             FunCall { .. } => unimplemented!(
                 "function call lowering is unimplemented, until the ASM representation finalizes, PS: function identifiers have to be `WackIdent`s"
             ),
-            WackInstruction::Print { src: src, ty: ty } => self.lower_print(src, ty, asm),
-            WackInstruction::Println { src: src, ty: ty } => {
+            WackInstr::Print { src: src, ty: ty } => self.lower_print(src, ty, asm),
+            WackInstr::Println { src: src, ty: ty } => {
                 self.lower_print(src, ty, asm);
                 insert_flag_gbl(GenFlags::PRINT_LN);
                 asm.push(AsmInstruction::Call("_println".to_string(), false));
             }
-            WackInstruction::Exit(value) => {
+            WackInstr::Exit(value) => {
                 todo!("add GenFlag for EXIT");
                 // insert_flag_gbl(GenFlags::EXIT);
                 let operand = self.lower_value(value, asm);
@@ -413,7 +412,7 @@ impl AsmGen {
 
     fn lower_unary(
         &mut self,
-        op: &UnaryOperator,
+        op: &UnaryOp,
         src: WackValue,
         dst: WackValue,
         asm: &mut Vec<AsmInstruction>,
@@ -429,7 +428,7 @@ impl AsmGen {
         let op = op.clone();
         #[allow(clippy::single_match_else)]
         match op {
-            UnaryOperator::Not => {
+            UnaryOp::Not => {
                 asm.push(Asm::Cmp {
                     typ: AssemblyType::Longword,
                     op1: Operand::Imm(0),
@@ -462,14 +461,14 @@ impl AsmGen {
 
     fn lower_binary(
         &mut self,
-        op: &BinaryOperator,
+        op: &BinaryOp,
         src1: WackValue,
         src2: WackValue,
         dst: WackValue,
         asm: &mut Vec<AsmInstruction>,
     ) {
         use AsmInstruction as Asm;
-        use BinaryOperator::*;
+        use BinaryOp::*;
 
         let src1_operand = self.lower_value(src1, asm);
         let src2_operand = self.lower_value(src2, asm);
@@ -589,9 +588,9 @@ impl AsmGen {
     }
 }
 
-fn convert_arith_binop(wacky_binop: BinaryOperator) -> AsmBinaryOperator {
+fn convert_arith_binop(wacky_binop: BinaryOp) -> AsmBinaryOperator {
     use AsmBinaryOperator as AsmBinOp;
-    use BinaryOperator as BinOp;
+    use BinaryOp as BinOp;
 
     match wacky_binop {
         BinOp::Add => AsmBinOp::Add,
@@ -601,8 +600,8 @@ fn convert_arith_binop(wacky_binop: BinaryOperator) -> AsmBinaryOperator {
     }
 }
 
-fn convert_code(code: BinaryOperator) -> CondCode {
-    use BinaryOperator::*;
+fn convert_code(code: BinaryOp) -> CondCode {
+    use BinaryOp::*;
     use CondCode as CC;
 
     match code {

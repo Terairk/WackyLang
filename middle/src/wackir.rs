@@ -84,13 +84,14 @@
 use internment::ArcIntern;
 use std::fmt::{self, Debug, Formatter};
 use std::hash::{Hash, Hasher};
+use std::ops::{Deref, DerefMut};
 use syntax::{ast, rename::RenamedName, types::SemanticType};
 
 // Treat WackFunction's slightly differently from main
 #[derive(Clone)]
 pub struct WackProgram {
     pub functions: Vec<WackFunction>,
-    pub main_body: Vec<WackInstruction>,
+    pub main_body: Vec<WackInstr>,
 }
 
 #[derive(Clone)]
@@ -99,11 +100,11 @@ pub struct WackFunction {
     pub params: Vec<WackIdent>,
     // Not sure if we need types, should be fine
     // if we have Symbol Table
-    pub body: Vec<WackInstruction>,
+    pub body: Vec<WackInstr>,
 }
 
 #[derive(Clone)]
-pub enum WackInstruction {
+pub enum WackInstr {
     // TODO: at the end of this, remove redundant instructions
     Return(WackValue),
     SignExtend {
@@ -119,12 +120,12 @@ pub enum WackInstruction {
         dst: WackValue,
     },
     Unary {
-        op: UnaryOperator,
+        op: UnaryOp,
         src: WackValue,
         dst: WackValue,
     },
     Binary {
-        op: BinaryOperator,
+        op: BinaryOp,
         src1: WackValue,
         src2: WackValue,
         dst: WackValue,
@@ -202,35 +203,213 @@ pub enum WackValue {
 pub enum WackLiteral {
     Int(i32),
     Bool(WackBool), // smallest possible repr is 1 byte
-    Char(u8),       // 7-bit ASCII fits within 1 byte
+    Char(WackChar), // 7-bit ASCII fits within 1 byte
     StringLit(ArcIntern<str>),
     NullPair,
 }
 
+/// A 1-byte representation of a boolean value - the smallest possible.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct WackBool(pub u8);
+pub struct WackBool(u8);
 
-impl From<u8> for WackBool {
-    #[inline]
-    fn from(r#u8: u8) -> Self {
-        WackBool(r#u8)
+// impls related to `WackBool`
+pub mod wack_bool {
+    use crate::wackir::WackBool;
+    use std::mem;
+    use thiserror::Error;
+
+    #[derive(Error, Debug)]
+    #[error("Expected a boolean, found byte `{0}`")]
+    pub struct NonBooleanByteError(u8);
+
+    impl WackBool {
+        pub const TRUE: WackBool = WackBool(1);
+        pub const FALSE: WackBool = WackBool(0);
+
+        #[allow(clippy::as_conversions)]
+        #[inline]
+        #[must_use]
+        pub const fn from_bool(b: bool) -> Self {
+            Self(b as u8)
+        }
+
+        #[inline]
+        #[must_use]
+        pub const fn into_bool(self) -> bool {
+            // SAFETY: the only way to construct `WackBool` is by making sure it is a boolean.
+            unsafe { mem::transmute(self) }
+        }
+
+        /// # Safety
+        /// Only use this if you are _sure_ the [`u8`] byte is actually a boolean.
+        #[inline]
+        #[must_use]
+        pub const unsafe fn from_u8_unchecked(r#u8: u8) -> Self {
+            Self(r#u8)
+        }
+
+        /// # Errors
+        /// Only [`u8`] bytes which are _actually_ booleans can be used to create [`WackBool`].
+        #[inline]
+        pub const fn try_from_u8(r#u8: u8) -> Result<Self, NonBooleanByteError> {
+            match r#u8 {
+                0 | 1 => Ok(Self(r#u8)),
+                _ => Err(NonBooleanByteError(r#u8)),
+            }
+        }
+
+        #[inline]
+        #[must_use]
+        pub const fn into_u8(self) -> u8 {
+            self.0
+        }
+    }
+
+    impl From<bool> for WackBool {
+        #[inline]
+        fn from(b: bool) -> Self {
+            Self::from_bool(b)
+        }
+    }
+
+    impl From<WackBool> for bool {
+        #[inline]
+        fn from(wack_bool: WackBool) -> Self {
+            wack_bool.into_bool()
+        }
+    }
+
+    impl TryFrom<u8> for WackBool {
+        type Error = NonBooleanByteError;
+        #[inline]
+        fn try_from(value: u8) -> Result<Self, Self::Error> {
+            Self::try_from_u8(value)
+        }
+    }
+
+    impl From<WackBool> for u8 {
+        #[inline]
+        fn from(wack_bool: WackBool) -> Self {
+            wack_bool.into_u8()
+        }
     }
 }
 
-impl From<bool> for WackBool {
-    #[inline]
-    fn from(b: bool) -> Self {
-        (b as u8).into()
+/// A 1-byte representation of 7-bit ASCII value - the smallest possible.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct WackChar(u8);
+
+// impls related to `WackChar`
+pub mod wack_char {
+    use crate::wackir::WackChar;
+    use thiserror::Error;
+
+    #[derive(Error, Debug)]
+    #[error("Expected an ASCII character, found non-ASCII character `{0}`")]
+    pub struct NonAsciiCharError(char);
+
+    #[derive(Error, Debug)]
+    #[error("Expected an ASCII byte, found non-ASCII byte `{0}`")]
+    pub struct NonAsciiByteError(u8);
+
+    impl WackChar {
+        pub const unsafe fn from_char_unchecked(r#char: char) -> Self {
+            Self(r#char as u8)
+        }
+
+        pub const fn try_from_char(r#char: char) -> Result<Self, NonAsciiCharError> {
+            match r#char {
+                '\x00'..='\x7F' => Ok(Self(r#char as u8)),
+                _ => Err(NonAsciiCharError(r#char)),
+            }
+        }
+
+        pub const fn into_char(self) -> char {
+            self.0 as char
+        }
+
+        pub const unsafe fn from_u8_unchecked(r#u8: u8) -> Self {
+            Self(r#u8)
+        }
+
+        pub const fn try_from_u8(r#u8: u8) -> Result<Self, NonAsciiByteError> {
+            match r#u8 {
+                0x00..=0x7F => Ok(Self(r#u8)),
+                _ => Err(NonAsciiByteError(r#u8)),
+            }
+        }
+
+        pub const fn into_u8(self) -> u8 {
+            self.0
+        }
+
+        //
+        // /// # Safety
+        // /// Only use this if you are _sure_ the [`u8`] byte is actually a boolean.
+        // #[inline]
+        // #[must_use]
+        // pub const unsafe fn from_u8_unchecked(r#u8: u8) -> Self {
+        //     Self(r#u8)
+        // }
+        //
+        // /// # Errors
+        // /// Only [`u8`] bytes which are _actually_ booleans can be used to create [`WackBool`].
+        // #[inline]
+        // pub const fn try_from_u8(r#u8: u8) -> Result<Self, NonBooleanByteError> {
+        //     match r#u8 {
+        //         0 | 1 => Ok(Self(r#u8)),
+        //         _ => Err(NonBooleanByteError(r#u8)),
+        //     }
+        // }
+        //
+        // #[inline]
+        // #[must_use]
+        // pub const fn into_u8(self) -> u8 {
+        //     self.0
+        // }
+    }
+
+    impl TryFrom<char> for WackChar {
+        type Error = NonAsciiCharError;
+
+        fn try_from(value: char) -> Result<Self, Self::Error> {
+            Self::try_from_char(value)
+        }
+    }
+
+    impl From<WackChar> for char {
+        fn from(value: WackChar) -> Self {
+            value.into_char()
+        }
+    }
+
+    impl TryFrom<u8> for WackChar {
+        type Error = NonAsciiByteError;
+        #[inline]
+        fn try_from(value: u8) -> Result<Self, Self::Error> {
+            Self::try_from_u8(value)
+        }
+    }
+
+    impl From<WackChar> for u8 {
+        fn from(value: WackChar) -> Self {
+            value.into_u8()
+        }
     }
 }
+
+// #[derive(Clone, Debug, PartialEq, Eq)]
+// #[repr(transparent)]
+// pub struct WackBool(pub u8);
 
 // I know that these are the same as the ones in ast.rs but I'm not sure if I want to
 // couple them together or not. For now I'll separate them just in case I need to move
 // Len, Ord, Chr somewhere else
 // TODO: just use the UnaryOper from ast.rs
 #[derive(Clone, Debug)]
-pub enum UnaryOperator {
+pub enum UnaryOp {
     Not,
     Negate,
     Len,
@@ -240,7 +419,7 @@ pub enum UnaryOperator {
 
 // See UnaryOperator explanation above
 #[derive(Clone, Debug)]
-pub enum BinaryOperator {
+pub enum BinaryOp {
     Mul,
     Div,
     Mod,
@@ -256,36 +435,36 @@ pub enum BinaryOperator {
     Or,
 }
 
-impl From<ast::BinaryOper> for BinaryOperator {
+impl From<ast::BinaryOper> for BinaryOp {
     #[inline]
     fn from(binop: ast::BinaryOper) -> Self {
         match binop {
-            ast::BinaryOper::Mul => BinaryOperator::Mul,
-            ast::BinaryOper::Div => BinaryOperator::Div,
-            ast::BinaryOper::Mod => BinaryOperator::Mod,
-            ast::BinaryOper::Add => BinaryOperator::Add,
-            ast::BinaryOper::Sub => BinaryOperator::Sub,
-            ast::BinaryOper::Lte => BinaryOperator::Lte,
-            ast::BinaryOper::Lt => BinaryOperator::Lt,
-            ast::BinaryOper::Gte => BinaryOperator::Gte,
-            ast::BinaryOper::Gt => BinaryOperator::Gt,
-            ast::BinaryOper::Eq => BinaryOperator::Eq,
-            ast::BinaryOper::Neq => BinaryOperator::Neq,
-            ast::BinaryOper::And => BinaryOperator::And,
-            ast::BinaryOper::Or => BinaryOperator::Or,
+            ast::BinaryOper::Mul => Self::Mul,
+            ast::BinaryOper::Div => Self::Div,
+            ast::BinaryOper::Mod => Self::Mod,
+            ast::BinaryOper::Add => Self::Add,
+            ast::BinaryOper::Sub => Self::Sub,
+            ast::BinaryOper::Lte => Self::Lte,
+            ast::BinaryOper::Lt => Self::Lt,
+            ast::BinaryOper::Gte => Self::Gte,
+            ast::BinaryOper::Gt => Self::Gt,
+            ast::BinaryOper::Eq => Self::Eq,
+            ast::BinaryOper::Neq => Self::Neq,
+            ast::BinaryOper::And => Self::And,
+            ast::BinaryOper::Or => Self::Or,
         }
     }
 }
 
-impl From<ast::UnaryOper> for UnaryOperator {
+impl From<ast::UnaryOper> for UnaryOp {
     #[inline]
     fn from(unop: ast::UnaryOper) -> Self {
         match unop {
-            ast::UnaryOper::Not => UnaryOperator::Not,
-            ast::UnaryOper::Minus => UnaryOperator::Negate,
-            ast::UnaryOper::Len => UnaryOperator::Len,
-            ast::UnaryOper::Ord => UnaryOperator::Ord,
-            ast::UnaryOper::Chr => UnaryOperator::Chr,
+            ast::UnaryOper::Not => Self::Not,
+            ast::UnaryOper::Minus => Self::Negate,
+            ast::UnaryOper::Len => Self::Len,
+            ast::UnaryOper::Ord => Self::Ord,
+            ast::UnaryOper::Chr => Self::Chr,
         }
     }
 }
@@ -297,7 +476,7 @@ impl From<ast::Liter> for WackLiteral {
         match liter {
             ast::Liter::IntLiter(i) => Self::Int(i),
             ast::Liter::BoolLiter(b) => Self::Bool(b.into()),
-            ast::Liter::CharLiter(c) => Self::Char(c as u8),
+            ast::Liter::CharLiter(c) => Self::Char(unsafe { WackChar::from_char_unchecked(c) }),
             ast::Liter::StrLiter(s) => Self::StringLit(s),
             ast::Liter::PairLiter => Self::NullPair,
         }
@@ -405,20 +584,20 @@ impl fmt::Debug for WackFunction {
     }
 }
 
-impl fmt::Debug for WackInstruction {
+impl fmt::Debug for WackInstr {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            WackInstruction::Return(val) => write!(f, "Return({:?})", val),
-            WackInstruction::ZeroExtend { src, dst } => {
+            WackInstr::Return(val) => write!(f, "Return({:?})", val),
+            WackInstr::ZeroExtend { src, dst } => {
                 write!(f, "ZeroExtend {{ src: {:?}, dst: {:?} }}", src, dst)
             }
-            WackInstruction::Unary { op, src, dst } => write!(
+            WackInstr::Unary { op, src, dst } => write!(
                 f,
                 "Unary {{ op: {:?}, src: {:?}, dst: {:?} }}",
                 op, src, dst
             ),
-            WackInstruction::Binary {
+            WackInstr::Binary {
                 op,
                 src1,
                 src2,
@@ -428,16 +607,16 @@ impl fmt::Debug for WackInstruction {
                 "Binary {{ op: {:?}, src1: {:?}, src2: {:?}, dst: {:?} }}",
                 op, src1, src2, dst
             ),
-            WackInstruction::Copy { src, dst } => {
+            WackInstr::Copy { src, dst } => {
                 write!(f, "Copy {{ src: {:?}, dst: {:?} }}", src, dst)
             }
-            WackInstruction::Load { src_ptr, dst } => {
+            WackInstr::Load { src_ptr, dst } => {
                 write!(f, "Load {{ src_ptr: {:?}, dst: {:?} }}", src_ptr, dst)
             }
-            WackInstruction::Store { src, dst_ptr } => {
+            WackInstr::Store { src, dst_ptr } => {
                 write!(f, "Store {{ src: {:?}, dst_ptr: {:?} }}", src, dst_ptr)
             }
-            WackInstruction::AddPtr {
+            WackInstr::AddPtr {
                 ptr,
                 index,
                 scale,
@@ -447,29 +626,29 @@ impl fmt::Debug for WackInstruction {
                 "AddPtr {{ ptr: {:?}, index: {:?}, scale: {:?}, dst: {:?} }}",
                 ptr, index, scale, dst
             ),
-            WackInstruction::CopyToOffset { src, dst, offset } => write!(
+            WackInstr::CopyToOffset { src, dst, offset } => write!(
                 f,
                 "CopyToOffset {{ src: {:?}, dst: {:?}, offset: {:?} }}",
                 src, dst, offset
             ),
-            WackInstruction::CopyFromOffset { src, offset, dst } => write!(
+            WackInstr::CopyFromOffset { src, offset, dst } => write!(
                 f,
                 "CopyFromOffset {{ src: {:?}, offset: {:?}, dst: {:?} }}",
                 src, offset, dst
             ),
-            WackInstruction::Jump(target) => write!(f, "Jump({:?})", target),
-            WackInstruction::JumpIfZero { condition, target } => write!(
+            WackInstr::Jump(target) => write!(f, "Jump({:?})", target),
+            WackInstr::JumpIfZero { condition, target } => write!(
                 f,
                 "JumpIfZero {{ condition: {:?}, target: {:?} }}",
                 condition, target
             ),
-            WackInstruction::JumpIfNotZero { condition, target } => write!(
+            WackInstr::JumpIfNotZero { condition, target } => write!(
                 f,
                 "JumpIfNotZero {{ condition: {:?}, target: {:?} }}",
                 condition, target
             ),
-            WackInstruction::Label(label) => write!(f, "Label({:?})", label),
-            WackInstruction::FunCall {
+            WackInstr::Label(label) => write!(f, "Label({:?})", label),
+            WackInstr::FunCall {
                 fun_name,
                 args,
                 dst,
@@ -478,15 +657,15 @@ impl fmt::Debug for WackInstruction {
                 "FunCall {{ fun_name: {:?}, args: {:?}, dst: {:?} }}",
                 fun_name, args, dst
             ),
-            WackInstruction::Read { dst, ty } => {
+            WackInstr::Read { dst, ty } => {
                 write!(f, "Read {{ dst: {:?}, ty: {:?} }}", dst, ty)
             }
-            WackInstruction::Free(val) => write!(f, "Free({:?})", val),
-            WackInstruction::Exit(val) => write!(f, "Exit({:?})", val),
-            WackInstruction::Print { src, ty } => {
+            WackInstr::Free(val) => write!(f, "Free({:?})", val),
+            WackInstr::Exit(val) => write!(f, "Exit({:?})", val),
+            WackInstr::Print { src, ty } => {
                 write!(f, "Print {{ src: {:?}, ty: {:?} }}", src, ty)
             }
-            WackInstruction::Println { src, ty } => {
+            WackInstr::Println { src, ty } => {
                 write!(f, "Println {{ src: {:?}, ty: {:?} }}", src, ty)
             }
             _ => unimplemented!(),
@@ -510,18 +689,24 @@ mod tests {
         let bool_liter_false = ast::Liter::BoolLiter(false);
         assert_eq!(
             WackLiteral::from(bool_liter_true),
-            WackLiteral::Bool(1.into())
+            WackLiteral::Bool(WackBool::TRUE)
         );
         assert_eq!(
             WackLiteral::from(bool_liter_false),
-            WackLiteral::Bool(0.into())
+            WackLiteral::Bool(WackBool::FALSE)
         );
 
         // Test char literal conversion
         let char_liter = ast::Liter::CharLiter('A');
         let char_liter2 = ast::Liter::CharLiter('a');
-        assert_eq!(WackLiteral::from(char_liter), WackLiteral::Char(65)); // ASCII value of 'A'
-        assert_eq!(WackLiteral::from(char_liter2), WackLiteral::Char(97)); // ASCII value of 'a'
+        assert_eq!(
+            WackLiteral::from(char_liter),
+            WackLiteral::Char(unsafe { WackChar::from_u8_unchecked(65) })
+        ); // ASCII value of 'A'
+        assert_eq!(
+            WackLiteral::from(char_liter2),
+            WackLiteral::Char(unsafe { WackChar::from_u8_unchecked(65) })
+        ); // ASCII value of 'a'
 
         // Test pair literal conversion
         let pair_liter = ast::Liter::PairLiter;

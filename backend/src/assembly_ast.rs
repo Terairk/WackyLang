@@ -36,7 +36,7 @@
 // and it'd be easier for me probably
 // Change later if you want
 
-use middle::wackir::UnaryOperator;
+use middle::wackir::UnaryOp;
 use std::fmt::Debug;
 
 // implement Debug below
@@ -223,15 +223,15 @@ impl Debug for AsmProgram {
 
 /* ================ ASM Impl's for Conversions ============ */
 
-impl From<UnaryOperator> for AsmUnaryOperator {
+impl From<UnaryOp> for AsmUnaryOperator {
     #[inline]
-    fn from(op: UnaryOperator) -> Self {
+    fn from(op: UnaryOp) -> Self {
         match op {
-            UnaryOperator::Negate => Self::Neg,
-            UnaryOperator::Not => Self::Not,
-            UnaryOperator::Len => Self::Len,
-            UnaryOperator::Ord => Self::Ord,
-            UnaryOperator::Chr => Self::Chr,
+            UnaryOp::Negate => Self::Neg,
+            UnaryOp::Not => Self::Not,
+            UnaryOp::Len => Self::Len,
+            UnaryOp::Ord => Self::Ord,
+            UnaryOp::Chr => Self::Chr,
         }
     }
 }
