@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
+use crate::wackir::wack_temp_ident::ConvertToWackIdent;
 use crate::wackir::{
-    BinaryOp, ConvertToWackIdent as _, UnaryOp, WackBool, WackFunction, WackIdent, WackInstr,
-    WackLiteral, WackProgram, WackValue,
+    BinaryOp, UnaryOp, WackBool, WackFunction, WackInstr, WackLiteral, WackProgram, WackTempIdent,
+    WackValue,
 };
 use syntax::ast::{
     ArrayElem, BinaryOper, Expr, Func, FuncParam, Ident, LValue, Liter, PairElem, Program, RValue,
@@ -11,7 +12,6 @@ use syntax::ast::{
 use syntax::rename::RenamedName;
 use syntax::typecheck::TypeResolver;
 use syntax::types::SemanticType;
-
 /* ================== PUBLIC API ================== */
 
 type TypedAST = Program<RenamedName, SemanticType>;
@@ -52,7 +52,7 @@ pub fn lower_program(program: TypedAST, type_resolver: TypeResolver) -> (WackPro
 struct AstLoweringCtx {
     ident_counter: usize,
     func_table: HashMap<Ident, (SemanticType, Vec<SemanticType>)>,
-    symbol_table: HashMap<WackIdent, SemanticType>,
+    symbol_table: HashMap<WackTempIdent, SemanticType>,
     // used to rename function to wacc_function
     func_map: HashMap<Ident, Ident>,
 }
@@ -81,7 +81,7 @@ impl AstLoweringCtx {
                 (new_id, (func, params))
             })
             .collect();
-        let symbol_table: HashMap<WackIdent, SemanticType> = type_resolver
+        let symbol_table: HashMap<WackTempIdent, SemanticType> = type_resolver
             .symid_table
             .into_iter()
             .map(|(id, symid)| (id.to_wack_ident(&mut ident_counter), symid))
@@ -98,7 +98,7 @@ impl AstLoweringCtx {
         self.ident_counter
     }
     // Makes a temporary wacky variable
-    fn make_temporary(&mut self) -> WackIdent {
+    fn make_temporary(&mut self) -> WackTempIdent {
         // Eventually we may want to replace temp with a function name
         // for better debugging
         let ident = Ident::from_str("temp");
@@ -106,7 +106,7 @@ impl AstLoweringCtx {
     }
 
     // Makes a label for jump's for now
-    fn make_label(&mut self, name: &str) -> WackIdent {
+    fn make_label(&mut self, name: &str) -> WackTempIdent {
         let ident = Ident::from_str(name);
         ident.to_wack_ident(&mut self.ident_counter)
     }
@@ -125,7 +125,7 @@ impl AstLoweringCtx {
             .func_map
             .get(&func.name)
             .expect("Function should be in map")
-            .to_wack_ident(&mut self.ident_counter);
+            .into();
 
         WackFunction {
             name,
@@ -135,7 +135,7 @@ impl AstLoweringCtx {
     }
 
     /* TODO: find where we care about the types of params */
-    fn lower_func_param(&mut self, param: &TypedFuncParam) -> WackIdent {
+    fn lower_func_param(&mut self, param: &TypedFuncParam) -> WackTempIdent {
         param.name.to_wack_ident(&mut self.ident_counter)
     }
 
@@ -300,7 +300,7 @@ impl AstLoweringCtx {
                     .get(&func_name)
                     .expect("Function should be in map");
                 let instr = WackInstr::FunCall {
-                    fun_name: wacky_func_name.to_wack_ident(&mut self.ident_counter),
+                    fun_name: wacky_func_name.into(),
                     args: wacky_args,
                     dst: dst.clone(),
                 };

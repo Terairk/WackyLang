@@ -4,7 +4,7 @@ use crate::source::{SourcedNode, SourcedSpan};
 use crate::types::Type;
 use delegate::delegate;
 use internment::ArcIntern;
-use std::{fmt, fmt::Debug, ops::Deref};
+use std::{fmt::Debug, ops::Deref};
 use thiserror::Error;
 use util::nonempty::NonemptyArray;
 /* File contains the definition for the AST
@@ -346,50 +346,71 @@ impl RValue<Ident, ()> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
 pub struct Ident(ArcIntern<str>);
 
-impl Ident {
-    #[allow(clippy::should_implement_trait)]
-    #[must_use]
-    #[inline]
-    pub fn from_str(s: &str) -> Self {
-        Self(ArcIntern::from(s))
+// impls related to `Ident`
+mod ident_impls {
+    use crate::ast::Ident;
+    use internment::ArcIntern;
+    use std::fmt;
+    use std::ops::Deref;
+
+    impl Ident {
+        #[allow(clippy::should_implement_trait)]
+        #[must_use]
+        #[inline]
+        pub fn from_str(s: &str) -> Self {
+            Self(ArcIntern::from(s))
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn from_boxed_str(s: Box<str>) -> Self {
+            Self(ArcIntern::from(s))
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn from_string(s: String) -> Self {
+            Self::from_boxed_str(s.into_boxed_str())
+        }
+
+        #[must_use]
+        #[inline]
+        pub const fn inner(&self) -> &ArcIntern<str> {
+            &self.0
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn into_inner(self) -> ArcIntern<str> {
+            self.0
+        }
     }
 
-    #[must_use]
-    #[inline]
-    pub fn from_boxed_str(s: Box<str>) -> Self {
-        Self(ArcIntern::from(s))
+    impl fmt::Display for Ident {
+        #[inline]
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            <str as fmt::Display>::fmt(&self.0, f)
+        }
     }
 
-    #[must_use]
-    #[inline]
-    pub fn from_string(s: String) -> Self {
-        Self::from_boxed_str(s.into_boxed_str())
+    impl Deref for Ident {
+        type Target = str;
+
+        #[allow(clippy::explicit_deref_methods)]
+        #[inline]
+        fn deref(&self) -> &Self::Target {
+            self.0.deref()
+        }
     }
-}
 
-impl fmt::Display for Ident {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        <str as fmt::Display>::fmt(&self.0, f)
-    }
-}
-
-impl Deref for Ident {
-    type Target = str;
-
-    #[allow(clippy::explicit_deref_methods)]
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.0.deref()
-    }
-}
-
-impl From<Ident> for String {
-    #[inline]
-    fn from(ident: Ident) -> Self {
-        ident.0.to_string()
+    impl From<Ident> for String {
+        #[inline]
+        fn from(ident: Ident) -> Self {
+            ident.0.to_string()
+        }
     }
 }
 

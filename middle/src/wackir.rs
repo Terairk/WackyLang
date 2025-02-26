@@ -82,10 +82,10 @@
  * */
 
 use internment::ArcIntern;
-use std::fmt::{self, Debug, Formatter};
+use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
-use syntax::{ast, rename::RenamedName, types::SemanticType};
+use syntax::{ast, types::SemanticType};
 
 // Treat WackFunction's slightly differently from main
 #[derive(Clone)]
@@ -96,8 +96,8 @@ pub struct WackProgram {
 
 #[derive(Clone)]
 pub struct WackFunction {
-    pub name: WackIdent, // function names correspond to labels, which are `WackirIdent`s
-    pub params: Vec<WackIdent>,
+    pub name: WackGlobIdent,
+    pub params: Vec<WackTempIdent>, // TODO: maybe should be GLOB ident??
     // Not sure if we need types, should be fine
     // if we have Symbol Table
     pub body: Vec<WackInstr>,
@@ -150,30 +150,30 @@ pub enum WackInstr {
         ptr: WackValue,
         index: WackValue,
         scale: u32,
-        dst: WackIdent,
+        dst: WackTempIdent,
     },
     CopyToOffset {
         src: WackValue,
-        dst: WackIdent,
+        dst: WackTempIdent,
         offset: u32,
     },
     CopyFromOffset {
-        src: WackIdent,
+        src: WackTempIdent,
         dst: WackValue,
         offset: u32,
     },
-    Jump(WackIdent),
+    Jump(WackTempIdent),
     JumpIfZero {
         condition: WackValue,
-        target: WackIdent,
+        target: WackTempIdent,
     },
     JumpIfNotZero {
         condition: WackValue,
-        target: WackIdent,
+        target: WackTempIdent,
     },
-    Label(WackIdent),
+    Label(WackTempIdent),
     FunCall {
-        fun_name: WackIdent, // function names correspond to labels, which are `WackirIdent`s
+        fun_name: WackGlobIdent,
         args: Vec<WackValue>,
         dst: WackValue,
     },
@@ -196,7 +196,7 @@ pub enum WackInstr {
 #[derive(Clone, Debug)]
 pub enum WackValue {
     Literal(WackLiteral), // My only concern is the error type on SemanticType
-    Var(WackIdent),
+    Var(WackTempIdent),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -475,9 +475,8 @@ impl From<ast::Liter> for WackLiteral {
         match liter {
             ast::Liter::IntLiter(i) => Self::Int(i),
             ast::Liter::BoolLiter(b) => Self::Bool(b.into()),
-            ast::Liter::CharLiter(c) =>
-            // SAFETY: literal characters from the parser are guaranteed to be ASCII
-            {
+            ast::Liter::CharLiter(c) => {
+                // SAFETY: literal characters from the parser are guaranteed to be ASCII
                 Self::Char(unsafe { WackChar::from_char_unchecked(c) })
             }
             ast::Liter::StrLiter(s) => Self::StringLit(s),
@@ -486,58 +485,127 @@ impl From<ast::Liter> for WackLiteral {
     }
 }
 
-/// Invariant: The usize's are unique so should reuse the global counter when possible
-/// DO NOT UNDER ANY CIRCUMSTANCES USE THE SAME usize FOR TWO DIFFERENT IDENTIFIERS
+/// An identified used for global-scope items like functions, who's names
+/// do not need to be generated using an increasing counter.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct WackGlobIdent(ArcIntern<str>);
+
+// impls relating to `WackGlobIdent`
+mod wack_glob_ident {
+    use crate::wackir::WackGlobIdent;
+    use internment::ArcIntern;
+    use syntax::ast;
+
+    impl WackGlobIdent {
+        #[must_use]
+        #[inline]
+        pub const fn new(r#str: ArcIntern<str>) -> Self {
+            Self(r#str)
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn from_ref(r#str: &ArcIntern<str>) -> Self {
+            Self(r#str.clone())
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn into_inner(self) -> ArcIntern<str> {
+            self.0
+        }
+    }
+
+    impl From<ast::Ident> for WackGlobIdent {
+        #[must_use]
+        #[inline]
+        fn from(value: ast::Ident) -> Self {
+            Self::new(value.into_inner())
+        }
+    }
+
+    impl From<&ast::Ident> for WackGlobIdent {
+        #[must_use]
+        #[inline]
+        fn from(value: &ast::Ident) -> Self {
+            Self::from_ref(value.inner())
+        }
+    }
+
+    impl From<WackGlobIdent> for String {
+        #[inline]
+        fn from(ident: WackGlobIdent) -> Self {
+            ident.0.to_string()
+        }
+    }
+}
+
+/// Identifier used for more locally-scoped items, such as temporary variables,
+/// or control-flow labels generated after lowering the [`ast`].
+///
+/// Invariant: The usize's are unique so should reuse the global counter when possible.
+///            DO NOT UNDER ANY CIRCUMSTANCES USE THE SAME usize FOR TWO DIFFERENT IDENTIFIERS!!
 #[derive(Clone)]
-pub struct WackIdent(ast::Ident, usize);
+pub struct WackTempIdent(ast::Ident, usize);
 
-impl Debug for WackIdent {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}.{}", self.0, self.1)
+// impls relating to `WackTempIdent`
+pub mod wack_temp_ident {
+    use crate::wackir::WackTempIdent;
+    use std::fmt;
+    use std::fmt::{Debug, Formatter};
+    use std::hash::{Hash, Hasher};
+    use syntax::ast;
+    use syntax::rename::RenamedName;
+
+    pub trait ConvertToWackIdent {
+        fn to_wack_ident(&self, counter: &mut usize) -> WackTempIdent;
     }
-}
 
-impl PartialEq for WackIdent {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.1 == other.1
+    impl Debug for WackTempIdent {
+        #[inline]
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            write!(f, "{}.{}", self.0, self.1)
+        }
     }
-}
 
-impl Eq for WackIdent {}
-
-impl Hash for WackIdent {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.1.hash(state);
+    impl PartialEq for WackTempIdent {
+        #[inline]
+        fn eq(&self, other: &Self) -> bool {
+            self.1 == other.1
+        }
     }
-}
 
-pub trait ConvertToWackIdent {
-    fn to_wack_ident(&self, counter: &mut usize) -> WackIdent;
-}
+    impl Eq for WackTempIdent {}
 
-impl ConvertToWackIdent for RenamedName {
-    #[inline]
-    fn to_wack_ident(&self, _counter: &mut usize) -> WackIdent {
-        WackIdent(self.ident.clone(), self.uuid)
+    impl Hash for WackTempIdent {
+        #[inline]
+        fn hash<H: Hasher>(&self, state: &mut H) {
+            self.1.hash(state);
+        }
     }
-}
 
-impl ConvertToWackIdent for ast::Ident {
-    #[allow(clippy::arithmetic_side_effects)]
-    #[inline]
-    fn to_wack_ident(&self, counter: &mut usize) -> WackIdent {
-        *counter += 1;
-        WackIdent(self.clone(), *counter)
+    impl ConvertToWackIdent for RenamedName {
+        #[inline]
+        fn to_wack_ident(&self, _counter: &mut usize) -> WackTempIdent {
+            WackTempIdent(self.ident.clone(), self.uuid)
+        }
     }
-}
 
-impl From<WackIdent> for String {
-    #[inline]
-    fn from(mid_ident: WackIdent) -> Self {
-        format!("{}.{}", mid_ident.0, mid_ident.1)
+    impl ConvertToWackIdent for ast::Ident {
+        #[allow(clippy::arithmetic_side_effects)]
+        #[inline]
+        fn to_wack_ident(&self, counter: &mut usize) -> WackTempIdent {
+            *counter += 1;
+            WackTempIdent(self.clone(), *counter)
+        }
+    }
+
+    impl From<WackTempIdent> for String {
+        #[inline]
+        fn from(mid_ident: WackTempIdent) -> Self {
+            format!("{}.{}", mid_ident.0, mid_ident.1)
+        }
     }
 }
 
