@@ -14,22 +14,23 @@ workspace = true
 
 [dependencies]
 # macro dependencies
-extend = "1.2"
-delegate = "0.13"
-impl-trait-for-tuples = "0.2.3"
+extend = { workspace = true }
+delegate = { workspace = true }
+impl-trait-for-tuples = { workspace = true }
 
 # utility dependencies
-fn_pipe = { path = "../fn_pipe" }
-thiserror = "2"
-internment = { version = "0.8.6", features = ["arc"] }
+util = { workspace = true }
+fn_pipe = { workspace = true }
+thiserror = { workspace = true }
+internment = { workspace = true, features = ["arc"] }
 
 # parsing and error reporting
-chumsky = { features = [
-  "std",
-  "stacker",
-  "memoization",
-  "pratt",
-  "regex",
-  "nightly",
-], git = "https://github.com/zesterer/chumsky", rev = "282bf5e" } # currently latest chumsky commit
-ariadne = "0.5.0"
+chumsky = { workspace = true, features = [
+    "std",
+    "stacker",
+    "memoization",
+    "pratt",
+    "regex",
+    "nightly",
+] }
+ariadne = { workspace = true }

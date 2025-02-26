@@ -36,7 +36,7 @@
 // and it'd be easier for me probably
 // Change later if you want
 
-use middle::wackir::{BinaryOperator, UnaryOperator};
+use middle::wackir::UnaryOperator;
 use std::fmt::Debug;
 
 // implement Debug below
@@ -111,7 +111,7 @@ pub enum AsmInstruction {
 
 #[derive(Debug, Clone)]
 pub enum Operand {
-    Imm(i32),
+    Imm(i32), // immediate values should be represented as unsigned integers
     Reg(Register),
     Pseudo(String),
     Memory(Register, i32),  // I think is used for array/pair access

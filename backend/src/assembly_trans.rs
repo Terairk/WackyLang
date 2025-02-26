@@ -1,18 +1,19 @@
-use std::collections::{BTreeMap, HashMap};
-use middle::wackir::{
-    BinaryOperator, UnaryOperator, WackConst, WackFunction, WackInstruction, WackProgram, WackValue,
-};
-use util::gen_flags::{GenFlags, insert_flag_gbl};
-use syntax::types::SemanticType;
+use crate::assembly_ast::AssemblyType::Longword;
+use crate::assembly_ast::Register::DI;
 use crate::{
     assembly_ast::{
-        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AsmUnaryOperator, AssemblyType,
-        CondCode, Operand, Register,
+        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode,
+        Operand, Register,
     },
     gen_predefined::ERR_DIVZERO,
 };
-use crate::assembly_ast::AssemblyType::Longword;
-use crate::assembly_ast::Register::DI;
+use middle::wackir::{
+    BinaryOperator, UnaryOperator, WackFunction, WackInstruction, WackLiteral, WackProgram,
+    WackValue,
+};
+use std::collections::BTreeMap;
+use syntax::types::SemanticType;
+use util::gen_flags::{insert_flag_gbl, GenFlags};
 /* ================== PUBLIC API ================== */
 
 #[inline]
@@ -47,7 +48,11 @@ pub struct AsmGen {
 
 impl AsmGen {
     fn new(counter: usize) -> Self {
-        Self { counter, str_counter: 0, str_literals: BTreeMap::new() }
+        Self {
+            counter,
+            str_counter: 0,
+            str_literals: BTreeMap::new(),
+        }
     }
 
     fn generate_str_label(&mut self, s: &str) -> String {
@@ -141,29 +146,29 @@ impl AsmGen {
                 asm.push(AsmInstruction::Mov {
                     typ: Longword,
                     src: operand,
-                    dst: Operand::Reg(DI)
+                    dst: Operand::Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::PRINT_INT);
                 "_printi"
-            },
+            }
             SemanticType::Bool => {
                 asm.push(AsmInstruction::Mov {
                     typ: AssemblyType::Byte,
                     src: operand,
-                    dst: Operand::Reg(DI)
+                    dst: Operand::Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::PRINT_BOOLEAN);
                 "_printb"
-            },
+            }
             SemanticType::Char => {
                 asm.push(AsmInstruction::Mov {
                     typ: AssemblyType::Byte,
                     src: operand,
-                    dst: Operand::Reg(DI)
+                    dst: Operand::Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::PRINT_CHR);
                 "_printc"
-            },
+            }
             SemanticType::String => {
                 asm.push(AsmInstruction::Lea {
                     src: operand,
@@ -171,7 +176,7 @@ impl AsmGen {
                 });
                 insert_flag_gbl(GenFlags::PRINT_STR);
                 "_prints"
-            },
+            }
             SemanticType::Array(_) | SemanticType::Pair(_, _) | SemanticType::ErasedPair => {
                 asm.push(AsmInstruction::Lea {
                     src: operand,
@@ -179,7 +184,7 @@ impl AsmGen {
                 });
                 insert_flag_gbl(GenFlags::PRINT_PTR);
                 "_printp"
-            },
+            }
             SemanticType::AnyType => panic!("AnyType in print"),
             SemanticType::Error(_) => panic!("Error type in print"),
         };
@@ -237,21 +242,16 @@ impl AsmGen {
                 });
             }
             Label(id) => asm.push(Asm::Label(id.into())),
-            FunCall {
-                fun_name,
-                args,
-                dst,
-            } => self.lower_fun_call(&fun_name, &args, dst, asm),
-            WackInstruction::Print {
-                src: src,
-                ty: ty,
-            } => {
-                self.lower_print(src, ty, asm)
-            }
-            WackInstruction::Println {
-                src: src,
-                ty: ty,
-            } => {
+            // FunCall {
+            //     fun_name,
+            //     args,
+            //     dst,
+            // } => self.lower_fun_call(&fun_name, &args, dst, asm),
+            FunCall { .. } => unimplemented!(
+                "function call lowering is unimplemented, until the ASM representation finalizes, PS: function identifiers have to be `WackIdent`s"
+            ),
+            WackInstruction::Print { src: src, ty: ty } => self.lower_print(src, ty, asm),
+            WackInstruction::Println { src: src, ty: ty } => {
                 self.lower_print(src, ty, asm);
                 insert_flag_gbl(GenFlags::PRINT_LN);
                 asm.push(AsmInstruction::Call("_println".to_string(), false));
@@ -260,7 +260,11 @@ impl AsmGen {
                 todo!("add GenFlag for EXIT");
                 // insert_flag_gbl(GenFlags::EXIT);
                 let operand = self.lower_value(value, asm);
-                asm.push(AsmInstruction::Mov {typ: Longword, src: operand, dst: Operand::Reg(DI) });
+                asm.push(AsmInstruction::Mov {
+                    typ: Longword,
+                    src: operand,
+                    dst: Operand::Reg(DI),
+                });
                 asm.push(AsmInstruction::Call("_exit".to_string(), false));
             }
             _ => unimplemented!(),
@@ -557,21 +561,27 @@ impl AsmGen {
         value: WackValue,
         _asm_instructions: &mut Vec<AsmInstruction>,
     ) -> Operand {
-        use WackConst::{Bool, Char, Int, NullPair, StringLit};
-        use WackValue::{Constant, Var};
+        use WackLiteral::{Bool, Char, Int, NullPair, StringLit};
+        use WackValue::{Literal, Var};
         match value {
-            Constant(Int(i)) => Operand::Imm(i),
-            Constant(Bool(b)) => Operand::Imm(b),
-            Constant(Char(c)) => Operand::Imm(c),
+            Literal(Int(i)) => Operand::Imm(i),
+            // Literal(Bool(b)) => Operand::Imm(b),
+            Literal(Bool(b)) => unimplemented!(
+                "unimplemented until assembly representation is finalized. PS: immediates should be unsigned integers"
+            ),
+            // Literal(Char(c)) => Operand::Imm(c),
+            Literal(Char(b)) => unimplemented!(
+                "unimplemented until assembly representation is finalized. PS: immediates should be unsigned integers"
+            ),
             // TODO: StringLit, need to add to symbol table with current function probably
             // while keeping track of a unique counter just for string constants
             // so we can emit properly, also this should emit a thing for RIP relative addressing
             // honestly its kinda similar to ConstDouble from the book
-            Constant(StringLit(s)) => {
+            Literal(StringLit(s)) => {
                 let label = self.generate_str_label(&*s);
                 Operand::Data(label, 0)
-            },
-            Constant(NullPair) => Operand::Imm(0),
+            }
+            Literal(NullPair) => Operand::Imm(0),
             // TODO: need to figure out if its a Scalar or Aggregate Value
             // so I can do either Pseudo or PseudoMem, for now its Pseudo
             Var(ident) => Operand::Pseudo(ident.into()),

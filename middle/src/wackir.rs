@@ -84,8 +84,7 @@
 use internment::ArcIntern;
 use std::fmt::{self, Debug, Formatter};
 use std::hash::{Hash, Hasher};
-use syntax::ast::{BinaryOper, Liter, UnaryOper};
-use syntax::{ast::Ident, rename::RenamedName, types::SemanticType};
+use syntax::{ast, rename::RenamedName, types::SemanticType};
 
 // Treat WackFunction's slightly differently from main
 #[derive(Clone)]
@@ -96,8 +95,8 @@ pub struct WackProgram {
 
 #[derive(Clone)]
 pub struct WackFunction {
-    pub name: Ident,
-    pub params: Vec<MidIdent>,
+    pub name: WackIdent, // function names correspond to labels, which are `WackirIdent`s
+    pub params: Vec<WackIdent>,
     // Not sure if we need types, should be fine
     // if we have Symbol Table
     pub body: Vec<WackInstruction>,
@@ -105,7 +104,16 @@ pub struct WackFunction {
 
 #[derive(Clone)]
 pub enum WackInstruction {
+    // TODO: at the end of this, remove redundant instructions
     Return(WackValue),
+    SignExtend {
+        src: WackValue,
+        dst: WackValue,
+    },
+    Truncate {
+        src: WackValue,
+        dst: WackValue,
+    },
     ZeroExtend {
         src: WackValue,
         dst: WackValue,
@@ -125,6 +133,10 @@ pub enum WackInstruction {
         src: WackValue,
         dst: WackValue,
     },
+    GetAddress {
+        src: WackValue,
+        dst: WackValue,
+    },
     Load {
         src_ptr: WackValue,
         dst: WackValue,
@@ -136,31 +148,31 @@ pub enum WackInstruction {
     AddPtr {
         ptr: WackValue,
         index: WackValue,
-        scale: i32,
-        dst: MidIdent,
+        scale: u32,
+        dst: WackIdent,
     },
     CopyToOffset {
         src: WackValue,
-        dst: MidIdent,
-        offset: i32,
+        dst: WackIdent,
+        offset: u32,
     },
     CopyFromOffset {
-        src: MidIdent,
-        offset: i32,
+        src: WackIdent,
         dst: WackValue,
+        offset: u32,
     },
-    Jump(MidIdent),
+    Jump(WackIdent),
     JumpIfZero {
         condition: WackValue,
-        target: MidIdent,
+        target: WackIdent,
     },
     JumpIfNotZero {
         condition: WackValue,
-        target: MidIdent,
+        target: WackIdent,
     },
-    Label(MidIdent),
+    Label(WackIdent),
     FunCall {
-        fun_name: Ident,
+        fun_name: WackIdent, // function names correspond to labels, which are `WackirIdent`s
         args: Vec<WackValue>,
         dst: WackValue,
     },
@@ -182,18 +194,35 @@ pub enum WackInstruction {
 
 #[derive(Clone, Debug)]
 pub enum WackValue {
-    Constant(WackConst), // My only concern is the error type on SemanticType
-    Var(MidIdent),
+    Literal(WackLiteral), // My only concern is the error type on SemanticType
+    Var(WackIdent),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum WackConst {
-    // Represent all these as 32 bit integers
+pub enum WackLiteral {
     Int(i32),
-    Bool(i32),
-    Char(i32),
+    Bool(WackBool), // smallest possible repr is 1 byte
+    Char(u8),       // 7-bit ASCII fits within 1 byte
     StringLit(ArcIntern<str>),
     NullPair,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct WackBool(pub u8);
+
+impl From<u8> for WackBool {
+    #[inline]
+    fn from(r#u8: u8) -> Self {
+        WackBool(r#u8)
+    }
+}
+
+impl From<bool> for WackBool {
+    #[inline]
+    fn from(b: bool) -> Self {
+        (b as u8).into()
+    }
 }
 
 // I know that these are the same as the ones in ast.rs but I'm not sure if I want to
@@ -227,105 +256,105 @@ pub enum BinaryOperator {
     Or,
 }
 
-impl From<BinaryOper> for BinaryOperator {
+impl From<ast::BinaryOper> for BinaryOperator {
     #[inline]
-    fn from(binop: BinaryOper) -> Self {
+    fn from(binop: ast::BinaryOper) -> Self {
         match binop {
-            BinaryOper::Mul => BinaryOperator::Mul,
-            BinaryOper::Div => BinaryOperator::Div,
-            BinaryOper::Mod => BinaryOperator::Mod,
-            BinaryOper::Add => BinaryOperator::Add,
-            BinaryOper::Sub => BinaryOperator::Sub,
-            BinaryOper::Lte => BinaryOperator::Lte,
-            BinaryOper::Lt => BinaryOperator::Lt,
-            BinaryOper::Gte => BinaryOperator::Gte,
-            BinaryOper::Gt => BinaryOperator::Gt,
-            BinaryOper::Eq => BinaryOperator::Eq,
-            BinaryOper::Neq => BinaryOperator::Neq,
-            BinaryOper::And => BinaryOperator::And,
-            BinaryOper::Or => BinaryOperator::Or,
+            ast::BinaryOper::Mul => BinaryOperator::Mul,
+            ast::BinaryOper::Div => BinaryOperator::Div,
+            ast::BinaryOper::Mod => BinaryOperator::Mod,
+            ast::BinaryOper::Add => BinaryOperator::Add,
+            ast::BinaryOper::Sub => BinaryOperator::Sub,
+            ast::BinaryOper::Lte => BinaryOperator::Lte,
+            ast::BinaryOper::Lt => BinaryOperator::Lt,
+            ast::BinaryOper::Gte => BinaryOperator::Gte,
+            ast::BinaryOper::Gt => BinaryOperator::Gt,
+            ast::BinaryOper::Eq => BinaryOperator::Eq,
+            ast::BinaryOper::Neq => BinaryOperator::Neq,
+            ast::BinaryOper::And => BinaryOperator::And,
+            ast::BinaryOper::Or => BinaryOperator::Or,
         }
     }
 }
 
-impl From<UnaryOper> for UnaryOperator {
+impl From<ast::UnaryOper> for UnaryOperator {
     #[inline]
-    fn from(unop: UnaryOper) -> Self {
+    fn from(unop: ast::UnaryOper) -> Self {
         match unop {
-            UnaryOper::Not => UnaryOperator::Not,
-            UnaryOper::Minus => UnaryOperator::Negate,
-            UnaryOper::Len => UnaryOperator::Len,
-            UnaryOper::Ord => UnaryOperator::Ord,
-            UnaryOper::Chr => UnaryOperator::Chr,
+            ast::UnaryOper::Not => UnaryOperator::Not,
+            ast::UnaryOper::Minus => UnaryOperator::Negate,
+            ast::UnaryOper::Len => UnaryOperator::Len,
+            ast::UnaryOper::Ord => UnaryOperator::Ord,
+            ast::UnaryOper::Chr => UnaryOperator::Chr,
         }
     }
 }
 
 // TODO: check that these give the right answers
-impl From<Liter> for WackConst {
+impl From<ast::Liter> for WackLiteral {
     #[inline]
-    fn from(liter: Liter) -> Self {
+    fn from(liter: ast::Liter) -> Self {
         match liter {
-            Liter::IntLiter(i) => Self::Int(i),
-            Liter::BoolLiter(b) => Self::Bool(b as i32),
-            Liter::CharLiter(c) => Self::Char(c as i32),
-            Liter::StrLiter(s) => Self::StringLit(s),
-            Liter::PairLiter => Self::NullPair,
+            ast::Liter::IntLiter(i) => Self::Int(i),
+            ast::Liter::BoolLiter(b) => Self::Bool(b.into()),
+            ast::Liter::CharLiter(c) => Self::Char(c as u8),
+            ast::Liter::StrLiter(s) => Self::StringLit(s),
+            ast::Liter::PairLiter => Self::NullPair,
         }
     }
 }
 
+/// Invariant: The usize's are unique so should reuse the global counter when possible
+/// DO NOT UNDER ANY CIRCUMSTANCES USE THE SAME usize FOR TWO DIFFERENT IDENTIFIERS
 #[derive(Clone)]
-pub struct MidIdent(Ident, usize);
+pub struct WackIdent(ast::Ident, usize);
 
-impl Debug for MidIdent {
+impl Debug for WackIdent {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}.{}", self.0, self.1)
     }
 }
 
-impl PartialEq for MidIdent {
+impl PartialEq for WackIdent {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.1 == other.1
     }
 }
 
-// Invariant: The usize's are unique so should reuse the global counter when possible
-// DO NOT UNDER ANY CIRCUMSTANCES USE THE SAME usize FOR TWO DIFFERENT IDENTIFIERS
-impl Eq for MidIdent {}
+impl Eq for WackIdent {}
 
-impl Hash for MidIdent {
+impl Hash for WackIdent {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.1.hash(state);
     }
 }
 
-pub trait ConvertToMidIdent {
-    fn to_mid_ident(&self, counter: &mut usize) -> MidIdent;
+pub trait ConvertToWackIdent {
+    fn to_wack_ident(&self, counter: &mut usize) -> WackIdent;
 }
 
-impl ConvertToMidIdent for RenamedName {
+impl ConvertToWackIdent for RenamedName {
     #[inline]
-    fn to_mid_ident(&self, _counter: &mut usize) -> MidIdent {
-        MidIdent(self.ident.clone(), self.uuid)
+    fn to_wack_ident(&self, _counter: &mut usize) -> WackIdent {
+        WackIdent(self.ident.clone(), self.uuid)
     }
 }
 
-impl ConvertToMidIdent for Ident {
+impl ConvertToWackIdent for ast::Ident {
     #[allow(clippy::arithmetic_side_effects)]
     #[inline]
-    fn to_mid_ident(&self, counter: &mut usize) -> MidIdent {
+    fn to_wack_ident(&self, counter: &mut usize) -> WackIdent {
         *counter += 1;
-        MidIdent(self.clone(), *counter)
+        WackIdent(self.clone(), *counter)
     }
 }
 
-impl From<MidIdent> for String {
+impl From<WackIdent> for String {
     #[inline]
-    fn from(mid_ident: MidIdent) -> Self {
+    fn from(mid_ident: WackIdent) -> Self {
         format!("{}.{}", mid_ident.0, mid_ident.1)
     }
 }
@@ -460,6 +489,7 @@ impl fmt::Debug for WackInstruction {
             WackInstruction::Println { src, ty } => {
                 write!(f, "Println {{ src: {:?}, ty: {:?} }}", src, ty)
             }
+            _ => unimplemented!(),
         }
     }
 }
@@ -472,23 +502,29 @@ mod tests {
     #[test]
     fn test_liter_conversion() {
         // Test integer literal conversion
-        let int_liter = Liter::IntLiter(42);
-        assert_eq!(WackConst::from(int_liter), WackConst::Int(42));
+        let int_liter = ast::Liter::IntLiter(42);
+        assert_eq!(WackLiteral::from(int_liter), WackLiteral::Int(42));
 
         // Test boolean literal conversion
-        let bool_liter_true = Liter::BoolLiter(true);
-        let bool_liter_false = Liter::BoolLiter(false);
-        assert_eq!(WackConst::from(bool_liter_true), WackConst::Bool(1));
-        assert_eq!(WackConst::from(bool_liter_false), WackConst::Bool(0));
+        let bool_liter_true = ast::Liter::BoolLiter(true);
+        let bool_liter_false = ast::Liter::BoolLiter(false);
+        assert_eq!(
+            WackLiteral::from(bool_liter_true),
+            WackLiteral::Bool(1.into())
+        );
+        assert_eq!(
+            WackLiteral::from(bool_liter_false),
+            WackLiteral::Bool(0.into())
+        );
 
         // Test char literal conversion
-        let char_liter = Liter::CharLiter('A');
-        let char_liter2 = Liter::CharLiter('a');
-        assert_eq!(WackConst::from(char_liter), WackConst::Char(65)); // ASCII value of 'A'
-        assert_eq!(WackConst::from(char_liter2), WackConst::Char(97)); // ASCII value of 'a'
+        let char_liter = ast::Liter::CharLiter('A');
+        let char_liter2 = ast::Liter::CharLiter('a');
+        assert_eq!(WackLiteral::from(char_liter), WackLiteral::Char(65)); // ASCII value of 'A'
+        assert_eq!(WackLiteral::from(char_liter2), WackLiteral::Char(97)); // ASCII value of 'a'
 
         // Test pair literal conversion
-        let pair_liter = Liter::PairLiter;
-        assert_eq!(WackConst::from(pair_liter), WackConst::NullPair);
+        let pair_liter = ast::Liter::PairLiter;
+        assert_eq!(WackLiteral::from(pair_liter), WackLiteral::NullPair);
     }
 }

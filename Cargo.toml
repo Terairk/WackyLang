@@ -1,17 +1,57 @@
 [workspace]
 resolver = "2"
 members = [
-  "fn_pipe_proc",
-  "fn_pipe",
-  "syntax",
-  "backend",
-  "middle",
-  "compiler",
-  "util",
+    "backend",
+    "compiler",
+    "middle",
+    "syntax",
+    "util",
+    "util/fn_pipe",
+    "util/fn_pipe/proc",
 ]
 
 [profile.dev]
-opt-level = 1
+opt-level = 2
+
+# Common shared dependendencies configured once at the workspace
+# level, to be re-used more easily across workspace member crates.
+#
+# Common configurations include versions, paths, features, etc.
+[workspace.dependencies]
+## Crate members as common dependencies
+backend = { path = "backend" }
+compiler = { path = "compiler" }
+middle = { path = "middle" }
+syntax = { path = "syntax" }
+util = { path = "util" }
+fn_pipe = { path = "util/fn_pipe" }
+fn_pipe_proc = { path = "util/fn_pipe/proc" }
+
+# Proc-macro authoring tools
+syn = "2.0"
+quote = "1.0"
+proc-macro2 = "1.0"
+darling = "0.20"
+# Macro dependecies
+extend = "1.2"
+delegate = "0.13"
+impl-trait-for-tuples = "0.2"
+clap = "4.5"
+bitflags = "2.8"
+# Utility dependencies
+thiserror = "2"
+internment = "0.8"
+recursion = "0.5"
+once_cell = "1.20"
+# Functional generics/lenses frameworks
+frunk_core = "0.4"
+frunk = "0.4"
+frunk_utils = "0.2"
+frunk-enum-core = "0.3"
+# Parsing and error reporting
+ariadne = "0.5"
+chumsky = { git = "https://github.com/zesterer/chumsky", rev = "fb032920" } # currently latest chumsky commit
+
 
 # Clippy's lint category level configurations;
 # every member crate needs to inherit these by adding

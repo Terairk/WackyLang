@@ -1,13 +1,12 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
-use crate::nonempty::NonemptyArray;
 use crate::source::{SourcedNode, SourcedSpan};
 use crate::types::Type;
 use delegate::delegate;
 use internment::ArcIntern;
 use std::{fmt, fmt::Debug, ops::Deref};
 use thiserror::Error;
-
+use util::nonempty::NonemptyArray;
 /* File contains the definition for the AST
  * This AST is generic over a Name (N) and a Type (T)
  * Example AST is UntypedAST = Program<Ident, ()>

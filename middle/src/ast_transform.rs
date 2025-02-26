@@ -1,17 +1,16 @@
 use std::collections::HashMap;
 
+use crate::wackir::{
+    BinaryOperator, ConvertToWackIdent as _, UnaryOperator, WackFunction, WackIdent,
+    WackInstruction, WackLiteral, WackProgram, WackValue,
+};
 use syntax::ast::{
     ArrayElem, BinaryOper, Expr, Func, FuncParam, Ident, LValue, Liter, PairElem, Program, RValue,
     Stat, StatBlock, UnaryOper,
 };
 use syntax::rename::RenamedName;
 use syntax::typecheck::TypeResolver;
-use syntax::{rename::IdFuncTable, types::SemanticType};
-use syntax::source::SourcedNode;
-use crate::wackir::{
-    BinaryOperator, ConvertToMidIdent as _, MidIdent, UnaryOperator, WackConst, WackFunction,
-    WackInstruction, WackProgram, WackValue,
-};
+use syntax::types::SemanticType;
 
 /* ================== PUBLIC API ================== */
 
@@ -53,7 +52,7 @@ pub fn lower_program(program: TypedAST, type_resolver: TypeResolver) -> (WackPro
 struct Lowerer {
     counter: usize,
     func_table: HashMap<Ident, (SemanticType, Vec<SemanticType>)>,
-    symbol_table: HashMap<MidIdent, SemanticType>,
+    symbol_table: HashMap<WackIdent, SemanticType>,
     // used to rename function to wacc_function
     func_map: HashMap<Ident, Ident>,
 }
@@ -76,10 +75,10 @@ fn create_lowering_context(type_resolver: TypeResolver) -> Lowerer {
             (new_id, (func, params))
         })
         .collect();
-    let symbol_table: HashMap<MidIdent, SemanticType> = type_resolver
+    let symbol_table: HashMap<WackIdent, SemanticType> = type_resolver
         .symid_table
         .into_iter()
-        .map(|(id, symid)| (id.to_mid_ident(&mut counter), symid))
+        .map(|(id, symid)| (id.to_wack_ident(&mut counter), symid))
         .collect();
     Lowerer {
         counter,
@@ -94,17 +93,17 @@ impl Lowerer {
         self.counter
     }
     // Makes a temporary wacky variable
-    fn make_temporary(&mut self) -> MidIdent {
+    fn make_temporary(&mut self) -> WackIdent {
         // Eventually we may want to replace temp with a function name
         // for better debugging
         let ident = Ident::from_str("temp");
-        ident.to_mid_ident(&mut self.counter)
+        ident.to_wack_ident(&mut self.counter)
     }
 
     // Makes a label for jump's for now
-    fn make_label(&mut self, name: &str) -> MidIdent {
+    fn make_label(&mut self, name: &str) -> WackIdent {
         let ident = Ident::from_str(name);
-        ident.to_mid_ident(&mut self.counter)
+        ident.to_wack_ident(&mut self.counter)
     }
 
     fn lower_func(&mut self, func: TypedFunc) -> WackFunction {
@@ -121,7 +120,7 @@ impl Lowerer {
             .func_map
             .get(&func.name)
             .expect("Function should be in map")
-            .clone();
+            .to_wack_ident(&mut self.counter);
 
         WackFunction {
             name,
@@ -131,8 +130,8 @@ impl Lowerer {
     }
 
     /* TODO: find where we care about the types of params */
-    fn lower_func_param(&mut self, param: &TypedFuncParam) -> MidIdent {
-        param.name.to_mid_ident(&mut self.counter)
+    fn lower_func_param(&mut self, param: &TypedFuncParam) -> WackIdent {
+        param.name.to_wack_ident(&mut self.counter)
     }
 
     fn lower_stat_block(
@@ -153,7 +152,7 @@ impl Lowerer {
                 name,
                 rvalue,
             } => {
-                let mid_ident = name.into_inner().to_mid_ident(&mut self.counter);
+                let mid_ident = name.into_inner().to_wack_ident(&mut self.counter);
                 let lhs = WackValue::Var(mid_ident);
                 let sem_type = r#type;
                 let rhs = self.lower_rvalue(rvalue.into_inner(), instructions);
@@ -179,7 +178,7 @@ impl Lowerer {
                 let value = self.lower_expr(expr.into_inner(), instructions);
                 let instr = WackInstruction::Exit(value);
                 instructions.push(instr);
-            },
+            }
             TypedStat::Print(expr) => {
                 let sem_type = expr.inner().get_type();
                 let value = self.lower_expr(expr.into_inner(), instructions);
@@ -188,7 +187,7 @@ impl Lowerer {
                     ty: sem_type,
                 };
                 instructions.push(instr);
-            },
+            }
             TypedStat::Println(expr) => {
                 let sem_type = expr.inner().get_type();
                 let value = self.lower_expr(expr.into_inner(), instructions);
@@ -197,7 +196,7 @@ impl Lowerer {
                     ty: sem_type,
                 };
                 instructions.push(instr);
-            },
+            }
             TypedStat::IfThenElse {
                 if_cond,
                 then_body,
@@ -261,7 +260,7 @@ impl Lowerer {
         match expr {
             TypedExpr::Liter(liter, _t) => Self::lower_literal(liter),
             TypedExpr::Ident(sn_ident, _t) => {
-                WackValue::Var(sn_ident.into_inner().to_mid_ident(&mut self.counter))
+                WackValue::Var(sn_ident.into_inner().to_wack_ident(&mut self.counter))
             }
             TypedExpr::ArrayElem(array_elem, t) => panic!("ArrayElem not implem in Wacky"),
             TypedExpr::Unary(sn_unary, sn_expr, _t) => {
@@ -304,7 +303,7 @@ impl Lowerer {
                     .get(&func_name)
                     .expect("Function should be in map");
                 let instr = WackInstruction::FunCall {
-                    fun_name: wacky_func_name.clone(),
+                    fun_name: wacky_func_name.to_wack_ident(&mut self.counter),
                     args: wacky_args,
                     dst: dst.clone(),
                 };
@@ -321,7 +320,7 @@ impl Lowerer {
     ) -> WackValue {
         match lvalue {
             TypedLValue::Ident(ident, _) => {
-                WackValue::Var(ident.into_inner().to_mid_ident(&mut self.counter))
+                WackValue::Var(ident.into_inner().to_wack_ident(&mut self.counter))
             }
             TypedLValue::ArrayElem(array_elem, _) => panic!("ArrayElem not implemented in Wacky"),
             TypedLValue::PairElem(pair_elem, _) => panic!("PairElem not implemented in Wacky"),
@@ -331,7 +330,7 @@ impl Lowerer {
     // Very confusing but converts a syntax literal to Wacky Value
     // For now their definitions are basically the same
     fn lower_literal(liter: Liter) -> WackValue {
-        WackValue::Constant(liter.into())
+        WackValue::Literal(liter.into())
     }
 
     // Very confusing but converts a syntax unary operand to Wacky Operator
@@ -426,7 +425,7 @@ impl Lowerer {
 
         // Both expressions evaluate to False so dst to False
         instr.push(Instr::Copy {
-            src: WackValue::Constant(WackConst::Bool(0)),
+            src: WackValue::Literal(WackLiteral::Bool(0.into())),
             dst: dst.clone(),
         });
         // Jump over the true branch
@@ -435,7 +434,7 @@ impl Lowerer {
         // True branch
         instr.push(Instr::Label(true_label));
         instr.push(Instr::Copy {
-            src: WackValue::Constant(WackConst::Bool(1)),
+            src: WackValue::Literal(WackLiteral::Bool(1.into())),
             dst: dst.clone(),
         });
 
@@ -476,7 +475,7 @@ impl Lowerer {
 
         // Both expressions evaluate to True so dst to True
         instr.push(Instr::Copy {
-            src: WackValue::Constant(WackConst::Bool(1)),
+            src: WackValue::Literal(WackLiteral::Bool(1.into())),
             dst: dst.clone(),
         });
 
@@ -485,7 +484,7 @@ impl Lowerer {
 
         instr.push(Instr::Label(false_label));
         instr.push(Instr::Copy {
-            src: WackValue::Constant(WackConst::Bool(0)),
+            src: WackValue::Literal(WackLiteral::Bool(0.into())),
             dst: dst.clone(),
         });
         instr.push(Instr::Label(end_label));

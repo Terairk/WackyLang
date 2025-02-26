@@ -10,12 +10,12 @@
 #![feature(unboxed_closures)]
 
 
+use crate::error::{semantic_error_to_reason, SemanticError};
+use crate::source::SourcedSpan;
 use ariadne::{CharSet, Label, Report, Source};
 use chumsky::error::Rich;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
-use crate::error::{SemanticError, semantic_error_to_reason};
-use crate::source::SourcedSpan;
 
 
 /// Namespace for all the type/trait aliases used by this crate.
@@ -29,10 +29,9 @@ pub(crate) mod alias {
     where
         I: Input<'src>,
         I::Token: PartialEq,
-        E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>;
-    
-    
-    
+        E: ParserExtra<'src, I, Error=Rich<'src, I::Token, I::Span>>;
+
+
     pub trait StatelessParser<'src, I, O> = Parser<'src, I, O, extra::Full<Rich<'src, I::Token, I::Span>, (), ()>>
     where
         I: Input<'src>,
@@ -106,12 +105,12 @@ pub(crate) mod ext {
                 '\x00'..'\x20'
 
                 // the WACC specification also explicitly excludes these characters
-                | '\\' | '\'' | '"'  => false,
+                | '\\' | '\'' | '"' => false,
 
                 // everything else in the ASCII-character range is fine, i.e. from `'\x20'` upto
                 // `'\x7F'` inclusive
                 '\x20'..='\x7F' => true,
-                
+
                 // all other characters are non-ASCII and should not be accepted
                 _ => false,
             }
@@ -203,8 +202,6 @@ pub(crate) mod ext {
 }
 
 pub mod node;
-
-pub mod nonempty;
 pub mod parser;
 
 pub(crate) mod private {
@@ -252,16 +249,16 @@ pub fn semantic_report_helper(
         ariadne::ReportKind::Error,
         (file_path, span.clone().as_range()),
     )
-    .with_config(config)
-    .with_message(message)
-    .with_code(420)
-    .with_label(
-        Label::new((file_path, span.clone().as_range()))
-            .with_message(semantic_error_to_reason(error)),
-    )
-    .finish()
-    .print((file_path, Source::from(source)))
-    .unwrap();
+        .with_config(config)
+        .with_message(message)
+        .with_code(420)
+        .with_label(
+            Label::new((file_path, span.clone().as_range()))
+                .with_message(semantic_error_to_reason(error)),
+        )
+        .finish()
+        .print((file_path, Source::from(source)))
+        .unwrap();
 }
 
 pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, source: String) {

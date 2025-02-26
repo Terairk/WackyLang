@@ -2,11 +2,17 @@
 name = "middle"
 version = "0.1.0"
 edition = "2024"
+publish = false
 
-[dependencies]
-syntax = { path = "../syntax" }
-internment = { version = "0.8.6", features = ["arc"] }
-
+[lib]
+doctest = false
+name = "middle"
+path = "src/lib.rs"
 
 [lints]
 workspace = true
+
+[dependencies]
+syntax = { workspace = true }
+internment = { workspace = true, features = ["arc"] }
+util = { workspace = true }
