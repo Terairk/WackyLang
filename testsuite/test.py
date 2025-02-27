@@ -1,3 +1,4 @@
+import sys
 import subprocess as sp
 import tempfile as tf
 import os
@@ -35,17 +36,9 @@ def emulate(exe):
     return result.stdout
 
 def get_sample_output(src):
-    result = sp.run(['java', '-jar', 'wacc-reference-cli.jar', src, '-x'], capture_output=True, text=True)
-    
-    if result.stderr:
-        raise CompilationError(result.stderr)
-
-    if "subprocess-shutdown-hook-monitor" in result.stdout:
-        # bruh our shitty reference compiler is complaining again
-        return get_sample_output(src)
-
-
-    return result.stdout[:-1] # filter out the last trailing \n
+    dst = src.replace("testsuite/test_cases", "testsuite/expected")
+    with open(dst, "r") as f:
+        return f.read()
 
 def run_and_compare(src):
     sample_output = get_sample_output(src)
@@ -78,6 +71,11 @@ def main():
     total_tests = len(results)
     passed_tests = sum(results)
     print(f"\nTotal tests: {total_tests}, Passed: {passed_tests}, Failed: {total_tests - passed_tests}")
+
+    if total_tests == passed_tests:
+        sys.exit(0)
+    else:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
