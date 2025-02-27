@@ -27,6 +27,7 @@ bitflags! {
         const DIV_BY_ZERO   = 0x0000_8000;
         const NULL_DEREF    = 0x0001_0000; // handles null free's and null deref
         const EXIT          = 0x0002_0000;
+        const ARR_BOUNDS    = 0x0004_0000;
     }
 }
 
@@ -79,5 +80,9 @@ pub fn rewrite_global_flag() {
 
     if global_flags.contains(GenFlags::OOM) {
         *global_flags |= GenFlags::PRINT_STR;
+    }
+
+    if global_flags.contains(GenFlags::ARRAY_ACCESS) {
+        *global_flags |= GenFlags::ARR_BOUNDS;
     }
 }
