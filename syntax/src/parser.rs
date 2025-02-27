@@ -2,9 +2,7 @@
 
 use crate::ext::ParserExt as _;
 use crate::{
-    alias, ast,
-    nonempty::NonemptyArray,
-    private,
+    alias, ast, private,
     source::{SourcedNode, SourcedSpan},
     token::Delim,
     token::Token,
@@ -14,7 +12,6 @@ use chumsky::input::{Checkpoint, Cursor};
 use chumsky::inspector::Inspector;
 use chumsky::pratt::right;
 use chumsky::{
-    Parser,
     combinator::{DelimitedBy, MapWith},
     extra::ParserExtra,
     input::BorrowInput,
@@ -24,10 +21,12 @@ use chumsky::{
     primitive::Just,
     recovery::{RecoverWith, ViaParser},
     select_ref,
+    Parser,
 };
 use extend::ext;
 use std::fmt;
 use std::marker::PhantomData;
+use util::nonempty::NonemptyArray;
 
 /// A file-local type alias for better readability of type definitions
 type SN<T> = SourcedNode<T>;

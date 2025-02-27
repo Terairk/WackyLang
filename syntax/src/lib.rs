@@ -9,14 +9,12 @@
 #![feature(stmt_expr_attributes)]
 #![feature(unboxed_closures)]
 
-
+use crate::error::{semantic_error_to_reason, SemanticError};
+use crate::source::SourcedSpan;
 use ariadne::{CharSet, Label, Report, Source};
 use chumsky::error::Rich;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
-use crate::error::{SemanticError, semantic_error_to_reason};
-use crate::source::SourcedSpan;
-
 
 /// Namespace for all the type/trait aliases used by this crate.
 pub(crate) mod alias {
@@ -30,9 +28,7 @@ pub(crate) mod alias {
         I: Input<'src>,
         I::Token: PartialEq,
         E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>;
-    
-    
-    
+
     pub trait StatelessParser<'src, I, O> = Parser<'src, I, O, extra::Full<Rich<'src, I::Token, I::Span>, (), ()>>
     where
         I: Input<'src>,
@@ -40,10 +36,10 @@ pub(crate) mod alias {
 }
 
 pub mod ast;
-pub mod types;
+pub mod error;
 pub mod fold_program;
 pub mod rename;
-pub mod error;
+pub mod types;
 
 /// Namespace for crate-wide extension traits/methods
 pub(crate) mod ext {
@@ -106,12 +102,12 @@ pub(crate) mod ext {
                 '\x00'..'\x20'
 
                 // the WACC specification also explicitly excludes these characters
-                | '\\' | '\'' | '"'  => false,
+                | '\\' | '\'' | '"' => false,
 
                 // everything else in the ASCII-character range is fine, i.e. from `'\x20'` upto
                 // `'\x7F'` inclusive
                 '\x20'..='\x7F' => true,
-                
+
                 // all other characters are non-ASCII and should not be accepted
                 _ => false,
             }
@@ -203,8 +199,6 @@ pub(crate) mod ext {
 }
 
 pub mod node;
-
-pub mod nonempty;
 pub mod parser;
 
 pub(crate) mod private {
@@ -217,7 +211,6 @@ pub mod source;
 
 pub mod token;
 pub mod typecheck;
-
 
 #[allow(clippy::unwrap_used)]
 pub fn build_syntactic_report<T>(error: &Rich<T, SourcedSpan>, source: String)

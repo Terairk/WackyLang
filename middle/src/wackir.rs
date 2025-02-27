@@ -82,85 +82,163 @@
  * */
 
 use internment::ArcIntern;
-use std::fmt::{self, Debug, Formatter};
+use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
-use syntax::ast::{BinaryOper, Liter, UnaryOper};
-use syntax::{ast::Ident, rename::RenamedName, types::SemanticType};
+use std::ops::{Deref, DerefMut};
+use syntax::{ast, types::SemanticType};
 
 // Treat WackFunction's slightly differently from main
 #[derive(Clone)]
 pub struct WackProgram {
     pub functions: Vec<WackFunction>,
-    pub main_body: Vec<WackInstruction>,
+    pub main_body: Vec<WackInstr>,
 }
 
 #[derive(Clone)]
 pub struct WackFunction {
-    pub name: Ident,
-    pub params: Vec<MidIdent>,
+    pub name: WackGlobIdent,
+    pub params: Vec<WackTempIdent>, // TODO: maybe should be GLOB ident??
     // Not sure if we need types, should be fine
     // if we have Symbol Table
-    pub body: Vec<WackInstruction>,
+    pub body: Vec<WackInstr>,
 }
 
 #[derive(Clone)]
-pub enum WackInstruction {
+pub enum WackInstr {
+    // TODO: at the end of this, remove redundant instructions
+    // TODO: change any `src` and `dst` from "WackValue" bc it might not make sense to e.g. to "store" into a constant value
+    // TODO: add code-docs to these instructions
+    /// This instruction returns a value from within a function body.
     Return(WackValue),
+
+    /// Extends a 32-bit signed integer value to a 64-bit signed integer value,
+    /// preserving the sign-bit in the process.
+    SignExtend {
+        src: WackValue,
+        dst: WackValue,
+    },
+
+    /// Converts a 64-bit integer value to a 32-bit integer value, by moving the
+    /// lowest 4 bytes to the [`dst`].
+    Truncate {
+        src: WackValue,
+        dst: WackValue,
+    },
+
+    /// Extends a 32-bit integer value to a 64-bit integer value, by filling the
+    /// new highest 4 bytes with zeros, without regard to any sign-bit in [`src`].
     ZeroExtend {
         src: WackValue,
         dst: WackValue,
     },
+
+    /// USAGE: `dst = op(src)`
     Unary {
-        op: UnaryOperator,
+        op: UnaryOp,
         src: WackValue,
         dst: WackValue,
     },
+
+    /// USAGE: `dst = op(src1, src2)`
     Binary {
-        op: BinaryOperator,
+        op: BinaryOp,
         src1: WackValue,
         src2: WackValue,
         dst: WackValue,
     },
+
+    /// USAGE: `dst = src`
     Copy {
         src: WackValue,
         dst: WackValue,
     },
+
+    /// USAGE: `dst = &src`
+    ///
+    /// NOTE: [`src`] must be a variable, not constant.
+    GetAddress {
+        src: WackValue,
+        dst: WackValue,
+    },
+
+    /// USAGE: `dst = *src_ptr`
+    ///
+    /// NOTE: [`src_ptr`] must be a pointer/memory address.h
     Load {
         src_ptr: WackValue,
         dst: WackValue,
     },
+
+    /// USAGE: `*dst_ptr = src`
+    ///
+    /// NOTE: [`dst_ptr`] must be a pointer/memory address.
     Store {
         src: WackValue,
         dst_ptr: WackValue,
     },
+
+    /// USAGE: `dst_ptr = offset + src_ptr + (index * scale)`
+    ///
+    /// NOTE: [`src_ptr`] and [`dst_ptr`] must be a pointers/memory addresses;
+    ///       the base unit of the pointer-arithmetic is 1 byte, which is scaled by [`scale`].
+    ///
+    /// INTERNAL NOTE: DELETE LATER... -> this is a slightly modified version of `AddPtr(..)` that also includes offset
+    ///                which I think is acceptable [since `LEA` can support that](https://stackoverflow.com/a/32011131/9700478),
+    ///                e.g. `lea OFF(%rax, %rbx, SCALE), %rcx   # rcx = OFF + (rax + rbx*SCALE)`
     AddPtr {
-        ptr: WackValue,
+        src_ptr: WackValue,
         index: WackValue,
-        scale: i32,
-        dst: MidIdent,
+        scale: usize,
+        offset: usize,
+        dst_ptr: WackTempIdent,
     },
+
+    /// Copies the bytes of scalar value represented by [`src`], to the memory location (plus offset)
+    /// of the object represented by variable [`dst`].
+    ///
+    /// TODO: >its unclear which of these are pointers, and which are values...
+    ///       >its ALSO unclear how exactly the size-information (which is based on types) is meant
+    ///        to propagate to ASM generation?? how are we looking up the size of [`src`]
+    ///
+    /// It can be seen as an automated version of C's `memcpy`.
     CopyToOffset {
         src: WackValue,
-        dst: MidIdent,
-        offset: i32,
+        dst: WackTempIdent,
+        offset: usize,
     },
+
+    /// ??
     CopyFromOffset {
-        src: MidIdent,
-        offset: i32,
+        src: WackTempIdent,
         dst: WackValue,
+        offset: u32,
     },
-    Jump(MidIdent),
+
+    /// Performs checked array-access, indexing into the array at [`src_array_ptr`] and storing
+    /// the pointer of the element corresponding to [`index`] into the [`dst_elem_ptr`] operand.
+    ///
+    /// The index-value is checked against the array-length, and if not  0 <= index < length, then
+    /// an out-of-bounds error will be thrown at runtime.
+    /// The instruction will handle any offsetting that needs to be done.
+    ArrayAccess {
+        src_array_ptr: WackValue,
+        index: WackValue,
+        scale: usize,
+        dst_elem_ptr: WackTempIdent,
+    },
+
+    Jump(WackTempIdent),
     JumpIfZero {
         condition: WackValue,
-        target: MidIdent,
+        target: WackTempIdent,
     },
     JumpIfNotZero {
         condition: WackValue,
-        target: MidIdent,
+        target: WackTempIdent,
     },
-    Label(MidIdent),
+    Label(WackTempIdent),
     FunCall {
-        fun_name: Ident,
+        fun_name: WackGlobIdent,
         args: Vec<WackValue>,
         dst: WackValue,
     },
@@ -168,7 +246,29 @@ pub enum WackInstruction {
         dst: WackValue,
         ty: SemanticType,
     },
-    Free(WackValue),
+    /// Allocates [`size`] bytes on the heap (or crashes with out-of-memory runtime error) and
+    /// stores the memory address of the start of the allocated memory-region in [`dst`].
+    ///
+    /// It can be seen as an automated version of C's `malloc`.
+    Alloc {
+        size: usize,
+        dst_ptr: WackValue,
+    },
+
+    /// This frees the memory associated with the pointer that the value holds, without
+    /// checking if the pointer is `null` or not.
+    /// If it is `null`, nothing is done and no runtime errors occur.
+    FreeUnchecked(WackValue),
+
+    /// This frees the memory associated with the pointer that the value holds, checking that
+    /// the pointer isn't `null`.
+    /// If it is `null`, a runtime null-pointer-dereference error occurs.
+    FreeChecked(WackValue),
+
+    /// Checks that the pointer represented by this value isn't `null`.
+    /// If it is `null`, a runtime null-pointer-dereference error occurs.
+    NullPtrGuard(WackValue),
+
     Exit(WackValue),
     Print {
         src: WackValue,
@@ -180,28 +280,265 @@ pub enum WackInstruction {
     },
 }
 
+impl WackInstr {
+    // The default index for pointer arithmetic is zero, i.e. the very start
+    const DEFAULT_ADD_PTR_INDEX: WackValue = WackValue::Literal(WackLiteral::Int(0));
+
+    // The default scale for pointer arithmetic should be one byte.
+    const DEFAULT_ADD_PTR_SCALE: usize = 1;
+
+    // The default offset for pointer arithmetic is zero, i.e. no offset
+    const DEFAULT_ADD_PTR_OFFSET: usize = 0;
+
+    /// Creates a pointer-arithmetic instruction that simply adds a fixed offset.
+    #[inline]
+    #[must_use]
+    pub const fn add_ptr_offset(src_ptr: WackValue, offset: usize, dst_ptr: WackTempIdent) -> Self {
+        Self::AddPtr {
+            src_ptr,
+            index: Self::DEFAULT_ADD_PTR_INDEX,
+            scale: Self::DEFAULT_ADD_PTR_SCALE,
+            offset,
+            dst_ptr,
+        }
+    }
+
+    /// Creates a pointer-arithmetic instruction that, provided the scale (in bytes) of each index,
+    /// simply indexes into the array-like region with no offset.
+    #[inline]
+    #[must_use]
+    pub const fn add_ptr_index(
+        src_ptr: WackValue,
+        index: WackValue,
+        scale: usize,
+        dst_ptr: WackTempIdent,
+    ) -> Self {
+        Self::AddPtr {
+            src_ptr,
+            index,
+            scale,
+            offset: Self::DEFAULT_ADD_PTR_OFFSET,
+            dst_ptr,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum WackValue {
-    Constant(WackConst), // My only concern is the error type on SemanticType
-    Var(MidIdent),
+    Literal(WackLiteral), // My only concern is the error type on SemanticType
+    Var(WackTempIdent),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum WackConst {
-    // Represent all these as 32 bit integers
+pub enum WackLiteral {
     Int(i32),
-    Bool(i32),
-    Char(i32),
+    Bool(WackBool), // smallest possible repr is 1 byte
+    Char(WackChar), // 7-bit ASCII fits within 1 byte
     StringLit(ArcIntern<str>),
     NullPair,
 }
+
+/// A 1-byte representation of a boolean value - the smallest possible.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct WackBool(u8);
+
+// impls related to `WackBool`
+pub mod wack_bool {
+    use crate::wackir::WackBool;
+    use std::mem;
+    use thiserror::Error;
+
+    #[derive(Error, Debug)]
+    #[error("Expected a boolean, found byte `{0}`")]
+    pub struct NonBooleanByteError(u8);
+
+    impl WackBool {
+        pub const TRUE: Self = Self(1);
+        pub const FALSE: Self = Self(0);
+
+        #[allow(clippy::as_conversions)]
+        #[inline]
+        #[must_use]
+        pub const fn from_bool(b: bool) -> Self {
+            Self(b as u8)
+        }
+
+        #[inline]
+        #[must_use]
+        pub const fn into_bool(self) -> bool {
+            // SAFETY: the only way to construct `WackBool` is by making sure it is a boolean.
+            unsafe { mem::transmute(self) }
+        }
+
+        /// # Safety
+        /// Only use this if you are _sure_ the [`u8`] byte is actually a boolean.
+        #[inline]
+        #[must_use]
+        pub const unsafe fn from_u8_unchecked(r#u8: u8) -> Self {
+            Self(r#u8)
+        }
+
+        /// # Errors
+        /// Only [`u8`] bytes which are _actually_ booleans can be used to create [`WackBool`].
+        #[inline]
+        pub const fn try_from_u8(r#u8: u8) -> Result<Self, NonBooleanByteError> {
+            match r#u8 {
+                0 | 1 => Ok(Self(r#u8)),
+                _ => Err(NonBooleanByteError(r#u8)),
+            }
+        }
+
+        #[inline]
+        #[must_use]
+        pub const fn into_u8(self) -> u8 {
+            self.0
+        }
+    }
+
+    impl From<bool> for WackBool {
+        #[inline]
+        fn from(b: bool) -> Self {
+            Self::from_bool(b)
+        }
+    }
+
+    impl From<WackBool> for bool {
+        #[inline]
+        fn from(wack_bool: WackBool) -> Self {
+            wack_bool.into_bool()
+        }
+    }
+
+    impl TryFrom<u8> for WackBool {
+        type Error = NonBooleanByteError;
+        #[inline]
+        fn try_from(value: u8) -> Result<Self, Self::Error> {
+            Self::try_from_u8(value)
+        }
+    }
+
+    impl From<WackBool> for u8 {
+        #[inline]
+        fn from(wack_bool: WackBool) -> Self {
+            wack_bool.into_u8()
+        }
+    }
+}
+
+/// A 1-byte representation of 7-bit ASCII value - the smallest possible.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct WackChar(u8);
+
+// impls related to `WackChar`
+pub mod wack_char {
+    use crate::wackir::WackChar;
+    use thiserror::Error;
+
+    #[derive(Error, Debug)]
+    #[error("Expected an ASCII character, found non-ASCII character `{0}`")]
+    pub struct NonAsciiCharError(char);
+
+    #[derive(Error, Debug)]
+    #[error("Expected an ASCII byte, found non-ASCII byte `{0}`")]
+    pub struct NonAsciiByteError(u8);
+
+    impl WackChar {
+        /// # Safety
+        /// Only use this if you are _sure_ the [`char`] is actually ASCII.
+        #[inline]
+        #[must_use]
+        pub const unsafe fn from_char_unchecked(r#char: char) -> Self {
+            Self(r#char as u8)
+        }
+
+        /// # Errors
+        /// Only [`char`]s which are _actually_ ASCII can be used to create [`WackChar`].
+        #[inline]
+        pub const fn try_from_char(r#char: char) -> Result<Self, NonAsciiCharError> {
+            match r#char {
+                '\x00'..='\x7F' => Ok(Self(r#char as u8)),
+                _ => Err(NonAsciiCharError(r#char)),
+            }
+        }
+
+        #[allow(clippy::as_conversions)]
+        #[inline]
+        #[must_use]
+        pub const fn into_char(self) -> char {
+            self.0 as char
+        }
+
+        /// # Safety
+        /// Only use this if you are _sure_ the [`u8`] byte is actually ASCII.
+        #[inline]
+        #[must_use]
+        pub const unsafe fn from_u8_unchecked(r#u8: u8) -> Self {
+            Self(r#u8)
+        }
+
+        /// # Errors
+        /// Only [`u8`] bytes which are _actually_ ASCII can be used to create [`WackChar`].
+        #[inline]
+        pub const fn try_from_u8(r#u8: u8) -> Result<Self, NonAsciiByteError> {
+            match r#u8 {
+                0x00..=0x7F => Ok(Self(r#u8)),
+                _ => Err(NonAsciiByteError(r#u8)),
+            }
+        }
+
+        #[inline]
+        #[must_use]
+        pub const fn into_u8(self) -> u8 {
+            self.0
+        }
+    }
+
+    impl TryFrom<char> for WackChar {
+        type Error = NonAsciiCharError;
+
+        #[inline]
+        fn try_from(value: char) -> Result<Self, Self::Error> {
+            Self::try_from_char(value)
+        }
+    }
+
+    impl From<WackChar> for char {
+        #[inline]
+        #[must_use]
+        fn from(value: WackChar) -> Self {
+            value.into_char()
+        }
+    }
+
+    impl TryFrom<u8> for WackChar {
+        type Error = NonAsciiByteError;
+        #[inline]
+        fn try_from(value: u8) -> Result<Self, Self::Error> {
+            Self::try_from_u8(value)
+        }
+    }
+
+    impl From<WackChar> for u8 {
+        #[inline]
+        #[must_use]
+        fn from(value: WackChar) -> Self {
+            value.into_u8()
+        }
+    }
+}
+
+// #[derive(Clone, Debug, PartialEq, Eq)]
+// #[repr(transparent)]
+// pub struct WackBool(pub u8);
 
 // I know that these are the same as the ones in ast.rs but I'm not sure if I want to
 // couple them together or not. For now I'll separate them just in case I need to move
 // Len, Ord, Chr somewhere else
 // TODO: just use the UnaryOper from ast.rs
 #[derive(Clone, Debug)]
-pub enum UnaryOperator {
+pub enum UnaryOp {
     Not,
     Negate,
     Len,
@@ -211,7 +548,7 @@ pub enum UnaryOperator {
 
 // See UnaryOperator explanation above
 #[derive(Clone, Debug)]
-pub enum BinaryOperator {
+pub enum BinaryOp {
     Mul,
     Div,
     Mod,
@@ -227,106 +564,184 @@ pub enum BinaryOperator {
     Or,
 }
 
-impl From<BinaryOper> for BinaryOperator {
+impl From<ast::BinaryOper> for BinaryOp {
     #[inline]
-    fn from(binop: BinaryOper) -> Self {
+    fn from(binop: ast::BinaryOper) -> Self {
         match binop {
-            BinaryOper::Mul => BinaryOperator::Mul,
-            BinaryOper::Div => BinaryOperator::Div,
-            BinaryOper::Mod => BinaryOperator::Mod,
-            BinaryOper::Add => BinaryOperator::Add,
-            BinaryOper::Sub => BinaryOperator::Sub,
-            BinaryOper::Lte => BinaryOperator::Lte,
-            BinaryOper::Lt => BinaryOperator::Lt,
-            BinaryOper::Gte => BinaryOperator::Gte,
-            BinaryOper::Gt => BinaryOperator::Gt,
-            BinaryOper::Eq => BinaryOperator::Eq,
-            BinaryOper::Neq => BinaryOperator::Neq,
-            BinaryOper::And => BinaryOperator::And,
-            BinaryOper::Or => BinaryOperator::Or,
+            ast::BinaryOper::Mul => Self::Mul,
+            ast::BinaryOper::Div => Self::Div,
+            ast::BinaryOper::Mod => Self::Mod,
+            ast::BinaryOper::Add => Self::Add,
+            ast::BinaryOper::Sub => Self::Sub,
+            ast::BinaryOper::Lte => Self::Lte,
+            ast::BinaryOper::Lt => Self::Lt,
+            ast::BinaryOper::Gte => Self::Gte,
+            ast::BinaryOper::Gt => Self::Gt,
+            ast::BinaryOper::Eq => Self::Eq,
+            ast::BinaryOper::Neq => Self::Neq,
+            ast::BinaryOper::And => Self::And,
+            ast::BinaryOper::Or => Self::Or,
         }
     }
 }
 
-impl From<UnaryOper> for UnaryOperator {
+impl From<ast::UnaryOper> for UnaryOp {
     #[inline]
-    fn from(unop: UnaryOper) -> Self {
+    fn from(unop: ast::UnaryOper) -> Self {
         match unop {
-            UnaryOper::Not => UnaryOperator::Not,
-            UnaryOper::Minus => UnaryOperator::Negate,
-            UnaryOper::Len => UnaryOperator::Len,
-            UnaryOper::Ord => UnaryOperator::Ord,
-            UnaryOper::Chr => UnaryOperator::Chr,
+            ast::UnaryOper::Not => Self::Not,
+            ast::UnaryOper::Minus => Self::Negate,
+            ast::UnaryOper::Len => Self::Len,
+            ast::UnaryOper::Ord => Self::Ord,
+            ast::UnaryOper::Chr => Self::Chr,
         }
     }
 }
 
 // TODO: check that these give the right answers
-impl From<Liter> for WackConst {
+impl From<ast::Liter> for WackLiteral {
     #[inline]
-    fn from(liter: Liter) -> Self {
+    fn from(liter: ast::Liter) -> Self {
         match liter {
-            Liter::IntLiter(i) => Self::Int(i),
-            Liter::BoolLiter(b) => Self::Bool(b as i32),
-            Liter::CharLiter(c) => Self::Char(c as i32),
-            Liter::StrLiter(s) => Self::StringLit(s),
-            Liter::PairLiter => Self::NullPair,
+            ast::Liter::IntLiter(i) => Self::Int(i),
+            ast::Liter::BoolLiter(b) => Self::Bool(b.into()),
+            ast::Liter::CharLiter(c) => {
+                // SAFETY: literal characters from the parser are guaranteed to be ASCII
+                Self::Char(unsafe { WackChar::from_char_unchecked(c) })
+            }
+            ast::Liter::StrLiter(s) => Self::StringLit(s),
+            ast::Liter::PairLiter => Self::NullPair,
         }
     }
 }
 
+/// An identified used for global-scope items like functions, who's names
+/// do not need to be generated using an increasing counter.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct WackGlobIdent(ArcIntern<str>);
+
+// impls relating to `WackGlobIdent`
+mod wack_glob_ident {
+    use crate::wackir::WackGlobIdent;
+    use internment::ArcIntern;
+    use syntax::ast;
+
+    impl WackGlobIdent {
+        #[must_use]
+        #[inline]
+        pub const fn new(r#str: ArcIntern<str>) -> Self {
+            Self(r#str)
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn from_ref(r#str: &ArcIntern<str>) -> Self {
+            Self(r#str.clone())
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn into_inner(self) -> ArcIntern<str> {
+            self.0
+        }
+    }
+
+    impl From<ast::Ident> for WackGlobIdent {
+        #[must_use]
+        #[inline]
+        fn from(value: ast::Ident) -> Self {
+            Self::new(value.into_inner())
+        }
+    }
+
+    impl From<&ast::Ident> for WackGlobIdent {
+        #[must_use]
+        #[inline]
+        fn from(value: &ast::Ident) -> Self {
+            Self::from_ref(value.inner())
+        }
+    }
+
+    impl From<WackGlobIdent> for String {
+        #[inline]
+        fn from(ident: WackGlobIdent) -> Self {
+            ident.0.to_string()
+        }
+    }
+}
+
+/// Identifier used for more locally-scoped items, such as temporary variables,
+/// or control-flow labels generated after lowering the [`ast`].
+///
+/// Invariant: The usize's are unique so should reuse the global counter when possible.
+///            DO NOT UNDER ANY CIRCUMSTANCES USE THE SAME usize FOR TWO DIFFERENT IDENTIFIERS!!
 #[derive(Clone)]
-pub struct MidIdent(Ident, usize);
+pub struct WackTempIdent(ast::Ident, usize);
 
-impl Debug for MidIdent {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}.{}", self.0, self.1)
+// impls relating to `WackTempIdent`
+pub mod wack_temp_ident {
+    use crate::ast_transform::ast_lowering_ctx::With;
+    use crate::ast_transform::AstLoweringCtx;
+    use crate::wackir::WackTempIdent;
+    use std::fmt;
+    use std::fmt::{Debug, Formatter};
+    use std::hash::{Hash, Hasher};
+    use syntax::ast;
+    use syntax::rename::RenamedName;
+
+    impl Debug for WackTempIdent {
+        #[inline]
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            write!(f, "{}.{}", self.0, self.1)
+        }
     }
-}
 
-impl PartialEq for MidIdent {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.1 == other.1
+    impl PartialEq for WackTempIdent {
+        #[inline]
+        fn eq(&self, other: &Self) -> bool {
+            self.1 == other.1
+        }
     }
-}
 
-// Invariant: The usize's are unique so should reuse the global counter when possible
-// DO NOT UNDER ANY CIRCUMSTANCES USE THE SAME usize FOR TWO DIFFERENT IDENTIFIERS
-impl Eq for MidIdent {}
+    impl Eq for WackTempIdent {}
 
-impl Hash for MidIdent {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.1.hash(state);
+    impl Hash for WackTempIdent {
+        #[inline]
+        fn hash<H: Hasher>(&self, state: &mut H) {
+            self.1.hash(state);
+        }
     }
-}
 
-pub trait ConvertToMidIdent {
-    fn to_mid_ident(&self, counter: &mut usize) -> MidIdent;
-}
-
-impl ConvertToMidIdent for RenamedName {
-    #[inline]
-    fn to_mid_ident(&self, _counter: &mut usize) -> MidIdent {
-        MidIdent(self.ident.clone(), self.uuid)
+    impl From<RenamedName> for WackTempIdent {
+        #[inline]
+        fn from(value: RenamedName) -> Self {
+            Self(value.ident.clone(), value.uuid)
+        }
     }
-}
 
-impl ConvertToMidIdent for Ident {
-    #[allow(clippy::arithmetic_side_effects)]
-    #[inline]
-    fn to_mid_ident(&self, counter: &mut usize) -> MidIdent {
-        *counter += 1;
-        MidIdent(self.clone(), *counter)
+    impl From<With<ast::Ident, &mut usize>> for WackTempIdent {
+        #[inline]
+        fn from(value: With<ast::Ident, &mut usize>) -> Self {
+            let (ident, counter) = value.into_components();
+            *counter += 1;
+            Self(ident, *counter)
+        }
     }
-}
 
-impl From<MidIdent> for String {
-    #[inline]
-    fn from(mid_ident: MidIdent) -> Self {
-        format!("{}.{}", mid_ident.0, mid_ident.1)
+    impl From<With<ast::Ident, &mut AstLoweringCtx>> for WackTempIdent {
+        #[inline]
+        fn from(mut value: With<ast::Ident, &mut AstLoweringCtx>) -> Self {
+            let counter = value.ctx_mut().inc_ident_counter();
+            Self(value.into_inner(), counter)
+        }
+    }
+
+    impl From<WackTempIdent> for String {
+        #[inline]
+        fn from(mid_ident: WackTempIdent) -> Self {
+            format!("{}.{}", mid_ident.0, mid_ident.1)
+        }
     }
 }
 
@@ -376,20 +791,20 @@ impl fmt::Debug for WackFunction {
     }
 }
 
-impl fmt::Debug for WackInstruction {
+impl fmt::Debug for WackInstr {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            WackInstruction::Return(val) => write!(f, "Return({:?})", val),
-            WackInstruction::ZeroExtend { src, dst } => {
+            Self::Return(val) => write!(f, "Return({:?})", val),
+            Self::ZeroExtend { src, dst } => {
                 write!(f, "ZeroExtend {{ src: {:?}, dst: {:?} }}", src, dst)
             }
-            WackInstruction::Unary { op, src, dst } => write!(
+            Self::Unary { op, src, dst } => write!(
                 f,
                 "Unary {{ op: {:?}, src: {:?}, dst: {:?} }}",
                 op, src, dst
             ),
-            WackInstruction::Binary {
+            Self::Binary {
                 op,
                 src1,
                 src2,
@@ -399,48 +814,49 @@ impl fmt::Debug for WackInstruction {
                 "Binary {{ op: {:?}, src1: {:?}, src2: {:?}, dst: {:?} }}",
                 op, src1, src2, dst
             ),
-            WackInstruction::Copy { src, dst } => {
+            Self::Copy { src, dst } => {
                 write!(f, "Copy {{ src: {:?}, dst: {:?} }}", src, dst)
             }
-            WackInstruction::Load { src_ptr, dst } => {
+            Self::Load { src_ptr, dst } => {
                 write!(f, "Load {{ src_ptr: {:?}, dst: {:?} }}", src_ptr, dst)
             }
-            WackInstruction::Store { src, dst_ptr } => {
+            Self::Store { src, dst_ptr } => {
                 write!(f, "Store {{ src: {:?}, dst_ptr: {:?} }}", src, dst_ptr)
             }
-            WackInstruction::AddPtr {
-                ptr,
+            Self::AddPtr {
+                src_ptr,
                 index,
                 scale,
-                dst,
+                offset,
+                dst_ptr,
             } => write!(
                 f,
-                "AddPtr {{ ptr: {:?}, index: {:?}, scale: {:?}, dst: {:?} }}",
-                ptr, index, scale, dst
+                "AddPtr {{ src_ptr: {:?}, index: {:?}, scale: {:?}, offset: {:?}, dst_ptr: {:?} }}",
+                src_ptr, index, scale, offset, dst_ptr
             ),
-            WackInstruction::CopyToOffset { src, dst, offset } => write!(
+            Self::CopyToOffset { src, dst, offset } => write!(
                 f,
                 "CopyToOffset {{ src: {:?}, dst: {:?}, offset: {:?} }}",
                 src, dst, offset
             ),
-            WackInstruction::CopyFromOffset { src, offset, dst } => write!(
+            Self::CopyFromOffset { src, offset, dst } => write!(
                 f,
                 "CopyFromOffset {{ src: {:?}, offset: {:?}, dst: {:?} }}",
                 src, offset, dst
             ),
-            WackInstruction::Jump(target) => write!(f, "Jump({:?})", target),
-            WackInstruction::JumpIfZero { condition, target } => write!(
+            Self::Jump(target) => write!(f, "Jump({:?})", target),
+            Self::JumpIfZero { condition, target } => write!(
                 f,
                 "JumpIfZero {{ condition: {:?}, target: {:?} }}",
                 condition, target
             ),
-            WackInstruction::JumpIfNotZero { condition, target } => write!(
+            Self::JumpIfNotZero { condition, target } => write!(
                 f,
                 "JumpIfNotZero {{ condition: {:?}, target: {:?} }}",
                 condition, target
             ),
-            WackInstruction::Label(label) => write!(f, "Label({:?})", label),
-            WackInstruction::FunCall {
+            Self::Label(label) => write!(f, "Label({:?})", label),
+            Self::FunCall {
                 fun_name,
                 args,
                 dst,
@@ -449,17 +865,18 @@ impl fmt::Debug for WackInstruction {
                 "FunCall {{ fun_name: {:?}, args: {:?}, dst: {:?} }}",
                 fun_name, args, dst
             ),
-            WackInstruction::Read { dst, ty } => {
+            Self::Read { dst, ty } => {
                 write!(f, "Read {{ dst: {:?}, ty: {:?} }}", dst, ty)
             }
-            WackInstruction::Free(val) => write!(f, "Free({:?})", val),
-            WackInstruction::Exit(val) => write!(f, "Exit({:?})", val),
-            WackInstruction::Print { src, ty } => {
+            Self::FreeUnchecked(val) => write!(f, "FreeUnchecked({:?})", val),
+            Self::Exit(val) => write!(f, "Exit({:?})", val),
+            Self::Print { src, ty } => {
                 write!(f, "Print {{ src: {:?}, ty: {:?} }}", src, ty)
             }
-            WackInstruction::Println { src, ty } => {
+            Self::Println { src, ty } => {
                 write!(f, "Println {{ src: {:?}, ty: {:?} }}", src, ty)
             }
+            _ => todo!("Implement these later"),
         }
     }
 }
@@ -469,26 +886,39 @@ impl fmt::Debug for WackInstruction {
 mod tests {
     use super::*;
 
+    #[allow(clippy::undocumented_unsafe_blocks)]
     #[test]
     fn test_liter_conversion() {
         // Test integer literal conversion
-        let int_liter = Liter::IntLiter(42);
-        assert_eq!(WackConst::from(int_liter), WackConst::Int(42));
+        let int_liter = ast::Liter::IntLiter(42);
+        assert_eq!(WackLiteral::from(int_liter), WackLiteral::Int(42));
 
         // Test boolean literal conversion
-        let bool_liter_true = Liter::BoolLiter(true);
-        let bool_liter_false = Liter::BoolLiter(false);
-        assert_eq!(WackConst::from(bool_liter_true), WackConst::Bool(1));
-        assert_eq!(WackConst::from(bool_liter_false), WackConst::Bool(0));
+        let bool_liter_true = ast::Liter::BoolLiter(true);
+        let bool_liter_false = ast::Liter::BoolLiter(false);
+        assert_eq!(
+            WackLiteral::from(bool_liter_true),
+            WackLiteral::Bool(WackBool::TRUE)
+        );
+        assert_eq!(
+            WackLiteral::from(bool_liter_false),
+            WackLiteral::Bool(WackBool::FALSE)
+        );
 
         // Test char literal conversion
-        let char_liter = Liter::CharLiter('A');
-        let char_liter2 = Liter::CharLiter('a');
-        assert_eq!(WackConst::from(char_liter), WackConst::Char(65)); // ASCII value of 'A'
-        assert_eq!(WackConst::from(char_liter2), WackConst::Char(97)); // ASCII value of 'a'
+        let char_liter = ast::Liter::CharLiter('A');
+        let char_liter2 = ast::Liter::CharLiter('a');
+        assert_eq!(
+            WackLiteral::from(char_liter),
+            WackLiteral::Char(unsafe { WackChar::from_u8_unchecked(65) })
+        ); // ASCII value of 'A'
+        assert_eq!(
+            WackLiteral::from(char_liter2),
+            WackLiteral::Char(unsafe { WackChar::from_u8_unchecked(65) })
+        ); // ASCII value of 'a'
 
         // Test pair literal conversion
-        let pair_liter = Liter::PairLiter;
-        assert_eq!(WackConst::from(pair_liter), WackConst::NullPair);
+        let pair_liter = ast::Liter::PairLiter;
+        assert_eq!(WackLiteral::from(pair_liter), WackLiteral::NullPair);
     }
 }

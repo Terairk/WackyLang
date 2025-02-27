@@ -313,7 +313,7 @@ fn main() -> ExitCode {
     //                          Code Generation Pass
     // -------------------------------------------------------------------------
 
-    let formatted_assembly = AssemblyFormatter::format_program(&assembly_ast);
+    let formatted_assembly = AssemblyFormatter::format_program(&assembly_ast, _asm_gen.str_literals);
     if args.codegen {
         println!("{formatted_assembly}");
         return ExitCode::SUCCESS;

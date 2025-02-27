@@ -1,9 +1,10 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
+
 use crate::ast::{ArrayElem, PairElem};
 use crate::ast::{Expr, Func, FuncParam, Ident, LValue, Program, RValue, Stat, StatBlock};
 use crate::source::SourcedNode;
+use util::nonempty::NonemptyArray;
 
-use crate::nonempty::NonemptyArray;
 use crate::types::Type;
 
 type SN<T> = SourcedNode<T>;

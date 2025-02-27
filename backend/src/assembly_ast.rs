@@ -36,7 +36,7 @@
 // and it'd be easier for me probably
 // Change later if you want
 
-use middle::wackir::UnaryOperator;
+use middle::wackir::UnaryOp;
 use std::fmt::Debug;
 
 // implement Debug below
@@ -118,7 +118,7 @@ pub enum AsmInstruction {
 
 #[derive(Debug, Clone)]
 pub enum Operand {
-    Imm(i32),
+    Imm(i32), // TODO: immediate values should be represented as unsigned integers
     Reg(Register),
     Pseudo(String),
     Memory(Register, i32),  // I think is used for array/pair access
@@ -238,15 +238,15 @@ impl Debug for AsmProgram {
 /* ================ ASM Impl's for Conversions or otherwise ============ */
 
 // TODO: this is a place holder, idt we should have Len, Ord, Chr here
-impl From<UnaryOperator> for AsmUnaryOperator {
+impl From<UnaryOp> for AsmUnaryOperator {
     #[inline]
-    fn from(op: UnaryOperator) -> Self {
+    fn from(op: UnaryOp) -> Self {
         match op {
-            UnaryOperator::Negate => Self::Neg,
-            UnaryOperator::Not => Self::Not,
-            UnaryOperator::Len => Self::Len,
-            UnaryOperator::Ord => Self::Ord,
-            UnaryOperator::Chr => Self::Chr,
+            UnaryOp::Negate => Self::Neg,
+            UnaryOp::Not => Self::Not,
+            UnaryOp::Len => Self::Len,
+            UnaryOp::Ord => Self::Ord,
+            UnaryOp::Chr => Self::Chr,
         }
     }
 }

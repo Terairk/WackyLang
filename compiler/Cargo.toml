@@ -2,22 +2,25 @@
 name = "compiler"
 version = "0.1.0"
 edition = "2024"
-
-[dependencies]
-syntax = { path = "../syntax" }
-middle = { path = "../middle" }
-backend = { path = "../backend" }
-ariadne = "0.5.0"
-
-chumsky = { features = [
-  "std",
-  "stacker",
-  "memoization",
-  "pratt",
-  "regex",
-  "nightly",
-], git = "https://github.com/zesterer/chumsky", rev = "282bf5e" } # currently latest chumsky commit
-clap = { version = "4.5.30", features = ["derive"] }
+publish = false
 
 [lints]
 workspace = true
+
+[dependencies]
+syntax = { workspace = true }
+middle = { workspace = true }
+backend = { workspace = true }
+ariadne = { workspace = true }
+
+chumsky = { workspace = true, features = [
+    "std",
+    "stacker",
+    "memoization",
+    "pratt",
+    "regex",
+    "nightly",
+] }
+clap = { workspace = true, features = ["derive"] }
+
+
