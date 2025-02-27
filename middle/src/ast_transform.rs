@@ -187,7 +187,6 @@ pub(crate) mod ast_lowering_ctx {
         }
 
         pub(crate) fn lower_func(&mut self, func: TypedFunc) -> WackFunction {
-            // TODO: Figure out how/when to take in a list of instructions as parameter
             let mut instructions: Vec<WackInstr> = Vec::new();
             self.lower_stat_block(func.body, &mut instructions);
             let params = func
