@@ -6,8 +6,12 @@
 // We'll use R10D as a scratch register because it usually doesn't serve
 // any special purpose
 
-use crate::assembly_ast::{
-    AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, Operand, Register,
+use crate::{
+    assembly_ast::{
+        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode,
+        Operand, Register,
+    },
+    predefined::inbuiltOverflow,
 };
 
 #[must_use]
@@ -72,6 +76,7 @@ fn fix_binary(
             op2,
         }),
     }
+    asm.push(AsmInstruction::JmpOverflow(inbuiltOverflow.to_owned()));
 }
 
 fn fix_move(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand, dst: Operand) {

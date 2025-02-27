@@ -2,7 +2,7 @@
 // that our code will then call.
 
 use crate::assembly_ast::{
-    AsmBinaryOperator::*, AsmFunction, AsmInstruction, AsmUnaryOperator::*, Directive,
+    AsmBinaryOperator::*, AsmFunction, AsmInstruction, AsmProgram, AsmUnaryOperator::*, Directive,
 };
 use crate::assembly_ast::{
     AsmInstruction::*, AssemblyType::*, CondCode::*, Operand::*, Register::*,
@@ -10,29 +10,42 @@ use crate::assembly_ast::{
 
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use util::gen_flags::GenFlags;
+use util::gen_flags::{GenFlags, get_flags_gbl};
+
+#[inline]
+pub fn generate_predefined(program: &mut AsmProgram) {
+    let flags = get_flags_gbl();
+    let new_funcs: Vec<AsmFunction> = PREDEFINED_FUNCTIONS2
+        .iter()
+        .filter(|&(flag, _)| flags.contains(*flag))
+        .map(|(_, func)| func)
+        .cloned()
+        .collect();
+
+    program.asm_functions.extend(new_funcs);
+}
 
 // TODO change these to be Ident's eventually
-pub static PREDEFINED_FUNCTIONS2: Lazy<HashMap<GenFlags, &'static AsmFunction>> = Lazy::new(|| {
+pub static PREDEFINED_FUNCTIONS2: Lazy<HashMap<GenFlags, AsmFunction>> = Lazy::new(|| {
     let mut m = HashMap::new();
-    m.insert(GenFlags::DIV_BY_ZERO, &*errDivZero);
-    m.insert(GenFlags::MALLOC, &*malloc);
-    m.insert(GenFlags::FREE, &*free);
-    m.insert(GenFlags::FREEPAIR, &*freepair);
-    m.insert(GenFlags::OOM, &*errOutOfMemory);
-    m.insert(GenFlags::PRINT_PTR, &*printp);
-    m.insert(GenFlags::PRINT_STR, &*prints);
-    m.insert(GenFlags::PRINT_CHR, &*printc);
-    m.insert(GenFlags::PRINT_BOOLEAN, &*printb);
-    m.insert(GenFlags::PRINT_INT, &*printi);
-    m.insert(GenFlags::PRINT_LN, &*println);
-    m.insert(GenFlags::ARRAY_ACCESS, &*arrLoad);
-    m.insert(GenFlags::OUT_OF_BOUNDS, &*errOutOfBounds);
-    m.insert(GenFlags::CHR_BOUNDS, &*errBadChar);
-    m.insert(GenFlags::OVERFLOW, &*errOverflow);
-    m.insert(GenFlags::READ_INT, &*readi);
-    m.insert(GenFlags::READ_CHAR, &*readc);
-    m.insert(GenFlags::EXIT, &*exit);
+    m.insert(GenFlags::DIV_BY_ZERO, errDivZero.clone());
+    m.insert(GenFlags::MALLOC, malloc.clone());
+    m.insert(GenFlags::FREE, free.clone());
+    m.insert(GenFlags::FREE_PAIR, freepair.clone());
+    m.insert(GenFlags::OOM, errOutOfMemory.clone());
+    m.insert(GenFlags::PRINT_PTR, printp.clone());
+    m.insert(GenFlags::PRINT_STR, prints.clone());
+    m.insert(GenFlags::PRINT_CHR, printc.clone());
+    m.insert(GenFlags::PRINT_BOOLEAN, printb.clone());
+    m.insert(GenFlags::PRINT_INT, printi.clone());
+    m.insert(GenFlags::PRINT_LN, println.clone());
+    m.insert(GenFlags::ARRAY_ACCESS, arrLoad.clone());
+    m.insert(GenFlags::ARR_BOUNDS, errOutOfBounds.clone());
+    m.insert(GenFlags::CHR_BOUNDS, errBadChar.clone());
+    m.insert(GenFlags::OVERFLOW, errOverflow.clone());
+    m.insert(GenFlags::READ_INT, readi.clone());
+    m.insert(GenFlags::READ_CHR, readc.clone());
+    m.insert(GenFlags::EXIT, exit.clone());
     m
 });
 

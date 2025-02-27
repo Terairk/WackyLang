@@ -99,6 +99,7 @@ pub enum AsmInstruction {
         condition: CondCode,
         label: String,
     },
+    JmpOverflow(String), // Distinguish this from JmpCC due to jumping to other functions
     SetCC {
         condition: CondCode,
         operand: Operand,

@@ -3,6 +3,7 @@
 use backend::assembly_fix::fix_program;
 use backend::assembly_trans::wacky_to_assembly;
 use backend::emission::AssemblyFormatter;
+use backend::predefined::generate_predefined;
 use backend::replace_pseudo::replace_pseudo_in_program;
 use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
@@ -303,7 +304,7 @@ fn main() -> ExitCode {
     //                      Fixing Instructions Pass
     // -------------------------------------------------------------------------
 
-    let assembly_ast = fix_program(assembly_ast);
+    let mut assembly_ast = fix_program(assembly_ast);
     if args.fixing {
         println!("{assembly_ast:#?}");
         return ExitCode::SUCCESS;
@@ -313,7 +314,9 @@ fn main() -> ExitCode {
     //                          Code Generation Pass
     // -------------------------------------------------------------------------
 
-    let formatted_assembly = AssemblyFormatter::format_program(&assembly_ast, _asm_gen.str_literals);
+    generate_predefined(&mut assembly_ast);
+    let formatted_assembly =
+        AssemblyFormatter::format_program(&assembly_ast, _asm_gen.str_literals);
     if args.codegen {
         println!("{formatted_assembly}");
         return ExitCode::SUCCESS;
