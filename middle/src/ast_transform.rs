@@ -617,15 +617,68 @@ pub(crate) mod ast_lowering_ctx {
             WackValue::Var(pair_elem_dst_ptr)
         }
 
+        #[allow(clippy::expect_used, clippy::unwrap_used)]
         fn lower_array_elem_to_ptr(
             &mut self,
             array_elem: TypedArrayElem,
             sem_type: SemanticType,
             instructions: &mut Vec<WackInstr>,
         ) -> WackValue {
-            //
+            // get array name: the pointer to the beginning, and the element type
+            let mut src_array_ptr: WackTempIdent = array_elem.array_name.into_inner().into();
+            let mut array_type = self
+                .symbol_table
+                .get(&src_array_ptr)
+                .expect("This symbol should always be found, unless a previous stage has bugs.")
+                .clone();
 
-            todo!()
+            // first element is guaranteed to be there
+            let mut elem_ix_iter = array_elem.indices.into_iter();
+            let mut index = elem_ix_iter.next().unwrap().into_inner();
+
+            // track output element pointer
+            let mut elem_dst_ptr: WackTempIdent;
+            loop {
+                // obtain index value, and the corresponding element type (for the scale)
+                let index_value = self.lower_expr(index.clone(), instructions);
+                // SAFETY: this is guaranteed to be an array-type, if not, previous stage has bugs.
+                let array_elem_type = unsafe { array_type.clone().into_array_elem_type() };
+                let scale = array_elem_type.size_of();
+
+                // obtain pointer to element
+                elem_dst_ptr = self.make_temporary();
+                instructions.push(WackInstr::ArrayAccess {
+                    src_array_ptr: WackValue::Var(src_array_ptr.clone()),
+                    index: index_value,
+                    scale,
+                    dst_elem_ptr: elem_dst_ptr.clone(),
+                });
+
+                // if there is more indices, it means the element pointer points to an array;
+                // dereference it to obtain another array, and set up for another loop;
+                if let Some(next_index) = elem_ix_iter.next() {
+                    // update `src_array_pointer` by dereferencing the `elem_dst_ptr`
+                    src_array_ptr = self.make_temporary();
+                    instructions.push(WackInstr::Load {
+                        src_ptr: WackValue::Var(elem_dst_ptr.clone()),
+                        dst: WackValue::Var(src_array_ptr.clone()),
+                    });
+
+                    // load up the next index, and update base array's type
+                    index = next_index.into_inner();
+                    array_type = array_elem_type;
+                } else {
+                    // if this is the last index, check that the end-type doesn't disagree with
+                    // semantic type; if it does, there is a bug in the frontend
+                    // TODO: it may be the case that element types can be coerced safely to the
+                    //       overall array type, so this assert may trigger false-positives
+                    assert_eq!(array_elem_type, sem_type);
+                    break;
+                }
+            }
+
+            // return variable holding pointer to element
+            WackValue::Var(elem_dst_ptr)
         }
 
         // Very confusing but converts a syntax literal to Wacky Value
