@@ -77,8 +77,8 @@ impl AsmGen {
         AsmFunction {
             name: "main".to_owned(),
             global: true,
-            external: false,
             instructions: asm_instructions,
+            directives: vec![],
         }
     }
 
@@ -133,8 +133,8 @@ impl AsmGen {
         AsmFunction {
             name: func_name,
             global: false,
-            external: false,
             instructions: asm,
+            directives: vec![],
         }
     }
 
@@ -256,8 +256,8 @@ impl AsmGen {
                 asm.push(AsmInstruction::Call("_println".to_string(), false));
             }
             WackInstr::Exit(value) => {
-                todo!("add GenFlag for EXIT");
-                // insert_flag_gbl(GenFlags::EXIT);
+                // TODO: double check this works, this might be wrong
+                insert_flag_gbl(GenFlags::EXIT);
                 let operand = self.lower_value(value, asm);
                 asm.push(AsmInstruction::Mov {
                     typ: Longword,
