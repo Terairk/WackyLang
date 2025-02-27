@@ -172,14 +172,28 @@ impl Lowerer {
                 let instr = WackInstruction::Read { dst: value, ty: sem_type };
                 instructions.push(instr);
             },
-            TypedStat::Free(expr) => panic!("Write not implemented in Wacky"),
-            TypedStat::Return(expr) => {
+            TypedStat::Free(expr) => {
                 let sem_type = expr.inner().get_type();
+                match sem_type {
+                    SemanticType::Array(_)
+                    | SemanticType::Pair(_, _)
+                    | SemanticType::ErasedPair => (),
+                    _ => unreachable!("free should not be called on anything except pairs and arrays"),
+                }
+                let value = self.lower_expr(expr.into_inner(), instructions);
+                let instr = WackInstruction::Free(value);
+                instructions.push(instr);
+            },
+            TypedStat::Return(expr) => {
                 let value = self.lower_expr(expr.into_inner(), instructions);
                 let instr = WackInstruction::Return(value);
                 instructions.push(instr);
             }
             TypedStat::Exit(expr) => {
+                let sem_type = expr.inner().get_type();
+                if sem_type != SemanticType::Int {
+                    unreachable!("exit should be provided only with int exit value");
+                }
                 let value = self.lower_expr(expr.into_inner(), instructions);
                 let instr = WackInstruction::Exit(value);
                 instructions.push(instr);

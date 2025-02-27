@@ -272,6 +272,12 @@ impl AsmGen {
                     _ => unreachable!(), // anything else should be caught in frontend
                 }
             }
+            WackInstruction::Free(value) => {
+                let operand = self.lower_value(value, asm);
+                insert_flag_gbl(GenFlags::FREE);
+                asm.push(AsmInstruction::Mov {typ: Longword, src: operand, dst: Operand::Reg(DI) } );
+                asm.push(AsmInstruction::Call("_free".to_string(), false));
+            }
             _ => unimplemented!(),
         }
     }
