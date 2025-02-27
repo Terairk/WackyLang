@@ -40,6 +40,8 @@ const DIV_BY_ZERO_ASM: &str = include_str!("predefined_funcs/div_zero.txt");
 const NULL_DEREF_ASM: &str = include_str!("predefined_funcs/null_access.txt");
 const EXIT: &str = include_str!("predefined_funcs/exit.txt");
 
+const EXIT : &str = include_str!("predefined_funcs/exit.txt");
+
 static PREDEFINED_FUNCTIONS: Lazy<HashMap<GenFlags, &'static str>> = Lazy::new(|| {
     let mut m = HashMap::new();
     m.insert(GenFlags::OVERFLOW, OVERFLOW_ASM);

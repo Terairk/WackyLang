@@ -46,6 +46,18 @@ impl Expr<RenamedName, SemanticType> {
     }
 }
 
+// Used for Middle end to extract type
+impl LValue<RenamedName, SemanticType> {
+    #[inline]
+    pub fn get_type(&self) -> SemanticType {
+        match (*self).clone() {
+            LValue::Ident(_, t)
+            | LValue::ArrayElem(_, t)
+            | LValue::PairElem(_, t) => t
+        }
+    }
+}
+
 impl SN<LValue<RenamedName, SemanticType>> {
     pub fn get_type(&self, type_resolver: &TypeResolver) -> SemanticType {
         match (**self).clone() {
