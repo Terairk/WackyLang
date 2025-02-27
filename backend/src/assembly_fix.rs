@@ -42,8 +42,8 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
         new_functions.push(AsmFunction {
             name: func.name,
             global: func.global,
-            external: func.external,
             instructions: new_func_body,
+            directives: vec![],
         });
     }
 
@@ -211,7 +211,6 @@ mod tests {
         let function = AsmFunction {
             name: "example".to_owned(),
             global: false,
-            external: false,
             instructions: vec![
                 AsmInstruction::Mov {
                     typ: AssemblyType::Longword,
@@ -224,6 +223,7 @@ mod tests {
                     dst: Operand::Stack(-4),
                 },
             ],
+            directives: vec![],
         };
 
         let program = AsmProgram {

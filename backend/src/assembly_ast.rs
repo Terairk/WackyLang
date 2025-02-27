@@ -36,7 +36,7 @@
 // and it'd be easier for me probably
 // Change later if you want
 
-use middle::wackir::{BinaryOperator, UnaryOperator};
+use middle::wackir::UnaryOperator;
 use std::fmt::Debug;
 
 // implement Debug below
@@ -49,13 +49,19 @@ pub struct AsmProgram {
 pub struct AsmFunction {
     pub name: String,
     pub global: bool,
-    pub external: bool,
     pub instructions: Vec<AsmInstruction>,
+    pub directives: Vec<Directive>,
 }
 
 #[derive(Debug, Clone)]
 pub enum AsmInstruction {
     Mov {
+        typ: AssemblyType,
+        src: Operand,
+        dst: Operand,
+    },
+    Cmov {
+        condition: CondCode,
         typ: AssemblyType,
         src: Operand,
         dst: Operand,
@@ -104,6 +110,7 @@ pub enum AsmInstruction {
     // Temporary thing below
     DeallocateStack(i32),
     Push(Operand),
+    Pop(Operand),
     // True = external call, false
     Call(String, bool),
     Ret,
@@ -125,6 +132,15 @@ pub enum Operand {
     // This is a temporary thing for now
     Stack(i32),
 }
+
+// For now we only need these directives
+// but eventually we may use way more
+// so feel free to change this into an Enum
+// we only really need a String, we can calculate its length easily
+// this is just for representing strings for printing mainly
+// Strings are Label + Data and we have a list of these
+#[derive(Debug, Clone)]
+pub struct Directive(pub &'static str, pub &'static str);
 
 #[derive(Debug, Clone)]
 pub enum AsmBinaryOperator {
@@ -178,6 +194,7 @@ pub enum CondCode {
 #[derive(Debug, Clone, Copy)]
 pub enum Register {
     AX,
+    BX,
     CX,
     DX,
     DI,
@@ -207,9 +224,6 @@ impl Debug for AsmProgram {
             if function.global {
                 writeln!(f, "    global: true")?;
             }
-            if function.external {
-                writeln!(f, "    external: true")?;
-            }
             writeln!(f, "    instructions: [")?;
             for instruction in &function.instructions {
                 writeln!(f, "      {:?},", instruction)?;
@@ -221,8 +235,9 @@ impl Debug for AsmProgram {
     }
 }
 
-/* ================ ASM Impl's for Conversions ============ */
+/* ================ ASM Impl's for Conversions or otherwise ============ */
 
+// TODO: this is a place holder, idt we should have Len, Ord, Chr here
 impl From<UnaryOperator> for AsmUnaryOperator {
     #[inline]
     fn from(op: UnaryOperator) -> Self {

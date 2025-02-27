@@ -7,7 +7,7 @@ use backend::replace_pseudo::replace_pseudo_in_program;
 use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
 use chumsky::{Parser, extra};
-use clap::{Arg, Parser as ClapParser};
+use clap::Parser as ClapParser;
 use middle::ast_transform::lower_program;
 use std::path::PathBuf;
 use std::process::ExitCode;

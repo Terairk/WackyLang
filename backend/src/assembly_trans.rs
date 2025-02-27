@@ -5,8 +5,8 @@ use util::gen_flags::{GenFlags, insert_flag_gbl};
 
 use crate::{
     assembly_ast::{
-        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AsmUnaryOperator, AssemblyType,
-        CondCode, Operand, Register,
+        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode,
+        Operand, Register,
     },
     gen_predefined::ERR_DIVZERO,
 };
@@ -59,8 +59,8 @@ impl AsmGen {
         AsmFunction {
             name: "main".to_owned(),
             global: true,
-            external: false,
             instructions: asm_instructions,
+            directives: vec![],
         }
     }
 
@@ -115,8 +115,8 @@ impl AsmGen {
         AsmFunction {
             name: func_name,
             global: false,
-            external: false,
             instructions: asm,
+            directives: vec![],
         }
     }
 

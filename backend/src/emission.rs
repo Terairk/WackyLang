@@ -86,6 +86,17 @@ impl AssemblyFormatter {
                 let dst_str = Self::format_operand(dst, typ);
                 format!("mov{} {}, {}", suffix, src_str, dst_str)
             }
+            AsmInstruction::Cmov {
+                condition,
+                typ,
+                src,
+                dst,
+            } => {
+                let condition = Self::format_cond_code(condition);
+                let src_str = Self::format_operand(src, typ);
+                let dst_str = Self::format_operand(dst, typ);
+                format!("cmov{} {}, {}", condition, src_str, dst_str)
+            }
             AsmInstruction::MovZeroExtend {
                 src_type,
                 dst_type,
@@ -159,6 +170,10 @@ impl AssemblyFormatter {
             AsmInstruction::Push(op) => {
                 let op_str = Self::format_operand(op, &AssemblyType::Quadword);
                 format!("push {op_str}")
+            }
+            AsmInstruction::Pop(op) => {
+                let op_str = Self::format_operand(op, &AssemblyType::Quadword);
+                format!("pop {op_str}")
             }
             // Note these are our own calls so these don't need to be with @PLT
             // all @PLT external calls are already pre-generated
@@ -260,6 +275,7 @@ impl AssemblyFormatter {
     fn format_quad_reg(reg: &Register) -> &'static str {
         match *reg {
             Register::AX => "%rax",
+            Register::BX => "%rbx",
             Register::CX => "%rcx",
             Register::DX => "%rdx",
             Register::DI => "%rdi",
@@ -277,6 +293,7 @@ impl AssemblyFormatter {
     fn format_long_reg(reg: &Register) -> &'static str {
         match *reg {
             Register::AX => "%eax",
+            Register::BX => "%ebx",
             Register::CX => "%ecx",
             Register::DX => "%edx",
             Register::DI => "%edi",
@@ -295,6 +312,7 @@ impl AssemblyFormatter {
     fn format_byte_reg(reg: &Register) -> &'static str {
         match *reg {
             Register::AX => "%al",
+            Register::BX => "%bl",
             Register::CX => "%cl",
             Register::DX => "%dl",
             Register::DI => "%dil",
