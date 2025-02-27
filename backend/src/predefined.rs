@@ -17,6 +17,22 @@ pub static PREDEFINED_FUNCTIONS2: Lazy<HashMap<GenFlags, &'static AsmFunction>> 
     let mut m = HashMap::new();
     m.insert(GenFlags::DIV_BY_ZERO, &*errDivZero);
     m.insert(GenFlags::MALLOC, &*malloc);
+    m.insert(GenFlags::FREE, &*free);
+    m.insert(GenFlags::FREEPAIR, &*freepair);
+    m.insert(GenFlags::OOM, &*errOutOfMemory);
+    m.insert(GenFlags::PRINT_PTR, &*printp);
+    m.insert(GenFlags::PRINT_STR, &*prints);
+    m.insert(GenFlags::PRINT_CHR, &*printc);
+    m.insert(GenFlags::PRINT_BOOLEAN, &*printb);
+    m.insert(GenFlags::PRINT_INT, &*printi);
+    m.insert(GenFlags::PRINT_LN, &*println);
+    m.insert(GenFlags::ARRAY_ACCESS, &*arrLoad);
+    m.insert(GenFlags::OUT_OF_BOUNDS, &*errOutOfBounds);
+    m.insert(GenFlags::CHR_BOUNDS, &*errBadChar);
+    m.insert(GenFlags::OVERFLOW, &*errOverflow);
+    m.insert(GenFlags::READ_INT, &*readi);
+    m.insert(GenFlags::READ_CHAR, &*readc);
+    m.insert(GenFlags::EXIT, &*exit);
     m
 });
 
@@ -32,12 +48,28 @@ pub static inbuiltOOM: &str = "_errOutOfMemory";
 pub static inbuiltFree: &str = "_free";
 pub static inbuiltFreePair: &str = "_freepair";
 pub static inbuiltNullAccess: &str = "_errNull";
+pub static inbuiltPrintPtr: &str = "_printp";
+pub static inbuiltPrintChar: &str = "_printc";
+pub static inbuiltPrintBool: &str = "_printb";
+pub static inbuiltPrintInt: &str = "_printi";
+pub static inbuiltPrintln: &str = "_println";
+pub static inbuiltArrLoad: &str = "_arrLoad4";
+pub static inbuiltOutOfBounds: &str = "_errOutOfBounds";
+pub static inbuiltBadChar: &str = "_errBadChar";
+pub static inbuiltOverflow: &str = "_errOverflow";
+pub static inbuiltReadInt: &str = "_readi";
+pub static inbuiltReadChar: &str = "_readc";
+pub static inbuiltExit: &str = "_exit";
 
 /* ================== EXTERNAL C Functions ================= */
 // These are the functions that are defined in the C lib that we use
-pub static cExit: &str = "exit";
-pub static cMalloc: &str = "malloc";
-pub static cFree: &str = "free";
+static cExit: &str = "exit";
+static cMalloc: &str = "malloc";
+static cFree: &str = "free";
+static cPrintf: &str = "printf";
+static cFflush: &str = "fflush";
+static cScanf: &str = "scanf";
+static cPuts: &str = "puts";
 
 /* ================== FUNC_DEFINITIONS ============  */
 
@@ -200,7 +232,7 @@ static errOutOfMemory: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
 
 static printp_str0: &str = "printp_str0";
 static printp: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: "_printp".to_owned(),
+    name: inbuiltPrintPtr.to_owned(),
     global: false,
     instructions: vec![
         Push(Reg(BP)),
@@ -283,13 +315,13 @@ static prints: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Imm(0),
             dst: Reg(AX),
         },
-        Call("printf".to_owned(), true),
+        Call(cPrintf.to_owned(), true),
         Mov {
             typ: Quadword,
             src: Imm(0),
             dst: Reg(DI),
         },
-        Call("fflush".to_owned(), true),
+        Call(cFflush.to_owned(), true),
         Mov {
             typ: Quadword,
             src: Reg(BP),
@@ -303,7 +335,7 @@ static prints: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
 
 static printc_str0: &str = "printc_str0";
 static printc: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: "_printc".to_owned(),
+    name: inbuiltPrintChar.to_owned(),
     global: false,
     instructions: vec![
         Push(Reg(BP)),
@@ -332,13 +364,13 @@ static printc: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Imm(0),
             dst: Reg(AX),
         },
-        Call("printf".to_owned(), true),
+        Call(cPrintf.to_owned(), true),
         Mov {
             typ: Quadword,
             src: Imm(0),
             dst: Reg(DI),
         },
-        Call("fflush".to_owned(), true),
+        Call(cFflush.to_owned(), true),
         Mov {
             typ: Quadword,
             src: Reg(BP),
@@ -354,7 +386,7 @@ static printb_str0: &str = "printb_str0";
 static printb_str1: &str = "printb_str1";
 static printb_str2: &str = "printb_str2";
 static printb: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: "_printb".to_owned(),
+    name: inbuiltPrintBool.to_owned(),
     global: false,
     instructions: vec![
         Push(Reg(BP)),
@@ -403,13 +435,13 @@ static printb: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Imm(0),
             dst: Reg(AX),
         },
-        Call("printf".to_owned(), true),
+        Call(cPrintf.to_owned(), true),
         Mov {
             typ: Quadword,
             src: Imm(0),
             dst: Reg(DI),
         },
-        Call("fflush".to_owned(), true),
+        Call(cScanf.to_owned(), true),
         Mov {
             typ: Quadword,
             src: Reg(BP),
@@ -427,7 +459,7 @@ static printb: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
 
 static printi_str0: &str = "printi_str0";
 static printi: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: "_printi".to_owned(),
+    name: inbuiltPrintInt.to_owned(),
     global: false,
     instructions: vec![
         Push(Reg(BP)),
@@ -456,13 +488,13 @@ static printi: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Imm(0),
             dst: Reg(AX),
         },
-        Call("printf".to_owned(), true),
+        Call(cPrintf.to_owned(), true),
         Mov {
             typ: Quadword,
             src: Imm(0),
             dst: Reg(DI),
         },
-        Call("fflush".to_owned(), true),
+        Call(cFflush.to_owned(), true),
         Mov {
             typ: Quadword,
             src: Reg(BP),
@@ -476,7 +508,7 @@ static printi: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
 
 static println_str0: &str = "println_str0";
 static println: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: "_println".to_owned(),
+    name: inbuiltPrintln.to_owned(),
     global: false,
     instructions: vec![
         Push(Reg(BP)),
@@ -495,13 +527,13 @@ static println: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Data(println_str0.to_owned(), 0),
             dst: Reg(DI),
         },
-        Call("puts".to_owned(), true),
+        Call(cPuts.to_owned(), true),
         Mov {
             typ: Quadword,
             src: Imm(0),
             dst: Reg(DI),
         },
-        Call("fflush".to_owned(), true),
+        Call(cFflush.to_owned(), true),
         Mov {
             typ: Quadword,
             src: Reg(BP),
@@ -513,8 +545,8 @@ static println: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     directives: vec![Directive(println_str0, "")],
 });
 
-static arrLoad4: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: "_arrLoad4".to_owned(),
+static arrLoad: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
+    name: inbuiltArrLoad.to_owned(),
     global: false,
     instructions: vec![
         Push(Reg(BX)),
@@ -531,7 +563,7 @@ static arrLoad4: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         },
         JmpCC {
             condition: L,
-            label: "_errOutOfBounds".to_owned(),
+            label: inbuiltOutOfBounds.to_owned(),
         },
         Mov {
             typ: Longword,
@@ -551,7 +583,7 @@ static arrLoad4: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         },
         JmpCC {
             condition: GE,
-            label: "_errOutOfBounds".to_owned(),
+            label: inbuiltOutOfBounds.to_owned(),
         },
         Mov {
             typ: Longword,
@@ -570,7 +602,7 @@ static arrLoad4: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
 
 static errOutOfBounds_str0: &str = "errOutOfBounds_str0";
 static errOutOfBounds: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: "_errOutOfBounds".to_owned(),
+    name: inbuiltOutOfBounds.to_owned(),
     global: false,
     instructions: vec![
         Binary {
@@ -588,19 +620,19 @@ static errOutOfBounds: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Imm(0),
             dst: Reg(AX),
         },
-        Call("printf".to_owned(), true),
+        Call(cPrintf.to_owned(), true),
         Mov {
             typ: Quadword,
             src: Imm(0),
             dst: Reg(DI),
         },
-        Call("fflush".to_owned(), true),
+        Call(cFflush.to_owned(), true),
         Mov {
             typ: Byte,
             src: Imm(-1),
             dst: Reg(DI),
         },
-        Call("exit".to_owned(), true),
+        Call(cExit.to_owned(), true),
     ],
     directives: vec![Directive(
         errOutOfBounds_str0,
@@ -610,7 +642,7 @@ static errOutOfBounds: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
 
 static errBadChar_str0: &str = "errBadChar_str0";
 static errBadChar: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: "_errBadChar".to_owned(),
+    name: inbuiltBadChar.to_owned(),
     global: false,
     instructions: vec![
         Binary {
@@ -628,19 +660,19 @@ static errBadChar: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Imm(0),
             dst: Reg(AX),
         },
-        Call("printf".to_owned(), true),
+        Call(cPrintf.to_owned(), true),
         Mov {
             typ: Quadword,
             src: Imm(0),
             dst: Reg(DI),
         },
-        Call("fflush".to_owned(), true),
+        Call(cFflush.to_owned(), true),
         Mov {
             typ: Byte,
             src: Imm(-1),
             dst: Reg(DI),
         },
-        Call("exit".to_owned(), true),
+        Call(cExit.to_owned(), true),
     ],
     directives: vec![Directive(
         errBadChar_str0,
@@ -650,7 +682,7 @@ static errBadChar: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
 
 static errOverflow_str0: &str = "errOverflow_str0";
 static errOverflow: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: "_errOverflow".to_owned(),
+    name: inbuiltOverflow.to_owned(),
     global: false,
     instructions: vec![
         Binary {
@@ -679,7 +711,7 @@ static errOverflow: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
 
 static readi_str0: &str = "readi_str0";
 static readi: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: "_readi".to_owned(),
+    name: inbuiltReadInt.to_owned(),
     global: false,
     instructions: vec![
         Push(Reg(BP)),
@@ -718,7 +750,7 @@ static readi: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Imm(0),
             dst: Reg(AX),
         },
-        Call("scanf".to_owned(), true),
+        Call(cScanf.to_owned(), true),
         Mov {
             typ: Longword,
             src: Memory(SP, 0),
@@ -743,7 +775,7 @@ static readi: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
 
 static readc_str0: &str = "readc_str0";
 static readc: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: "_readc".to_owned(),
+    name: inbuiltReadChar.to_owned(),
     global: false,
     instructions: vec![
         Push(Reg(BP)),
@@ -782,7 +814,7 @@ static readc: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Imm(0),
             dst: Reg(AX),
         },
-        Call("scanf".to_owned(), true),
+        Call(cScanf.to_owned(), true),
         Mov {
             typ: Byte,
             src: Memory(SP, 0),
@@ -835,7 +867,7 @@ static errNull: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
 });
 
 static exit: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: "_exit".to_owned(),
+    name: inbuiltExit.to_owned(),
     global: false,
     instructions: vec![
         Push(Reg(BP)),
@@ -850,7 +882,7 @@ static exit: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             op1: Imm(-16),
             op2: Reg(SP),
         },
-        Call("exit".to_owned(), true), // true indicates external PLT call
+        Call(cExit.to_owned(), true), // true indicates external PLT call
         Mov {
             typ: Quadword,
             src: Reg(BP),
