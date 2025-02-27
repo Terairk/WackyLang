@@ -266,6 +266,35 @@ impl AsmGen {
                 });
                 asm.push(AsmInstruction::Call("_exit".to_string(), false));
             }
+            WackInstr::Read { dst, ty } => {
+                let operand = self.lower_value(dst, asm);
+                asm.push(AsmInstruction::Mov {
+                    typ: Longword,
+                    src: operand,
+                    dst: Operand::Reg(DI),
+                });
+                match ty {
+                    SemanticType::Int => {
+                        insert_flag_gbl(GenFlags::READ_INT);
+                        asm.push(AsmInstruction::Call("_readi".to_string(), false));
+                    }
+                    SemanticType::Char => {
+                        insert_flag_gbl(GenFlags::READ_CHR);
+                        asm.push(AsmInstruction::Call("_readc".to_string(), false));
+                    }
+                    _ => unreachable!(), // anything else should be caught in frontend
+                }
+            }
+            WackInstr::FreeUnchecked(value) => {
+                let operand = self.lower_value(value, asm);
+                insert_flag_gbl(GenFlags::FREE);
+                asm.push(AsmInstruction::Mov {
+                    typ: Longword,
+                    src: operand,
+                    dst: Operand::Reg(DI),
+                });
+                asm.push(AsmInstruction::Call("_free".to_string(), false));
+            }
             _ => unimplemented!(),
         }
     }

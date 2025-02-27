@@ -9,14 +9,12 @@
 #![feature(stmt_expr_attributes)]
 #![feature(unboxed_closures)]
 
-
 use crate::error::{semantic_error_to_reason, SemanticError};
 use crate::source::SourcedSpan;
 use ariadne::{CharSet, Label, Report, Source};
 use chumsky::error::Rich;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
-
 
 /// Namespace for all the type/trait aliases used by this crate.
 pub(crate) mod alias {
@@ -29,8 +27,7 @@ pub(crate) mod alias {
     where
         I: Input<'src>,
         I::Token: PartialEq,
-        E: ParserExtra<'src, I, Error=Rich<'src, I::Token, I::Span>>;
-
+        E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>;
 
     pub trait StatelessParser<'src, I, O> = Parser<'src, I, O, extra::Full<Rich<'src, I::Token, I::Span>, (), ()>>
     where
@@ -39,10 +36,10 @@ pub(crate) mod alias {
 }
 
 pub mod ast;
-pub mod types;
+pub mod error;
 pub mod fold_program;
 pub mod rename;
-pub mod error;
+pub mod types;
 
 /// Namespace for crate-wide extension traits/methods
 pub(crate) mod ext {
@@ -215,7 +212,6 @@ pub mod source;
 pub mod token;
 pub mod typecheck;
 
-
 #[allow(clippy::unwrap_used)]
 pub fn build_syntactic_report<T>(error: &Rich<T, SourcedSpan>, source: String)
 where
@@ -249,16 +245,16 @@ pub fn semantic_report_helper(
         ariadne::ReportKind::Error,
         (file_path, span.clone().as_range()),
     )
-        .with_config(config)
-        .with_message(message)
-        .with_code(420)
-        .with_label(
-            Label::new((file_path, span.clone().as_range()))
-                .with_message(semantic_error_to_reason(error)),
-        )
-        .finish()
-        .print((file_path, Source::from(source)))
-        .unwrap();
+    .with_config(config)
+    .with_message(message)
+    .with_code(420)
+    .with_label(
+        Label::new((file_path, span.clone().as_range()))
+            .with_message(semantic_error_to_reason(error)),
+    )
+    .finish()
+    .print((file_path, Source::from(source)))
+    .unwrap();
 }
 
 pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, source: String) {

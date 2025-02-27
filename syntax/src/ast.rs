@@ -137,6 +137,7 @@ pub enum PairElem<N, T> {
     Fst(SN<LValue<N, T>>),
     Snd(SN<LValue<N, T>>),
 }
+
 #[derive(Clone, Debug)]
 pub struct ArrayElem<N, T> {
     pub array_name: SN<N>,
@@ -424,7 +425,6 @@ mod ident_impls {
     }
 }
 
-// TODO: change this to a type alias perhaps
 impl<N, T> ArrayElem<N, T> {
     #[must_use]
     #[inline]
