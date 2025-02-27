@@ -607,3 +607,257 @@ static errOutOfBounds: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         "fatal error: array index %d out of bounds\n",
     )],
 });
+
+static errBadChar_str0: &str = "errBadChar_str0";
+static errBadChar: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
+    name: "_errBadChar".to_owned(),
+    global: false,
+    instructions: vec![
+        Binary {
+            operator: And,
+            typ: Quadword,
+            op1: Imm(-16),
+            op2: Reg(SP),
+        },
+        Lea {
+            src: Data(errBadChar_str0.to_owned(), 0),
+            dst: Reg(DI),
+        },
+        Mov {
+            typ: Byte,
+            src: Imm(0),
+            dst: Reg(AX),
+        },
+        Call("printf".to_owned(), true),
+        Mov {
+            typ: Quadword,
+            src: Imm(0),
+            dst: Reg(DI),
+        },
+        Call("fflush".to_owned(), true),
+        Mov {
+            typ: Byte,
+            src: Imm(-1),
+            dst: Reg(DI),
+        },
+        Call("exit".to_owned(), true),
+    ],
+    directives: vec![Directive(
+        errBadChar_str0,
+        "fatal error: int %d is not ascii character 0-127 \n",
+    )],
+});
+
+static errOverflow_str0: &str = "errOverflow_str0";
+static errOverflow: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
+    name: "_errOverflow".to_owned(),
+    global: false,
+    instructions: vec![
+        Binary {
+            operator: And,
+            typ: Quadword,
+            op1: Imm(-16),
+            op2: Reg(SP),
+        },
+        Lea {
+            src: Data(errOverflow_str0.to_owned(), 0),
+            dst: Reg(DI),
+        },
+        Call(inbuiltPrintString.to_owned(), false),
+        Mov {
+            typ: Byte,
+            src: Imm(-1),
+            dst: Reg(DI),
+        },
+        Call(cExit.to_owned(), true),
+    ],
+    directives: vec![Directive(
+        errOverflow_str0,
+        "fatal error: integer overflow or underflow occurred\\n",
+    )],
+});
+
+static readi_str0: &str = "readi_str0";
+static readi: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
+    name: "_readi".to_owned(),
+    global: false,
+    instructions: vec![
+        Push(Reg(BP)),
+        Mov {
+            typ: Quadword,
+            src: Reg(SP),
+            dst: Reg(BP),
+        },
+        Binary {
+            operator: And,
+            typ: Quadword,
+            op1: Imm(-16),
+            op2: Reg(SP),
+        },
+        Binary {
+            operator: Sub,
+            typ: Quadword,
+            op1: Imm(16),
+            op2: Reg(SP),
+        },
+        Mov {
+            typ: Longword,
+            src: Reg(DI),
+            dst: Memory(SP, 0),
+        },
+        Lea {
+            src: Memory(SP, 0),
+            dst: Reg(SI),
+        },
+        Lea {
+            src: Data(readi_str0.to_owned(), 0),
+            dst: Reg(DI),
+        },
+        Mov {
+            typ: Byte,
+            src: Imm(0),
+            dst: Reg(AX),
+        },
+        Call("scanf".to_owned(), true),
+        Mov {
+            typ: Longword,
+            src: Memory(SP, 0),
+            dst: Reg(AX),
+        },
+        Binary {
+            operator: Add,
+            typ: Quadword,
+            op1: Imm(16),
+            op2: Reg(SP),
+        },
+        Mov {
+            typ: Quadword,
+            src: Reg(BP),
+            dst: Reg(SP),
+        },
+        Pop(Reg(BP)),
+        Ret,
+    ],
+    directives: vec![Directive(readi_str0, "%d")],
+});
+
+static readc_str0: &str = "readc_str0";
+static readc: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
+    name: "_readc".to_owned(),
+    global: false,
+    instructions: vec![
+        Push(Reg(BP)),
+        Mov {
+            typ: Quadword,
+            src: Reg(SP),
+            dst: Reg(BP),
+        },
+        Binary {
+            operator: And,
+            typ: Quadword,
+            op1: Imm(-16),
+            op2: Reg(SP),
+        },
+        Binary {
+            operator: Sub,
+            typ: Quadword,
+            op1: Imm(16),
+            op2: Reg(SP),
+        },
+        Mov {
+            typ: Byte,
+            src: Reg(DI),
+            dst: Memory(SP, 0),
+        },
+        Lea {
+            src: Reg(SP),
+            dst: Reg(SI),
+        },
+        Lea {
+            src: Data(readc_str0.to_owned(), 0),
+            dst: Reg(DI),
+        },
+        Mov {
+            typ: Byte,
+            src: Imm(0),
+            dst: Reg(AX),
+        },
+        Call("scanf".to_owned(), true),
+        Mov {
+            typ: Byte,
+            src: Memory(SP, 0),
+            dst: Reg(AX),
+        },
+        Binary {
+            operator: Add,
+            typ: Quadword,
+            op1: Imm(16),
+            op2: Reg(SP),
+        },
+        Mov {
+            typ: Quadword,
+            src: Reg(BP),
+            dst: Reg(SP),
+        },
+        Pop(Reg(BP)),
+        Ret,
+    ],
+    directives: vec![Directive(readc_str0, " %c")],
+});
+
+static errNull_str0: &str = "errNull_str0";
+static errNull: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
+    name: inbuiltNullAccess.to_owned(),
+    global: false,
+    instructions: vec![
+        Binary {
+            operator: And,
+            typ: Quadword,
+            op1: Imm(-16),
+            op2: Reg(SP),
+        },
+        Lea {
+            src: Data(errNull_str0.to_owned(), 0),
+            dst: Reg(DI),
+        },
+        Call(inbuiltPrintString.to_owned(), false),
+        Mov {
+            typ: Byte,
+            src: Imm(-1),
+            dst: Reg(DI),
+        },
+        Call(cExit.to_owned(), true),
+    ],
+    directives: vec![Directive(
+        errNull_str0,
+        "fatal error: null pair dereferenced or freed\\n",
+    )],
+});
+
+static exit: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
+    name: "_exit".to_owned(),
+    global: false,
+    instructions: vec![
+        Push(Reg(BP)),
+        Mov {
+            typ: Quadword,
+            src: Reg(SP),
+            dst: Reg(BP),
+        },
+        Binary {
+            operator: And,
+            typ: Quadword,
+            op1: Imm(-16),
+            op2: Reg(SP),
+        },
+        Call("exit".to_owned(), true), // true indicates external PLT call
+        Mov {
+            typ: Quadword,
+            src: Reg(BP),
+            dst: Reg(SP),
+        },
+        Pop(Reg(BP)),
+        Ret,
+    ],
+    directives: vec![],
+});
