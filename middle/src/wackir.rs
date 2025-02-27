@@ -213,6 +213,20 @@ pub enum WackInstr {
         dst: WackValue,
         offset: u32,
     },
+
+    /// Performs checked array-access, indexing into the array at [`src_array_ptr`] and storing
+    /// the pointer of the element corresponding to [`index`] into the [`dst_elem_ptr`] operand.
+    ///
+    /// The index-value is checked against the array-length, and if not  0 <= index < length, then
+    /// an out-of-bounds error will be thrown at runtime.
+    /// The instruction will handle any offsetting that needs to be done.
+    ArrayAccess {
+        src_array_ptr: WackValue,
+        index: WackValue,
+        scale: usize,
+        dst_elem_ptr: WackTempIdent,
+    },
+
     Jump(WackTempIdent),
     JumpIfZero {
         condition: WackValue,
