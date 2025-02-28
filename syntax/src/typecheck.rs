@@ -359,12 +359,12 @@ impl Folder for TypeResolver {
         if !resolved_type.can_coerce_into(&expected_type) {
             self.add_error(TypeMismatch(
                 resolved_rvalue.span(),
-                resolved_type,
+                resolved_type.clone(),
                 expected_type,
             ))
         }
         self.symid_table
-            .insert(name.inner().clone(), r#type.inner().to_semantic_type());
+            .insert(name.inner().clone(), resolved_type);
         Stat::VarDefinition {
             r#type,
             name: self.fold_name_sn(name),
