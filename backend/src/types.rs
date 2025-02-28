@@ -41,21 +41,21 @@ pub mod x86_64_int_type {
         pub const fn try_from_wack_int(
             wack_int: WackIntType,
         ) -> Result<Self, InvalidBitWidthError> {
-            Self::try_from_u32(wack_int.width())
+            Self::try_from_u32(wack_int.bit_width())
         }
 
         #[allow(clippy::as_conversions)]
         #[must_use]
         #[inline]
-        pub const fn into_width(self) -> u8 {
+        pub const fn into_bit_width(self) -> u8 {
             self as u8
         }
 
         #[allow(clippy::as_conversions)]
         #[must_use]
         #[inline]
-        pub const fn width(&self) -> u8 {
-            Self::into_width(*self)
+        pub const fn bit_width(&self) -> u8 {
+            Self::into_bit_width(*self)
         }
     }
 
