@@ -204,7 +204,7 @@ pub mod parser;
 pub(crate) mod private {
     // sealed traits support
     pub trait Sealed {}
-    impl<T> Sealed for T {}
+    impl<T: ?Sized> Sealed for T {}
 }
 
 pub mod source;
