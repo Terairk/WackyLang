@@ -1,11 +1,17 @@
-// wack-IR deals with:
-// unsigned numbers: u8, u16, u32, u64
+// NOTE: labels can be cast to pointers via an instruction
+//       you MAY be able to get function pointers?????????? out of functions...
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum WackType {
     Void,
-    Function,
+    Fn(WackFnType),
     FirstClass(FirstClassType),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct WackFnType {
+    arg_types: Box<[WackType]>, // change later to supportable fn types
+    ret: Box<[WackType]>,       // change later to supportable fn return types
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
