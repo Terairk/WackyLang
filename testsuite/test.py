@@ -3,6 +3,7 @@ import subprocess as sp
 import tempfile as tf
 import os
 import concurrent.futures
+import threading
 
 class CompilationError(Exception):
     pass
@@ -40,6 +41,9 @@ def get_sample_output(src):
     with open(dst, "r") as f:
         return f.read()
 
+# Use a lock to protect printing to stdout
+print_lock = threading.Lock()
+
 def run_and_compare(src):
     sample_output = get_sample_output(src)
     try:
@@ -48,14 +52,17 @@ def run_and_compare(src):
             actual_output = emulate(f.name)
     except CompilationError as e:
         actual_output = str(e)
+    except Exception as e:
+        actual_output = str(e)
     
-    if sample_output == actual_output:
-        print(f"{src} pass")
-        return True
-    else:
-        print(f"{src} INCORRECT")
-        print(f"Expected: {sample_output}\nActual: {actual_output}")
-        return False
+    with print_lock:  # Acquire the lock before printing
+        if sample_output == actual_output:
+            print(f"{src} pass")
+            return True
+        else:
+            print(f"{src} INCORRECT")
+            print(f"Expected: {sample_output}\nActual: {actual_output}")
+            return False
         
 def main():
     test_dir = "testsuite/test_cases"
