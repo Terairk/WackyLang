@@ -240,6 +240,7 @@ fn main() -> ExitCode {
 
     if args.typechecking {
         println!("{typed_ast:?}");
+        println!("{:?}", type_resolver.symid_table);
         return ExitCode::SUCCESS;
     }
     let type_errors = &type_resolver.type_errors;

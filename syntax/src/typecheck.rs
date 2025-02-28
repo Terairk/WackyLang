@@ -96,12 +96,17 @@ impl SN<PairElem<RenamedName, SemanticType>> {
 impl SN<ArrayElem<RenamedName, SemanticType>> {
     #[inline]
     pub fn get_type(&self, type_resolver: &TypeResolver) -> Option<SemanticType> {
-        let resolved_type = type_resolver.lookup_symbol_table(&self.array_name);
-        match resolved_type {
-            SemanticType::Array(elem_type) => Some(*elem_type),
-            SemanticType::AnyType => Some(SemanticType::AnyType),
-            _ => None,
+        let lookedup_type = type_resolver.lookup_symbol_table(&self.array_name);
+        let mut resolved_type = Some(lookedup_type);
+        for _ in self.indices.iter().enumerate() {
+            resolved_type = match resolved_type {
+                Some(SemanticType::Array(elem_type)) => Some(*elem_type),
+                Some(SemanticType::AnyType) => Some(SemanticType::AnyType),
+                _ => None,
+            }
+            
         }
+        resolved_type
     }
 }
 
@@ -510,8 +515,12 @@ impl Folder for TypeResolver {
                 Expr::Ident(name, resolved_type)
             }
             Expr::ArrayElem(array_elem, _) => {
-                let resolved_type = self.lookup_symbol_table(&array_elem.array_name);
-                Expr::ArrayElem(self.fold_array_elem(array_elem), resolved_type)
+                let resolved_elem = self.fold_array_elem(array_elem.clone());
+                let resolved_type = resolved_elem
+                    .get_type(&self)
+                    .unwrap_or(SemanticType::Error(array_elem.span()));
+                println!("{resolved_type:?}");
+                Expr::ArrayElem(resolved_elem, resolved_type)
             }
             Expr::Unary(op, expr, _) => {
                 let resolved_expr = self.fold_expr(expr);
