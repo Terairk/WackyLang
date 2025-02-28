@@ -42,7 +42,6 @@ impl AssemblyFormatter {
         }
 
         // have a .text directive here once per assembly file
-        output.push_str(".text\n");
         for func in &program.asm_functions {
             output.push_str(&Self::format_function(func));
         }
@@ -69,6 +68,7 @@ impl AssemblyFormatter {
             lines.push(format!(".L_{label}:"));
             lines.push(format!("    .asciz \"{value}\""));
         }
+        lines.push(".text".to_owned());
         if func.global {
             // Global directives start with a dot, so they will have no indent.
             lines.push(format!(".globl {}", func.name));

@@ -437,14 +437,7 @@ impl AsmGen {
         use Operand::Reg;
         use Register::{AX, BP, SP};
 
-        asm_instructions.push(Asm::Mov {
-            typ: Quadword,
-            src: Reg(BP),
-            dst: Reg(SP),
-        });
-        asm_instructions.push(Asm::Pop(Reg(BP)));
         let operand = self.lower_value(value, asm_instructions);
-
         // TODO: most of these arms aren't correct apart from Imm
         // in particular, these dont take into account types
         // also this can be refactored
@@ -482,6 +475,13 @@ impl AsmGen {
             Operand::Indexed { .. } => unimplemented!(),
             Operand::Stack(_) => unimplemented!(),
         }
+
+        asm_instructions.push(Asm::Mov {
+            typ: Quadword,
+            src: Reg(BP),
+            dst: Reg(SP),
+        });
+        asm_instructions.push(Asm::Pop(Reg(BP)));
 
         asm_instructions.push(Asm::Ret);
     }
