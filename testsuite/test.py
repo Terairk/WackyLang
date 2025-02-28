@@ -1,7 +1,9 @@
+import sys
 import subprocess as sp
 import tempfile as tf
 import os
 import concurrent.futures
+import threading
 
 class CompilationError(Exception):
     pass
@@ -35,17 +37,12 @@ def emulate(exe):
     return result.stdout
 
 def get_sample_output(src):
-    result = sp.run(['java', '-jar', 'wacc-reference-cli.jar', src, '-x'], capture_output=True, text=True)
-    
-    if result.stderr:
-        raise CompilationError(result.stderr)
+    dst = src.replace("testsuite/test_cases", "testsuite/expected")
+    with open(dst, "r") as f:
+        return f.read()
 
-    if "subprocess-shutdown-hook-monitor" in result.stdout:
-        # bruh our shitty reference compiler is complaining again
-        return get_sample_output(src)
-
-
-    return result.stdout[:-1] # filter out the last trailing \n
+# Use a lock to protect printing to stdout
+print_lock = threading.Lock()
 
 def run_and_compare(src):
     sample_output = get_sample_output(src)
@@ -55,14 +52,17 @@ def run_and_compare(src):
             actual_output = emulate(f.name)
     except CompilationError as e:
         actual_output = str(e)
+    except Exception as e:
+        actual_output = str(e)
     
-    if sample_output == actual_output:
-        print(f"{src} pass")
-        return True
-    else:
-        print(f"{src} INCORRECT")
-        print(f"Expected: {sample_output}\nActual: {actual_output}")
-        return False
+    with print_lock:  # Acquire the lock before printing
+        if sample_output == actual_output:
+            print(f"{src} pass")
+            return True
+        else:
+            print(f"{src} INCORRECT")
+            print(f"Expected: {sample_output}\nActual: {actual_output}")
+            return False
         
 def main():
     test_dir = "testsuite/test_cases"
@@ -78,6 +78,11 @@ def main():
     total_tests = len(results)
     passed_tests = sum(results)
     print(f"\nTotal tests: {total_tests}, Passed: {passed_tests}, Failed: {total_tests - passed_tests}")
+
+    if total_tests == passed_tests:
+        sys.exit(0)
+    else:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,9 @@
 use crate::assembly_ast::AssemblyType::Longword;
 use crate::assembly_ast::Register::DI;
+use crate::predefined::{
+    inbuiltExit, inbuiltFree, inbuiltFreePair, inbuiltPrintBool, inbuiltPrintChar, inbuiltPrintInt,
+    inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln, inbuiltReadChar, inbuiltReadInt,
+};
 use crate::{
     assembly_ast::{
         AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode,
@@ -12,7 +16,7 @@ use middle::wackir::{
 };
 use std::collections::BTreeMap;
 use syntax::types::SemanticType;
-use util::gen_flags::{insert_flag_gbl, GenFlags};
+use util::gen_flags::{GenFlags, insert_flag_gbl};
 /* ================== PUBLIC API ================== */
 
 #[inline]
@@ -59,19 +63,35 @@ impl AsmGen {
             return label.clone(); // Reuse existing label
         }
 
-        let label = format!(".L.str{}", self.str_counter);
+        let label = format!("str{}", self.str_counter);
         self.str_counter += 1;
-        self.str_literals.insert(s.to_string(), label.clone());
+        self.str_literals.insert(s.to_owned(), label.clone());
         label
     }
 
     fn lower_main_asm(&mut self, instrs: Vec<WackInstr>) -> AsmFunction {
+        use AsmInstruction::{Mov, Pop, Push, Ret};
+        use AssemblyType::{Longword, Quadword};
+        use Operand::Reg;
+        use Register::{BP, SP};
         let mut asm_instructions = Vec::new();
+        asm_instructions.push(Push(Reg(BP)));
+        asm_instructions.push(Mov {
+            typ: Quadword,
+            src: Reg(SP),
+            dst: Reg(BP),
+        });
         for wack_instr in instrs {
             self.lower_instruction(wack_instr, &mut asm_instructions);
         }
 
-        asm_instructions.push(AsmInstruction::Ret);
+        asm_instructions.push(Mov {
+            typ: Quadword,
+            src: Reg(BP),
+            dst: Reg(SP),
+        });
+        asm_instructions.push(Pop(Reg(BP)));
+        asm_instructions.push(Ret);
 
         // any functions we generate ourselves are not external
         AsmFunction {
@@ -90,6 +110,13 @@ impl AsmGen {
         let mut asm = Vec::new();
         let func_name: String = wack_function.name.into();
         let params = wack_function.params;
+
+        asm.push(Asm::Push(Operand::Reg(Register::BP)));
+        asm.push(Asm::Mov {
+            typ: AssemblyType::Quadword,
+            src: Operand::Reg(Register::SP),
+            dst: Operand::Reg(Register::BP),
+        });
 
         // Handle parameters finally
         // Pair up the parameters and registers for the first 6 parameters.
@@ -148,7 +175,7 @@ impl AsmGen {
                     dst: Operand::Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::PRINT_INT);
-                "_printi"
+                inbuiltPrintInt.to_owned()
             }
             SemanticType::Bool => {
                 asm.push(AsmInstruction::Mov {
@@ -157,7 +184,7 @@ impl AsmGen {
                     dst: Operand::Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::PRINT_BOOLEAN);
-                "_printb"
+                inbuiltPrintBool.to_owned()
             }
             SemanticType::Char => {
                 asm.push(AsmInstruction::Mov {
@@ -166,7 +193,7 @@ impl AsmGen {
                     dst: Operand::Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::PRINT_CHR);
-                "_printc"
+                inbuiltPrintChar.to_owned()
             }
             SemanticType::String => {
                 asm.push(AsmInstruction::Lea {
@@ -174,7 +201,7 @@ impl AsmGen {
                     dst: Operand::Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::PRINT_STR);
-                "_prints"
+                inbuiltPrintString.to_owned()
             }
             SemanticType::Array(_) | SemanticType::Pair(_, _) | SemanticType::ErasedPair => {
                 asm.push(AsmInstruction::Lea {
@@ -182,16 +209,17 @@ impl AsmGen {
                     dst: Operand::Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::PRINT_PTR);
-                "_printp"
+                inbuiltPrintPtr.to_owned()
             }
             SemanticType::AnyType => panic!("AnyType in print"),
             SemanticType::Error(_) => panic!("Error type in print"),
         };
-        asm.push(AsmInstruction::Call(func_name.to_string(), false));
+        asm.push(AsmInstruction::Call(func_name, false));
     }
 
     fn lower_instruction(&mut self, instr: WackInstr, asm: &mut Vec<AsmInstruction>) {
         use AsmInstruction as Asm;
+        use AssemblyType::{Longword, Quadword};
         use WackInstr::{
             Binary, Copy, FunCall, Jump, JumpIfNotZero, JumpIfZero, Label, Return, Unary,
         };
@@ -241,19 +269,16 @@ impl AsmGen {
                 });
             }
             Label(id) => asm.push(Asm::Label(id.into())),
-            // FunCall {
-            //     fun_name,
-            //     args,
-            //     dst,
-            // } => self.lower_fun_call(&fun_name, &args, dst, asm),
-            FunCall { .. } => unimplemented!(
-                "function call lowering is unimplemented, until the ASM representation finalizes, PS: function identifiers have to be `WackIdent`s"
-            ),
-            WackInstr::Print { src: src, ty: ty } => self.lower_print(src, ty, asm),
-            WackInstr::Println { src: src, ty: ty } => {
+            FunCall {
+                fun_name,
+                args,
+                dst,
+            } => self.lower_fun_call((&fun_name).into(), &args, dst, asm),
+            WackInstr::Print { src, ty } => self.lower_print(src, ty, asm),
+            WackInstr::Println { src, ty } => {
                 self.lower_print(src, ty, asm);
                 insert_flag_gbl(GenFlags::PRINT_LN);
-                asm.push(AsmInstruction::Call("_println".to_string(), false));
+                asm.push(AsmInstruction::Call(inbuiltPrintln.to_owned(), false));
             }
             WackInstr::Exit(value) => {
                 // TODO: double check this works, this might be wrong
@@ -264,7 +289,7 @@ impl AsmGen {
                     src: operand,
                     dst: Operand::Reg(DI),
                 });
-                asm.push(AsmInstruction::Call("_exit".to_string(), false));
+                asm.push(AsmInstruction::Call(inbuiltExit.to_owned(), false));
             }
             WackInstr::Read { dst, ty } => {
                 let operand = self.lower_value(dst, asm);
@@ -276,11 +301,11 @@ impl AsmGen {
                 match ty {
                     SemanticType::Int => {
                         insert_flag_gbl(GenFlags::READ_INT);
-                        asm.push(AsmInstruction::Call("_readi".to_string(), false));
+                        asm.push(AsmInstruction::Call(inbuiltReadInt.to_owned(), false));
                     }
                     SemanticType::Char => {
                         insert_flag_gbl(GenFlags::READ_CHR);
-                        asm.push(AsmInstruction::Call("_readc".to_string(), false));
+                        asm.push(AsmInstruction::Call(inbuiltReadChar.to_owned(), false));
                     }
                     _ => unreachable!(), // anything else should be caught in frontend
                 }
@@ -289,11 +314,21 @@ impl AsmGen {
                 let operand = self.lower_value(value, asm);
                 insert_flag_gbl(GenFlags::FREE);
                 asm.push(AsmInstruction::Mov {
-                    typ: Longword,
+                    typ: Quadword,
                     src: operand,
                     dst: Operand::Reg(DI),
                 });
-                asm.push(AsmInstruction::Call("_free".to_string(), false));
+                asm.push(AsmInstruction::Call(inbuiltFree.to_owned(), false));
+            }
+            WackInstr::FreeChecked(value) => {
+                let operand = self.lower_value(value, asm);
+                insert_flag_gbl(GenFlags::FREE_PAIR);
+                asm.push(AsmInstruction::Mov {
+                    typ: Quadword,
+                    src: operand,
+                    dst: Operand::Reg(DI),
+                });
+                asm.push(AsmInstruction::Call(inbuiltFreePair.to_owned(), false));
             }
             _ => unimplemented!(),
         }
@@ -398,39 +433,51 @@ impl AsmGen {
 
     fn lower_return(&mut self, value: WackValue, asm_instructions: &mut Vec<AsmInstruction>) {
         use AsmInstruction as Asm;
+        use AssemblyType::{Longword, Quadword};
+        use Operand::Reg;
+        use Register::{AX, BP, SP};
+
+        asm_instructions.push(Asm::Mov {
+            typ: Quadword,
+            src: Reg(BP),
+            dst: Reg(SP),
+        });
+        asm_instructions.push(Asm::Pop(Reg(BP)));
         let operand = self.lower_value(value, asm_instructions);
 
         // TODO: most of these arms aren't correct apart from Imm
+        // in particular, these dont take into account types
+        // also this can be refactored
         match operand {
             Operand::Imm(_) => asm_instructions.push(Asm::Mov {
-                typ: AssemblyType::Longword,
+                typ: Longword,
                 src: operand,
-                dst: Operand::Reg(Register::AX),
+                dst: Reg(AX),
             }),
             Operand::Reg(_) => asm_instructions.push(Asm::Mov {
-                typ: AssemblyType::Quadword,
+                typ: Quadword,
                 src: operand,
-                dst: Operand::Reg(Register::AX),
+                dst: Reg(AX),
             }),
             Operand::Pseudo(_) => asm_instructions.push(Asm::Mov {
-                typ: AssemblyType::Quadword,
+                typ: Quadword,
                 src: operand,
-                dst: Operand::Reg(Register::AX),
+                dst: Reg(AX),
             }),
             Operand::Memory(_, _) => asm_instructions.push(Asm::Mov {
-                typ: AssemblyType::Quadword,
+                typ: Quadword,
                 src: operand,
-                dst: Operand::Reg(Register::AX),
+                dst: Reg(AX),
             }),
             Operand::Data(_, _) => asm_instructions.push(Asm::Mov {
-                typ: AssemblyType::Quadword,
+                typ: Quadword,
                 src: operand,
-                dst: Operand::Reg(Register::AX),
+                dst: Reg(AX),
             }),
             Operand::PseudoMem(_, _) => asm_instructions.push(Asm::Mov {
-                typ: AssemblyType::Quadword,
+                typ: Quadword,
                 src: operand,
-                dst: Operand::Reg(Register::AX),
+                dst: Reg(AX),
             }),
             Operand::Indexed { .. } => unimplemented!(),
             Operand::Stack(_) => unimplemented!(),
@@ -593,20 +640,14 @@ impl AsmGen {
         use WackValue::{Literal, Var};
         match value {
             Literal(Int(i)) => Operand::Imm(i),
-            // Literal(Bool(b)) => Operand::Imm(b),
-            Literal(Bool(b)) => unimplemented!(
-                "unimplemented until assembly representation is finalized. PS: immediates should be unsigned integers"
-            ),
-            // Literal(Char(c)) => Operand::Imm(c),
-            Literal(Char(b)) => unimplemented!(
-                "unimplemented until assembly representation is finalized. PS: immediates should be unsigned integers"
-            ),
+            Literal(Bool(b)) => Operand::Imm(i32::from(b.into_u8())),
+            Literal(Char(c)) => Operand::Imm(i32::from(c.into_u8())),
             // TODO: StringLit, need to add to symbol table with current function probably
             // while keeping track of a unique counter just for string constants
             // so we can emit properly, also this should emit a thing for RIP relative addressing
             // honestly its kinda similar to ConstDouble from the book
             Literal(StringLit(s)) => {
-                let label = self.generate_str_label(&*s);
+                let label = self.generate_str_label(&s);
                 Operand::Data(label, 0)
             }
             Literal(NullPair) => Operand::Imm(0),

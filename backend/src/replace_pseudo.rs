@@ -39,11 +39,12 @@ pub fn replace_pseudo_in_program(program: &mut AsmProgram) {
 
         // rounds up to nearest multiple of 16 (negative version)
         last_offset = round_down_16(last_offset);
+        // 2 here since we have push rbp and mov rbp, rsp
         if last_offset != 0 {
             func.instructions
-                .insert(0, AsmInstruction::AllocateStack(-last_offset));
+                .insert(2, AsmInstruction::AllocateStack(-last_offset));
             func.instructions.insert(
-                0,
+                2,
                 AsmInstruction::Comment(
                     "This allocate ensures stack is 16-byte aligned".to_owned(),
                 ),
