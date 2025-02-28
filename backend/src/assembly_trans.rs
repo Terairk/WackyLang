@@ -127,7 +127,7 @@ impl AsmGen {
             let wack_value = WackValue::Var(param.clone());
             let param_name = self.lower_value(wack_value, &mut asm);
             asm.push(AsmInstruction::Mov {
-                typ: AssemblyType::Longword,
+                typ: Longword,
                 src: Operand::Reg(*reg),
                 dst: param_name,
             });
@@ -395,20 +395,73 @@ impl AsmGen {
                 offset,
                 dst_ptr,
             } => {
-                let operand_src_ptr = self.lower_value(src_ptr, asm);
-                let operand_index = self.lower_value(index, asm);
+                let src_ptr_operand = self.lower_value(src_ptr, asm);
                 let value = WackValue::Var(dst_ptr);
-                let operand_dst_ptr = self.lower_value(value, asm);
+                let dst_ptr_operand = self.lower_value(value, asm);
+                let dst_reg = if let Operand::Reg(reg) = dst_ptr_operand {
+                    reg
+                } else {
+                    unreachable!("dst operand should always be a register")
+                };
+                let index_operand = self.lower_value(index, asm);
+                let index_reg = if let Operand::Reg(reg) = index_operand {
+                    reg
+                } else {
+                    unreachable!("index operand should always be a register")
+                };
                 // TODO: Make new_dst = dst + value * index, it is impossible(?)/idk how rn
-                let new_dst = match operand_src_ptr.clone() {
+                let new_dst = match src_ptr_operand.clone() {
                     Operand::Reg(reg) => Operand::Memory(reg, offset as i32),
                     Operand::Pseudo(str) => Operand::PseudoMem(str, offset as i32),
                     _ => unreachable!("add ptr should be called only to pseudo/register"),
                 };
                 asm.push(AsmInstruction::Lea {
-                    src: operand_src_ptr,
-                    dst: new_dst,
+                    src: src_ptr_operand,
+                    dst: Operand::Indexed {
+                        base: dst_reg,
+                        index: index_reg,
+                        scale: scale as i32,
+                    }
                 });
+            }
+            WackInstr::ArrayAccess {
+                src_array_ptr,
+                typ,
+                index,
+                scale,
+                dst_elem_ptr
+            } => {
+                let src_array_operand = self.lower_value(src_array_ptr, asm);
+                let value = WackValue::Var(dst_elem_ptr);
+                let dst_ptr_operand = self.lower_value(value, asm);
+                let dst_reg = if let Operand::Reg(reg) = dst_ptr_operand {
+                    reg
+                } else {
+                    unreachable!("dst operand should always be a register")
+                };
+                let index_operand = self.lower_value(index, asm);
+                let index_reg = if let Operand::Reg(reg) = index_operand {
+                    reg
+                } else {
+                    unreachable!("index operand should always be a register")
+                };
+                let asm_type = match typ {
+                    SemanticType::Bool | SemanticType::Char => AssemblyType::Byte,
+                    SemanticType::Int => Longword,
+                    SemanticType::Array(_) | SemanticType::Pair(_, _) => Quadword,
+                    _ => unreachable!("unexpected type in array access"),
+                };
+                let dst_operand = Operand::Indexed {
+                    base: dst_reg,
+                    index: index_reg,
+                    scale: scale as i32,
+                };
+                asm.push(AsmInstruction::Mov {
+                    typ: asm_type,
+                    src: src_array_operand,
+                    dst: dst_operand,
+                });
+
             }
             _ => unimplemented!(),
             // WackInstr::SignExtend { .. } => {}
@@ -416,8 +469,7 @@ impl AsmGen {
             // WackInstr::ZeroExtend { .. } => {}
             // WackInstr::GetAddress { .. } => {}
             // WackInstr::Store { .. } => {}
-            // WackInstr::CopyFromOffset { .. } => {}
-            // WackInstr::ArrayAccess { .. } => {} !
+            // WackInstr::CopyFromOffset { .. } => {} ?
         }
     }
 
