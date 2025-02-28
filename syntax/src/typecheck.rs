@@ -361,10 +361,10 @@ impl Folder for TypeResolver {
                 resolved_rvalue.span(),
                 resolved_type.clone(),
                 expected_type,
-            ))
+            ));
         }
         self.symid_table
-            .insert(name.inner().clone(), resolved_type);
+            .insert(name.inner().clone(), r#type.inner().to_semantic_type());
         Stat::VarDefinition {
             r#type,
             name: self.fold_name_sn(name),

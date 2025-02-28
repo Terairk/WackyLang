@@ -1,12 +1,13 @@
 use crate::assembly_ast::AssemblyType::Longword;
 use crate::assembly_ast::Register::{AX, DI};
-use crate::predefined::{inbuiltExit, inbuiltFree, inbuiltFreePair, inbuiltMalloc, inbuiltNullAccess, inbuiltPrintBool, inbuiltPrintChar, inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln, inbuiltReadChar, inbuiltReadInt};
-use crate::{
-    assembly_ast::{
-        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode,
-        Operand, Register,
-    },
-    gen_predefined::ERR_DIVZERO,
+use crate::assembly_ast::{
+    AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
+    Register,
+};
+use crate::predefined::{
+    inbuiltDivZero, inbuiltExit, inbuiltFree, inbuiltFreePair, inbuiltMalloc, inbuiltNullAccess,
+    inbuiltPrintBool, inbuiltPrintChar, inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString,
+    inbuiltPrintln, inbuiltReadChar, inbuiltReadInt,
 };
 use middle::wackir::{
     BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackProgram, WackValue,
@@ -164,7 +165,7 @@ impl AsmGen {
 
     /// TODO: Fix bug with printing null pointer
     /// Lowering value doesn't differentiate between null pointer and 0
-    /// So, we should add special value to Operand 
+    /// So, we should add special value to Operand
     fn lower_print(&mut self, src: WackValue, ty: SemanticType, asm: &mut Vec<AsmInstruction>) {
         let operand = self.lower_value(src, asm);
         let func_name = match ty {
@@ -334,9 +335,10 @@ impl AsmGen {
                 println!("alloc size {}", size);
                 let operand = self.lower_value(dst_ptr, asm);
                 // Moving size to RDI for malloc function
-                asm.push(AsmInstruction::Mov { typ: Longword,
+                asm.push(AsmInstruction::Mov {
+                    typ: Longword,
                     src: Operand::Imm(size as i32),
-                    dst: Operand::Reg(DI)
+                    dst: Operand::Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::MALLOC);
                 asm.push(AsmInstruction::Call(inbuiltMalloc.to_owned(), false));
@@ -366,7 +368,7 @@ impl AsmGen {
                 let operand_src_ptr = self.lower_value(src_ptr, asm);
                 let operand_dst = self.lower_value(dst, asm);
                 asm.push(AsmInstruction::Mov {
-                   typ: Longword,
+                    typ: Longword,
                     src: operand_src_ptr,
                     dst: operand_dst,
                 });
@@ -380,17 +382,18 @@ impl AsmGen {
                     op2: Operand::Imm(0),
                 });
                 insert_flag_gbl(GenFlags::NULL_DEREF);
-                // Jump to _errNull code if pointer is null 
+                // Jump to _errNull code if pointer is null
                 asm.push(AsmInstruction::JmpCC {
-                   condition: CondCode::E,
+                    condition: CondCode::E,
                     label: inbuiltNullAccess.to_owned(),
                 });
             }
-            WackInstr::AddPtr { src_ptr, 
-                index, 
-                scale, 
-                offset, 
-                dst_ptr 
+            WackInstr::AddPtr {
+                src_ptr,
+                index,
+                scale,
+                offset,
+                dst_ptr,
             } => {
                 let operand_src_ptr = self.lower_value(src_ptr, asm);
                 let operand_index = self.lower_value(index, asm);
@@ -650,7 +653,7 @@ impl AsmGen {
                     },
                     Asm::JmpCC {
                         condition: CondCode::E,
-                        label: ERR_DIVZERO.to_owned(),
+                        label: inbuiltDivZero.to_owned(),
                     },
                     Asm::Mov {
                         typ: AssemblyType::Longword,
