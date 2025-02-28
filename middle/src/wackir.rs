@@ -669,6 +669,13 @@ mod wack_glob_ident {
             ident.0.to_string()
         }
     }
+
+    impl<'a> From<&'a WackGlobIdent> for &'a str {
+        #[inline]
+        fn from(mid_ident: &'a WackGlobIdent) -> &'a str {
+            &mid_ident.0
+        }
+    }
 }
 
 /// Identifier used for more locally-scoped items, such as temporary variables,
@@ -681,8 +688,8 @@ pub struct WackTempIdent(ast::Ident, usize);
 
 // impls relating to `WackTempIdent`
 pub mod wack_temp_ident {
-    use crate::ast_transform::ast_lowering_ctx::With;
     use crate::ast_transform::AstLoweringCtx;
+    use crate::ast_transform::ast_lowering_ctx::With;
     use crate::wackir::WackTempIdent;
     use std::fmt;
     use std::fmt::{Debug, Formatter};
@@ -741,6 +748,13 @@ pub mod wack_temp_ident {
         #[inline]
         fn from(mid_ident: WackTempIdent) -> Self {
             format!("{}.{}", mid_ident.0, mid_ident.1)
+        }
+    }
+
+    impl<'a> From<&'a WackTempIdent> for &'a str {
+        #[inline]
+        fn from(mid_ident: &'a WackTempIdent) -> &'a str {
+            mid_ident.0.inner()
         }
     }
 }
@@ -914,7 +928,7 @@ mod tests {
         ); // ASCII value of 'A'
         assert_eq!(
             WackLiteral::from(char_liter2),
-            WackLiteral::Char(unsafe { WackChar::from_u8_unchecked(65) })
+            WackLiteral::Char(unsafe { WackChar::from_u8_unchecked(97) })
         ); // ASCII value of 'a'
 
         // Test pair literal conversion

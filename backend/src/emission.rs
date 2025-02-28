@@ -5,7 +5,7 @@ use util::gen_flags::get_flags_gbl;
 use crate::{
     assembly_ast::{
         AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AsmUnaryOperator, AssemblyType,
-        CondCode, Operand, Register,
+        CondCode, Directive, Operand, Register,
     },
     gen_predefined::emit_predefined_asm,
 };
@@ -23,12 +23,8 @@ use crate::{
 
 pub struct AssemblyFormatter;
 
-// Return has to be handled specially to avoid being indented
-const RETURN_STRING: &str = "movq %rbp, %rsp\npopq %rbp\nret\n";
-
 // This might be a temporary thing but I'll put this into emission phase for now
 // as we always want to do this anyways
-const JO_OVERFLOW: &str = "jo _errOverflow";
 
 impl AssemblyFormatter {
     // Format an entire program by printing each function.
@@ -37,12 +33,11 @@ impl AssemblyFormatter {
     pub fn format_program(program: &AsmProgram, str_literals: BTreeMap<String, String>) -> String {
         let mut output = String::new();
         // Printing string literals with their respective lengths
-        // output.push_str(".globl main\n");
         output.push_str(".section .rodata\n");
         for (string, label) in str_literals {
             output.push_str(format!("# length of {}\n", label).as_str());
             output.push_str(format!("   .int {}\n", string.len()).as_str());
-            output.push_str(format!("{}:\n", label).as_str());
+            output.push_str(format!(".L_{}:\n", label).as_str());
             output.push_str(format!("   .asciz \"{}\"\n", string).as_str());
         }
 
@@ -53,23 +48,33 @@ impl AssemblyFormatter {
         }
 
         // now emit assembly based on flags
-        let global_flags = get_flags_gbl();
-        output.push_str(&emit_predefined_asm(global_flags));
+        // let global_flags = get_flags_gbl();
+        // output.push_str(&emit_predefined_asm(global_flags));
         output
     }
     // Format a single function. This prints any global,
     // a label for the function, the instructions and adds a blank line at the end.
     #[inline]
     pub fn format_function(func: &AsmFunction) -> String {
-        let mut lines = Vec::new();
+        let mut lines: Vec<String> = Vec::new();
+        if !func.directives.is_empty() {
+            // If there are no directives, we can skip the .section directive.
+            lines.push(".section .rodata".to_owned());
+        }
+
+        for directive in &func.directives {
+            let Directive(label, value) = *directive;
+            lines.push(format!("# length of {label}"));
+            lines.push(format!("    .int {}", value.len()));
+            lines.push(format!(".L_{label}:"));
+            lines.push(format!("    .asciz \"{value}\""));
+        }
         if func.global {
             // Global directives start with a dot, so they will have no indent.
             lines.push(format!(".globl {}", func.name));
         }
         // Print function label (ends with ":" so we omit the indent).
         lines.push(format!("{}:", func.name));
-        lines.push(Self::apply_indentation("pushq %rbp"));
-        lines.push(Self::apply_indentation("movq %rsp, %rbp"));
         for inst in &func.instructions {
             let inst_line = Self::format_instruction(inst);
             // For each instruction line, apply the proper indentation.
@@ -93,6 +98,17 @@ impl AssemblyFormatter {
                 let src_str = Self::format_operand(src, typ);
                 let dst_str = Self::format_operand(dst, typ);
                 format!("mov{} {}, {}", suffix, src_str, dst_str)
+            }
+            AsmInstruction::Cmov {
+                condition,
+                typ,
+                src,
+                dst,
+            } => {
+                let condition = Self::format_cond_code(condition);
+                let src_str = Self::format_operand(src, typ);
+                let dst_str = Self::format_operand(dst, typ);
+                format!("cmov{} {}, {}", condition, src_str, dst_str)
             }
             AsmInstruction::MovZeroExtend {
                 src_type,
@@ -135,7 +151,7 @@ impl AssemblyFormatter {
                 // For now its just arithmetic operation
                 // So we just handle overflow here
 
-                format!("{op}{suffix} {op1_str}, {op2_str}\n{JO_OVERFLOW}")
+                format!("{op}{suffix} {op1_str}, {op2_str}")
             }
             AsmInstruction::Cmp { typ, op1, op2 } => {
                 let suffix = Self::assembly_type_suffix(typ);
@@ -154,6 +170,7 @@ impl AssemblyFormatter {
                 let cond = Self::format_cond_code(condition);
                 format!("j{cond} .L_{label}")
             }
+            AsmInstruction::JmpOverflow(func_handler) => format!("jo {func_handler}"),
             AsmInstruction::SetCC { condition, operand } => {
                 let cond = Self::format_cond_code(condition);
                 let op_str = Self::format_operand(operand, &AssemblyType::Byte);
@@ -168,6 +185,10 @@ impl AssemblyFormatter {
                 let op_str = Self::format_operand(op, &AssemblyType::Quadword);
                 format!("push {op_str}")
             }
+            AsmInstruction::Pop(op) => {
+                let op_str = Self::format_operand(op, &AssemblyType::Quadword);
+                format!("pop {op_str}")
+            }
             // Note these are our own calls so these don't need to be with @PLT
             // all @PLT external calls are already pre-generated
             AsmInstruction::Call(name, external) => {
@@ -177,10 +198,7 @@ impl AssemblyFormatter {
                     format!("call {name}")
                 }
             }
-            AsmInstruction::Ret => {
-                // Since return is special we'll have to handle it specially
-                RETURN_STRING.to_owned()
-            }
+            AsmInstruction::Ret => "ret".to_owned(),
             AsmInstruction::DeallocateStack(bytes) => {
                 // In AT&T syntax, stack deallocation is often performed by adding to %rsp.
                 format!("addq ${bytes}, %rsp")
@@ -222,9 +240,9 @@ impl AssemblyFormatter {
                 // TODO: needs an assembly symbol table to resolve if its local
                 // label or a regular label etc but figure this out later
                 if *offset == 0 {
-                    format!("{}(%rip)", label)
+                    format!(".L_{}(%rip)", label)
                 } else {
-                    format!("{}+{}(%rip)", label, offset)
+                    format!(".L_{}+{}(%rip)", label, offset)
                 }
             }
             Operand::Indexed { base, index, scale } => {
@@ -268,6 +286,7 @@ impl AssemblyFormatter {
     fn format_quad_reg(reg: &Register) -> &'static str {
         match *reg {
             Register::AX => "%rax",
+            Register::BX => "%rbx",
             Register::CX => "%rcx",
             Register::DX => "%rdx",
             Register::DI => "%rdi",
@@ -285,6 +304,7 @@ impl AssemblyFormatter {
     fn format_long_reg(reg: &Register) -> &'static str {
         match *reg {
             Register::AX => "%eax",
+            Register::BX => "%ebx",
             Register::CX => "%ecx",
             Register::DX => "%edx",
             Register::DI => "%edi",
@@ -303,6 +323,7 @@ impl AssemblyFormatter {
     fn format_byte_reg(reg: &Register) -> &'static str {
         match *reg {
             Register::AX => "%al",
+            Register::BX => "%bl",
             Register::CX => "%cl",
             Register::DX => "%dl",
             Register::DI => "%dil",
