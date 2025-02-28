@@ -1,4 +1,5 @@
 pub mod ast_transform;
+pub mod wack_type;
 pub mod wackir;
 
 #[inline]

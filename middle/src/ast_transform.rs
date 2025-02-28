@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::wack_type::WackType;
 use crate::wackir::{WackProgram, WackTempIdent};
 use syntax::ast::{
     ArrayElem, Expr, Func, FuncParam, Ident, LValue, PairElem, Program, RValue, Stat, StatBlock,
@@ -48,7 +49,7 @@ pub fn lower_program(program: TypedAST, type_resolver: TypeResolver) -> (WackPro
 pub(crate) struct AstLoweringCtx {
     ident_counter: usize,
     func_table: HashMap<Ident, (SemanticType, Vec<SemanticType>)>,
-    symbol_table: HashMap<WackTempIdent, SemanticType>,
+    symbol_table: HashMap<WackTempIdent, WackType>,
     // used to rename function to wacc_function
     func_map: HashMap<Ident, Ident>,
 }
@@ -59,6 +60,7 @@ pub(crate) mod ast_lowering_ctx {
         AstLoweringCtx, TypedArrayElem, TypedExpr, TypedFunc, TypedFuncParam, TypedLValue,
         TypedPairElem, TypedRValue, TypedStat, TypedStatBlock,
     };
+    use crate::wack_type::WackType;
     use crate::wackir::{
         BinaryOp, UnaryOp, WackBool, WackFunction, WackInstr, WackLiteral, WackTempIdent, WackValue,
     };
@@ -149,10 +151,10 @@ pub(crate) mod ast_lowering_ctx {
                     (new_id, (func, params))
                 })
                 .collect();
-            let symbol_table: HashMap<WackTempIdent, SemanticType> = type_resolver
+            let symbol_table: HashMap<WackTempIdent, WackType> = type_resolver
                 .symid_table
                 .into_iter()
-                .map(|(id, sym_ty)| (id.into(), sym_ty))
+                .map(|(id, sym_ty)| (id.into(), sym_ty.into()))
                 .collect();
             Self {
                 ident_counter,
@@ -173,11 +175,19 @@ pub(crate) mod ast_lowering_ctx {
         }
 
         // Makes a temporary wacky variable
-        fn make_temporary(&mut self) -> WackTempIdent {
+        fn make_temporary(&mut self, typ: WackType) -> WackTempIdent {
             // Eventually we may want to replace temp with a function name
             // for better debugging
             let ident = Ident::from_str("temp");
-            ident.with_ctx_mut(self).into()
+            let new_ident: WackTempIdent = ident.with_ctx_mut(self).into();
+            self.symbol_table.insert(new_ident.clone(), typ);
+            new_ident
+        }
+
+        // Makes a wacky variable
+        fn make_wacky_variable(&mut self, typ: WackType) -> WackValue {
+            let var_name = self.make_temporary(typ);
+            return WackValue::Var(var_name);
         }
 
         // Makes a label for jump's for now
@@ -251,19 +261,22 @@ pub(crate) mod ast_lowering_ctx {
                 TypedStat::Read(lvalue) => {
                     let sem_type = lvalue.inner().get_type();
                     let value = self.lower_lvalue(lvalue.into_inner(), instructions);
-                    let instr = WackInstr::Read { dst: value, ty: sem_type };
+                    let instr = WackInstr::Read {
+                        dst: value,
+                        ty: sem_type,
+                    };
                     instructions.push(instr);
-                },
+                }
                 TypedStat::Free(expr) => {
                     let sem_type = expr.inner().get_type();
                     let value = self.lower_expr(expr.into_inner(), instructions);
                     let instr = match sem_type {
-                        SemanticType::Pair(_, _) => { WackInstr::FreeChecked(value) },
-                        SemanticType::Array(_) => { WackInstr::FreeUnchecked(value) },
+                        SemanticType::Pair(_, _) => WackInstr::FreeChecked(value),
+                        SemanticType::Array(_) => WackInstr::FreeUnchecked(value),
                         _ => unreachable!("free value should be a pair or array"),
                     };
                     instructions.push(instr);
-                },
+                }
                 TypedStat::Return(expr) => {
                     let sem_type = expr.inner().get_type();
                     let value = self.lower_expr(expr.into_inner(), instructions);
@@ -355,8 +368,11 @@ pub(crate) mod ast_lowering_ctx {
                 TypedExpr::Ident(sn_ident, _t) => WackValue::Var(sn_ident.into_inner().into()),
                 TypedExpr::ArrayElem(array_elem, t) => {
                     // obtain pointer to the correct array element
-                    let array_elem_src_ptr =
-                        self.lower_array_elem_to_ptr(array_elem.into_inner(), t, instructions);
+                    let array_elem_src_ptr = self.lower_array_elem_to_ptr(
+                        array_elem.into_inner(),
+                        t.clone(),
+                        instructions,
+                    );
 
                     // dereference pointer to array-element, to extract its value to underlying
                     // runtime representation.
@@ -365,7 +381,7 @@ pub(crate) mod ast_lowering_ctx {
                     //         - integers, booleans, characters, etc. can fit within integer registers
                     //         - arrays, strings, pairs, etc., are actually pointers hence fit within integer registers
                     //       therefore dereferencing is sufficient to obtain the underlying value
-                    let dst_value = WackValue::Var(self.make_temporary());
+                    let dst_value = self.make_wacky_variable(t.into());
                     instructions.push(WackInstr::Load {
                         src_ptr: array_elem_src_ptr,
                         dst: dst_value.clone(),
@@ -415,8 +431,11 @@ pub(crate) mod ast_lowering_ctx {
                 ),
                 TypedRValue::PairElem(elem, sem_type) => {
                     // obtain pointer to the correct pair element
-                    let pair_elem_src_ptr =
-                        self.lower_pair_elem_to_ptr(elem.into_inner(), sem_type, instructions);
+                    let pair_elem_src_ptr = self.lower_pair_elem_to_ptr(
+                        elem.into_inner(),
+                        sem_type.clone(),
+                        instructions,
+                    );
 
                     // extract the first/second element of pair to underlying runtime representation
                     // by performing pointer dereferencing.
@@ -425,7 +444,8 @@ pub(crate) mod ast_lowering_ctx {
                     //         - integers, booleans, characters, etc. can fit within integer registers
                     //         - arrays, strings, pairs, etc., are actually pointers hence fit within integer registers
                     //       therefore dereferencing is sufficient to obtain the underlying value
-                    let dst_value = WackValue::Var(self.make_temporary());
+                    //       TODO: use self.make_wacky_variable() instead of self.make_temporary()
+                    let dst_value = WackValue::Var(self.make_temporary(sem_type.into()));
                     instructions.push(WackInstr::Load {
                         src_ptr: pair_elem_src_ptr,
                         dst: dst_value.clone(),
@@ -444,7 +464,7 @@ pub(crate) mod ast_lowering_ctx {
                         .into_iter()
                         .map(|arg| self.lower_expr(arg.into_inner(), instructions))
                         .collect();
-                    let dst = WackValue::Var(self.make_temporary());
+                    let dst = self.make_wacky_variable(return_type.into());
                     let wacky_func_name = self
                         .func_map
                         .get(&func_name)
@@ -495,7 +515,8 @@ pub(crate) mod ast_lowering_ctx {
             let alloc_size_bytes = array_len_bytes + array_len * array_elem_bytes;
 
             //  allocate enough memory on the heap to store all elements and the size of the array
-            let array_dst_ptr = self.make_temporary();
+            let array_dst_ptr =
+                self.make_temporary(WackType::Pointer(Box::new(elem_type.clone().into())));
             let wrapped_array_value = WackValue::Var(array_dst_ptr.clone());
             instructions.push(WackInstr::Alloc {
                 size: alloc_size_bytes,
@@ -540,7 +561,9 @@ pub(crate) mod ast_lowering_ctx {
             let alloc_size_bytes = fst_bytes + snd_bytes;
 
             //  allocate enough memory on the heap to store both elements and of the pair
-            let pair_dst_ptr = self.make_temporary();
+            let type1 = Box::new(elem_types.0.clone().into());
+            let type2 = Box::new(elem_types.1.clone().into());
+            let pair_dst_ptr = self.make_temporary(WackType::Pair(type1, type2));
             let wrapped_pair_value = WackValue::Var(pair_dst_ptr.clone());
             instructions.push(WackInstr::Alloc {
                 size: alloc_size_bytes,
@@ -619,7 +642,7 @@ pub(crate) mod ast_lowering_ctx {
 
             // check that the obtained pointer isn't null pair literal,
             // and if not, obtain the pointer to the element value
-            let pair_elem_dst_ptr = self.make_temporary();
+            let pair_elem_dst_ptr = self.make_temporary(operand_element_type.into());
             instructions.push(WackInstr::NullPtrGuard(pair_src_ptr.clone()));
             instructions.push(WackInstr::add_ptr_offset(
                 pair_src_ptr,
@@ -638,10 +661,12 @@ pub(crate) mod ast_lowering_ctx {
             instructions: &mut Vec<WackInstr>,
         ) -> WackValue {
             // get array name: the pointer to the beginning, and the element type
-            let mut src_array_ptr: WackTempIdent = array_elem.array_name.into_inner().into();
+            //
+            let mut src_array_ptr =
+                WackValue::Var(array_elem.array_name.clone().into_inner().into());
             let mut array_type = self
                 .symbol_table
-                .get(&src_array_ptr)
+                .get(&array_elem.array_name.into_inner().into())
                 .expect("This symbol should always be found, unless a previous stage has bugs.")
                 .clone();
 
@@ -650,7 +675,7 @@ pub(crate) mod ast_lowering_ctx {
             let mut index = elem_ix_iter.next().unwrap().into_inner();
 
             // track output element pointer
-            let mut elem_dst_ptr: WackTempIdent;
+            let mut elem_dst_ptr: WackValue;
             loop {
                 // obtain index value, and the corresponding element type (for the scale)
                 let index_value = self.lower_expr(index.clone(), instructions);
@@ -659,9 +684,11 @@ pub(crate) mod ast_lowering_ctx {
                 let scale = array_elem_type.size_of();
 
                 // obtain pointer to element
-                elem_dst_ptr = self.make_temporary();
+                // TODO: unsure if we add the Type or Pointer, for now do Pointer
+                elem_dst_ptr =
+                    self.make_wacky_variable(WackType::Pointer(Box::new(array_elem_type.clone())));
                 instructions.push(WackInstr::ArrayAccess {
-                    src_array_ptr: WackValue::Var(src_array_ptr.clone()),
+                    src_array_ptr: src_array_ptr.clone(),
                     index: index_value,
                     scale,
                     dst_elem_ptr: elem_dst_ptr.clone(),
@@ -671,10 +698,10 @@ pub(crate) mod ast_lowering_ctx {
                 // dereference it to obtain another array, and set up for another loop;
                 if let Some(next_index) = elem_ix_iter.next() {
                     // update `src_array_pointer` by dereferencing the `elem_dst_ptr`
-                    src_array_ptr = self.make_temporary();
+                    src_array_ptr = self.make_wacky_variable(array_elem_type.clone());
                     instructions.push(WackInstr::Load {
-                        src_ptr: WackValue::Var(elem_dst_ptr.clone()),
-                        dst: WackValue::Var(src_array_ptr.clone()),
+                        src_ptr: elem_dst_ptr.clone(),
+                        dst: src_array_ptr.clone(),
                     });
 
                     // load up the next index, and update base array's type
@@ -685,13 +712,13 @@ pub(crate) mod ast_lowering_ctx {
                     // semantic type; if it does, there is a bug in the frontend
                     // TODO: it may be the case that element types can be coerced safely to the
                     //       overall array type, so this assert may trigger false-positives
-                    assert_eq!(array_elem_type, sem_type);
+                    // assert_eq!(array_elem_type, sem_type.into());
                     break;
                 }
             }
 
             // return variable holding pointer to element
-            WackValue::Var(elem_dst_ptr)
+            elem_dst_ptr
         }
 
         // Very confusing but converts a syntax literal to Wacky Value
@@ -710,8 +737,9 @@ pub(crate) mod ast_lowering_ctx {
             expr: TypedExpr,
             instr: &mut Vec<WackInstr>,
         ) -> WackValue {
+            let t = expr.get_type();
             let src = self.lower_expr(expr, instr);
-            let dst_name = self.make_temporary();
+            let dst_name = self.make_temporary(t.into());
             let dst = WackValue::Var(dst_name);
             let wacky_op: UnaryOp = unary_op.into();
             let new_instr = WackInstr::Unary {
@@ -745,9 +773,9 @@ pub(crate) mod ast_lowering_ctx {
             instr: &mut Vec<WackInstr>,
         ) -> WackValue {
             // We handle And/Or differently since we'll make them short circuit here
+            let dst_name = self.make_temporary(expr1.get_type().into());
             let src1 = self.lower_expr(expr1, instr);
             let src2 = self.lower_expr(expr2, instr);
-            let dst_name = self.make_temporary();
             let dst = WackValue::Var(dst_name);
             let wacky_op: BinaryOp = binop.into();
             let new_instr = WackInstr::Binary {
@@ -774,7 +802,7 @@ pub(crate) mod ast_lowering_ctx {
             let end_label = self.make_label("or_end");
 
             // Create a temporary variable to store the result of expression
-            let dst = WackValue::Var(self.make_temporary());
+            let dst = self.make_wacky_variable(WackType::Bool);
 
             let left_v = self.lower_expr(expr1, instr);
 
@@ -824,7 +852,7 @@ pub(crate) mod ast_lowering_ctx {
             let end_label = self.make_label("and_end");
 
             // Create a temporary variable to store the result of expression
-            let dst = WackValue::Var(self.make_temporary());
+            let dst = self.make_wacky_variable(WackType::Bool);
 
             let left_v = self.lower_expr(expr1, instr);
 

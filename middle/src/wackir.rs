@@ -224,7 +224,7 @@ pub enum WackInstr {
         src_array_ptr: WackValue,
         index: WackValue,
         scale: usize,
-        dst_elem_ptr: WackTempIdent,
+        dst_elem_ptr: WackValue,
     },
 
     Jump(WackTempIdent),
