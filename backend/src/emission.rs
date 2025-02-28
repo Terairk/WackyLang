@@ -242,14 +242,15 @@ impl AssemblyFormatter {
                     format!(".L_{}+{}(%rip)", label, offset)
                 }
             }
-            Operand::Indexed { base, index, scale } => {
-                // Format: (base, index, scale)
+            Operand::Indexed { offset, base, index, scale } => {
+                // Format: offset(base, index, scale)
                 let reg1 = Self::format_register(base, &AssemblyType::Quadword);
                 let reg2 = Self::format_register(index, &AssemblyType::Quadword);
+                let offset_str = if *offset == 0 { String::new() } else { format!("{}", offset) };
                 if *scale == 1 {
-                    return format!("({reg1}, {reg2})");
+                    return format!("{offset_str}({reg1}, {reg2})");
                 }
-                format!("({reg1}, {reg2}, {scale})")
+                format!("{offset_str}({reg1}, {reg2}, {scale})")
             }
             Operand::Stack(offset) => {
                 // Using %rbp as the base pointer for a stack reference.

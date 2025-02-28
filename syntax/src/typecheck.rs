@@ -365,11 +365,11 @@ impl Folder for TypeResolver {
             self.add_error(TypeMismatch(
                 resolved_rvalue.span(),
                 resolved_type.clone(),
-                expected_type,
+                expected_type.clone(),
             ));
         }
         self.symid_table
-            .insert(name.inner().clone(), r#type.inner().to_semantic_type());
+            .insert(name.inner().clone(), expected_type);
         Stat::VarDefinition {
             r#type,
             name: self.fold_name_sn(name),
@@ -519,7 +519,6 @@ impl Folder for TypeResolver {
                 let resolved_type = resolved_elem
                     .get_type(&self)
                     .unwrap_or(SemanticType::Error(array_elem.span()));
-                println!("{resolved_type:?}");
                 Expr::ArrayElem(resolved_elem, resolved_type)
             }
             Expr::Unary(op, expr, _) => {

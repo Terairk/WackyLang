@@ -129,6 +129,7 @@ pub enum Operand {
         base: Register,
         index: Register,
         scale: i32,
+        offset: i32,
     },
     // This is a temporary thing for now
     Stack(i32),

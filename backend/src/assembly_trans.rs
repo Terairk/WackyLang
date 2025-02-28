@@ -409,15 +409,10 @@ impl AsmGen {
                 } else {
                     unreachable!("index operand should always be a register")
                 };
-                // TODO: Make new_dst = dst + value * index, it is impossible(?)/idk how rn
-                let new_dst = match src_ptr_operand.clone() {
-                    Operand::Reg(reg) => Operand::Memory(reg, offset as i32),
-                    Operand::Pseudo(str) => Operand::PseudoMem(str, offset as i32),
-                    _ => unreachable!("add ptr should be called only to pseudo/register"),
-                };
                 asm.push(AsmInstruction::Lea {
                     src: src_ptr_operand,
                     dst: Operand::Indexed {
+                        offset: offset as i32,
                         base: dst_reg,
                         index: index_reg,
                         scale: scale as i32,
@@ -452,6 +447,7 @@ impl AsmGen {
                     _ => unreachable!("unexpected type in array access"),
                 };
                 let dst_operand = Operand::Indexed {
+                    offset: 0,
                     base: dst_reg,
                     index: index_reg,
                     scale: scale as i32,

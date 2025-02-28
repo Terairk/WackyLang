@@ -606,6 +606,7 @@ static arrLoad1: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Mov {
             typ: Byte,
             src: Indexed {
+                offset: 0,
                 base: R9,
                 index: R10,
                 scale: 1,
@@ -661,6 +662,7 @@ static arrLoad4: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Mov {
             typ: Longword,
             src: Indexed {
+                offset: 0,
                 base: R9,
                 index: R10,
                 scale: 4,
@@ -716,6 +718,7 @@ static arrLoad8: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Mov {
             typ: Quadword,
             src: Indexed {
+                offset: 0,
                 base: R9,
                 index: R10,
                 scale: 8,
