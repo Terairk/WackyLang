@@ -68,6 +68,7 @@ impl AssemblyFormatter {
             lines.push(format!("    .int {}", value.len()));
             lines.push(format!(".L_{label}:"));
             lines.push(format!("    .asciz \"{value}\""));
+            lines.push(".text".to_owned());
         }
         if func.global {
             // Global directives start with a dot, so they will have no indent.
