@@ -28,13 +28,15 @@ def compile_and_link(src, dst):
         compile(src, f.name)
         link(f.name, dst)
 
-def emulate(exe):
-    result = sp.run(['qemu-x86_64', exe], capture_output=True, text=True)
-    
-    if result.stderr:
-        raise Exception(result.stderr)
-    
-    return result.stdout
+def emulate(exe, timeout=10):
+    try:
+        result = sp.run(['qemu-x86_64', exe], capture_output=True, text=True, timeout=timeout)
+        if result.stderr:
+            raise Exception(result.stderr)
+        return result.stdout
+    except sp.TimeoutExpired:
+        raise Exception(f"Emulation timed out after {timeout} seconds")
+
 
 def get_sample_output(src):
     dst = src.replace("testsuite/test_cases", "testsuite/expected")
