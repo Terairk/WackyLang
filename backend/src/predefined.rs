@@ -10,10 +10,11 @@ use crate::assembly_ast::{
 
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use util::gen_flags::{GenFlags, get_flags_gbl};
+use util::gen_flags::{GenFlags, get_flags_gbl, rewrite_global_flag};
 
 #[inline]
 pub fn generate_predefined(program: &mut AsmProgram) {
+    rewrite_global_flag();
     let flags = get_flags_gbl();
     let new_funcs: Vec<AsmFunction> = PREDEFINED_FUNCTIONS2
         .iter()

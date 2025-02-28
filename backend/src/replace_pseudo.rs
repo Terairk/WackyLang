@@ -75,6 +75,20 @@ fn replace_pseudo_operand(
             *op = Operand::Stack(offset);
         }
     }
+    if let Operand::PseudoMem(ref ident, off) = *op {
+        // If already assigned, use existing mapping
+        if let Some(&offset) = mapping.get(ident) {
+            *op = Operand::Stack(offset + off);
+        } else {
+            // Assign new stack offset
+            let offset = *next_stack_offset;
+            mapping.insert(ident.clone(), offset);
+            *last_offset = offset;
+            // may have unexpected side effects if it underflows
+            *next_stack_offset -= 4;
+            *op = Operand::Stack(offset + off);
+        }
+    }
 }
 
 fn replace_pseudo_in_instruction(

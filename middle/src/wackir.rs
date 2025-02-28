@@ -882,6 +882,7 @@ impl fmt::Debug for WackInstr {
             Self::Read { dst, ty } => {
                 write!(f, "Read {{ dst: {:?}, ty: {:?} }}", dst, ty)
             }
+            Self::FreeChecked(val) => write!(f, "FreeChecked({:?})", val),
             Self::FreeUnchecked(val) => write!(f, "FreeUnchecked({:?})", val),
             Self::Exit(val) => write!(f, "Exit({:?})", val),
             Self::Print { src, ty } => {

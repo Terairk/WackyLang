@@ -248,8 +248,22 @@ pub(crate) mod ast_lowering_ctx {
                     let instr = WackInstr::Copy { src: rhs, dst: lhs };
                     instructions.push(instr);
                 }
-                TypedStat::Read(lvalue) => panic!("Read not implemented in Wacky"),
-                TypedStat::Free(expr) => panic!("Write not implemented in Wacky"),
+                TypedStat::Read(lvalue) => {
+                    let sem_type = lvalue.inner().get_type();
+                    let value = self.lower_lvalue(lvalue.into_inner(), instructions);
+                    let instr = WackInstr::Read { dst: value, ty: sem_type };
+                    instructions.push(instr);
+                },
+                TypedStat::Free(expr) => {
+                    let sem_type = expr.inner().get_type();
+                    let value = self.lower_expr(expr.into_inner(), instructions);
+                    let instr = match sem_type {
+                        SemanticType::Pair(_, _) => { WackInstr::FreeChecked(value) },
+                        SemanticType::Array(_) => { WackInstr::FreeUnchecked(value) },
+                        _ => unreachable!("free value should be a pair or array"),
+                    };
+                    instructions.push(instr);
+                },
                 TypedStat::Return(expr) => {
                     let sem_type = expr.inner().get_type();
                     let value = self.lower_expr(expr.into_inner(), instructions);

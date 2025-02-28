@@ -1,9 +1,6 @@
 use crate::assembly_ast::AssemblyType::Longword;
-use crate::assembly_ast::Register::DI;
-use crate::predefined::{
-    inbuiltExit, inbuiltFree, inbuiltFreePair, inbuiltPrintBool, inbuiltPrintChar, inbuiltPrintInt,
-    inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln, inbuiltReadChar, inbuiltReadInt,
-};
+use crate::assembly_ast::Register::{AX, DI};
+use crate::predefined::{inbuiltExit, inbuiltFree, inbuiltFreePair, inbuiltMalloc, inbuiltPrintBool, inbuiltPrintChar, inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln, inbuiltReadChar, inbuiltReadInt};
 use crate::{
     assembly_ast::{
         AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode,
@@ -165,6 +162,9 @@ impl AsmGen {
         }
     }
 
+    /// TODO: Fix bug with printing null pointer
+    /// Lowering value doesn't differentiate between null pointer and 0
+    /// So, we should add special value to Operand 
     fn lower_print(&mut self, src: WackValue, ty: SemanticType, asm: &mut Vec<AsmInstruction>) {
         let operand = self.lower_value(src, asm);
         let func_name = match ty {
@@ -330,7 +330,49 @@ impl AsmGen {
                 });
                 asm.push(AsmInstruction::Call(inbuiltFreePair.to_owned(), false));
             }
+            WackInstr::Alloc { size, dst_ptr } => {
+                println!("alloc size {}", size);
+                let operand = self.lower_value(dst_ptr, asm);
+                // Moving size to RDI for malloc function
+                asm.push(AsmInstruction::Mov { typ: Longword,
+                    src: Operand::Imm(size as i32),
+                    dst: Operand::Reg(DI)
+                });
+                asm.push(AsmInstruction::Call(inbuiltMalloc.to_owned(), false));
+                // Moving pointer received to dst_ptr
+                asm.push(AsmInstruction::Mov {
+                    typ: Quadword,
+                    src: Operand::Reg(AX),
+                    dst: operand,
+                });
+            }
+            WackInstr::CopyToOffset { src, dst, offset } => {
+                let operand = self.lower_value(src, asm);
+                let value = WackValue::Var(dst);
+                let operand2 = self.lower_value(value, asm);
+                println!("{:?}", operand2);
+                let new_dst = match operand2 {
+                    Operand::Pseudo(str) => Operand::PseudoMem(str, offset as i32),
+                    // Operand::Memory(reg, off) => Operand::Memory(reg, off + offset as i32),
+                    _ => unreachable!("copy to offset should be called only to memory"),
+                };
+                asm.push(AsmInstruction::Mov {
+                    typ: Longword,
+                    src: operand,
+                    dst: new_dst,
+                });
+            }
             _ => unimplemented!(),
+            // WackInstr::SignExtend { .. } => {}
+            // WackInstr::Truncate { .. } => {}
+            // WackInstr::ZeroExtend { .. } => {}
+            // WackInstr::GetAddress { .. } => {}
+            // WackInstr::Load { .. } => {}
+            // WackInstr::Store { .. } => {}
+            // WackInstr::AddPtr { .. } => {}
+            // WackInstr::CopyFromOffset { .. } => {}
+            // WackInstr::ArrayAccess { .. } => {} !
+            // WackInstr::NullPtrGuard(_) => {} ! (nil)
         }
     }
 
@@ -437,14 +479,7 @@ impl AsmGen {
         use Operand::Reg;
         use Register::{AX, BP, SP};
 
-        asm_instructions.push(Asm::Mov {
-            typ: Quadword,
-            src: Reg(BP),
-            dst: Reg(SP),
-        });
-        asm_instructions.push(Asm::Pop(Reg(BP)));
         let operand = self.lower_value(value, asm_instructions);
-
         // TODO: most of these arms aren't correct apart from Imm
         // in particular, these dont take into account types
         // also this can be refactored
@@ -482,6 +517,13 @@ impl AsmGen {
             Operand::Indexed { .. } => unimplemented!(),
             Operand::Stack(_) => unimplemented!(),
         }
+
+        asm_instructions.push(Asm::Mov {
+            typ: Quadword,
+            src: Reg(BP),
+            dst: Reg(SP),
+        });
+        asm_instructions.push(Asm::Pop(Reg(BP)));
 
         asm_instructions.push(Asm::Ret);
     }
