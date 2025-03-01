@@ -7,12 +7,12 @@
 // any special purpose
 
 use crate::{
-    assembly_ast::AsmInstruction::*,
-    assembly_ast::Operand::*,
-    assembly_ast::Register::*,
     assembly_ast::{
-        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType,
-        Operand, Register,
+        AsmBinaryOperator, AsmFunction,
+        AsmInstruction::{self, *},
+        AsmProgram, AsmUnaryOperator, AssemblyType,
+        Operand::{self, *},
+        Register::{self, *},
     },
     predefined::inbuiltOverflow,
 };
@@ -31,6 +31,14 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
                 AsmInstruction::Mov { typ, src, dst } => {
                     fix_move(&mut new_func_body, typ, src, dst);
                 }
+                AsmInstruction::MovZeroExtend {
+                    src_type,
+                    dst_type,
+                    src,
+                    dst,
+                } => {
+                    fix_zero_extend(&mut new_func_body, src_type, dst_type, src, dst);
+                }
                 AsmInstruction::Binary {
                     operator,
                     typ,
@@ -44,6 +52,11 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
                 AsmInstruction::Lea { src, dst } => {
                     fix_lea(&mut new_func_body, src, dst);
                 }
+                AsmInstruction::Unary {
+                    operator,
+                    typ,
+                    operand,
+                } => fix_unary(&mut new_func_body, operator, typ, operand),
                 _ => new_func_body.push(instr),
             }
         }
@@ -59,6 +72,87 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
 
     AsmProgram {
         asm_functions: new_functions,
+    }
+}
+
+fn fix_unary(
+    new_func_body: &mut Vec<AsmInstruction>,
+    operator: AsmUnaryOperator,
+    typ: AssemblyType,
+    operand: Operand,
+) {
+    match operator {
+        AsmUnaryOperator::Neg => {
+            let new_instrs = vec![
+                AsmInstruction::Unary {
+                    operator: AsmUnaryOperator::Neg,
+                    typ,
+                    operand,
+                },
+                AsmInstruction::JmpOverflow(inbuiltOverflow.to_owned()),
+            ];
+            new_func_body.extend(new_instrs);
+        }
+        _ => {
+            new_func_body.push(AsmInstruction::Unary {
+                operator,
+                typ,
+                operand,
+            });
+        }
+    }
+}
+
+fn fix_zero_extend(
+    new_func_body: &mut Vec<AsmInstruction>,
+    src_type: AssemblyType,
+    dst_type: AssemblyType,
+    src: Operand,
+    dst: Operand,
+) {
+    if src_type == AssemblyType::Byte {
+        let new_instrs = match (src.clone(), dst.clone()) {
+            (Operand::Imm(_), Operand::Stack(_)) => vec![
+                AsmInstruction::Mov {
+                    typ: src_type,
+                    src,
+                    dst: Operand::Reg(Register::R10),
+                },
+                AsmInstruction::MovZeroExtend {
+                    src_type: src_type,
+                    dst_type: dst_type,
+                    src: Operand::Reg(Register::R10),
+                    dst: Operand::Reg(Register::R11),
+                },
+                AsmInstruction::Mov {
+                    typ: dst_type,
+                    src: Operand::Reg(Register::R11),
+                    dst,
+                },
+            ],
+            (_, Operand::Stack(_)) => vec![
+                AsmInstruction::MovZeroExtend {
+                    src_type: src_type,
+                    dst_type: dst_type,
+                    src,
+                    dst: Operand::Reg(Register::R10),
+                },
+                AsmInstruction::Mov {
+                    typ: dst_type,
+                    src: Operand::Reg(Register::R10),
+                    dst,
+                },
+            ],
+            _ => vec![AsmInstruction::MovZeroExtend {
+                src_type,
+                dst_type,
+                src,
+                dst,
+            }],
+        };
+        new_func_body.extend(new_instrs);
+    } else {
+        panic!("Zero extend currently only works for byte types");
     }
 }
 

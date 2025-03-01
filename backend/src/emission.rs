@@ -115,10 +115,11 @@ impl AssemblyFormatter {
                 dst,
             } => {
                 // Using the destination type to determine the suffix.
+                let src_suffix = Self::assembly_type_suffix(src_type);
                 let suffix = Self::assembly_type_suffix(dst_type);
                 let src_str = Self::format_operand(src, src_type);
                 let dst_str = Self::format_operand(dst, dst_type);
-                format!("movzx{} {}, {}", suffix, src_str, dst_str)
+                format!("movz{}{} {}, {}", src_suffix, suffix, src_str, dst_str)
             }
             AsmInstruction::Lea { src, dst } => {
                 let src_str = Self::format_operand(src, &AssemblyType::Quadword);

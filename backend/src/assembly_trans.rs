@@ -1,4 +1,6 @@
-use crate::assembly_ast::AsmInstruction::{Call, Cmov, Cmp, Comment, JmpCC, Mov, SetCC, Test};
+use crate::assembly_ast::AsmInstruction::{
+    Call, Cmov, Cmp, Comment, JmpCC, Mov, MovZeroExtend, SetCC, Test,
+};
 use crate::assembly_ast::AssemblyType::{Byte, Longword, Quadword};
 use crate::assembly_ast::CondCode::{E, NE};
 use crate::assembly_ast::Operand::{Imm, Reg};
@@ -751,20 +753,23 @@ impl AsmGen {
         #[allow(clippy::single_match_else)]
         match op {
             UnaryOp::Not => {
-                asm.push(Cmp {
-                    typ: src_typ,
-                    op1: Operand::Imm(0),
-                    op2: src_operand,
-                });
-                asm.push(Mov {
-                    typ: dst_typ,
-                    src: Operand::Imm(0),
-                    dst: dst_operand.clone(),
-                });
-                asm.push(SetCC {
-                    condition: CondCode::E,
-                    operand: dst_operand,
-                });
+                let new_instrs = vec![
+                    Cmp {
+                        typ: src_typ,
+                        op1: Imm(0),
+                        op2: src_operand,
+                    },
+                    Mov {
+                        typ: dst_typ,
+                        src: Imm(0),
+                        dst: dst_operand.clone(),
+                    },
+                    SetCC {
+                        condition: E,
+                        operand: dst_operand,
+                    },
+                ];
+                asm.extend(new_instrs);
             }
             UnaryOp::Chr => {
                 let new_instrs = vec![
@@ -790,10 +795,21 @@ impl AsmGen {
                         label: inbuiltBadChar.to_owned(),
                         is_func: true,
                     },
+                    Mov {
+                        typ: dst_typ,
+                        src: Reg(AX),
+                        dst: dst_operand,
+                    },
                 ];
                 insert_flag_gbl(GenFlags::CHR_BOUNDS);
                 asm.extend(new_instrs);
             }
+            UnaryOp::Ord => asm.push(MovZeroExtend {
+                src_type: src_typ,
+                dst_type: dst_typ,
+                src: src_operand,
+                dst: dst_operand,
+            }),
             _ => {
                 asm.push(Asm::Mov {
                     typ: src_typ,

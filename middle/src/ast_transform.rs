@@ -890,6 +890,19 @@ pub(crate) mod ast_lowering_ctx {
             instr: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackType) {
             // lower the inner expression
+
+            if let UnaryOper::Minus = unary_op {
+                let (src, src_ty) = self.lower_expr(expr, instr);
+                let dst_ty = WackType::from_semantic_type(sem_type);
+                let dst_name = self.make_temporary(dst_ty.clone());
+                instr.push(WackInstr::Binary {
+                    op: BinaryOp::Sub,
+                    src1: WackValue::Literal(WackLiteral::Int(0)),
+                    src2: src,
+                    dst: dst_name.clone(),
+                });
+                return (dst_name, dst_ty);
+            }
             let (src, src_ty) = self.lower_expr(expr, instr);
             // TODO: do something with this type
 
