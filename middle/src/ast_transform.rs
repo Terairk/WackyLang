@@ -651,6 +651,24 @@ pub(crate) mod ast_lowering_ctx {
             (array_dst_ptr, array_ptr_ty)
         }
 
+        fn assert_eq_with_pairtype_erasure(unerased: WackType, possibly_erased: WackType) {
+            match (unerased.clone(), possibly_erased.clone()) {
+                (
+                    WackType::Pointer(WackPointerType::Any),
+                    WackType::Pointer(WackPointerType::Any),
+                ) => {}
+                // a pointer is allowed to "cast" to untyped pointer if the target type is erased pair
+                (
+                    WackType::Pointer(WackPointerType::Of(inner)),
+                    WackType::Pointer(WackPointerType::Any),
+                ) => match *inner {
+                    WackType::Pair(_, _) => {}
+                    _ => assert_eq!(unerased, possibly_erased),
+                },
+                (_, _) => assert_eq!(unerased, possibly_erased),
+            }
+        }
+
         #[allow(clippy::arithmetic_side_effects)]
         fn lower_newpair_to_ptr(
             &mut self,
@@ -685,37 +703,8 @@ pub(crate) mod ast_lowering_ctx {
             //       overall pair type, so this assert may trigger false-positives
             let fst_target_ty = WackType::from_semantic_type(elems.0.get_type());
             let snd_target_ty = WackType::from_semantic_type(elems.1.get_type());
-            match (fst_target_ty.clone(), fst_elem_type.clone()) {
-                (
-                    WackType::Pointer(WackPointerType::Any),
-                    WackType::Pointer(WackPointerType::Any),
-                ) => {}
-                // a pointer is allowed to "cast" to untyped pointer if the target type is erased pair
-                (
-                    WackType::Pointer(WackPointerType::Of(inner)),
-                    WackType::Pointer(WackPointerType::Any),
-                ) => match *inner {
-                    WackType::Pair(_, _) => {}
-                    _ => assert_eq!(fst_target_ty, fst_elem_type),
-                },
-                (_, _) => assert_eq!(fst_target_ty, fst_elem_type),
-            }
-            match (snd_target_ty.clone(), snd_elem_type.clone()) {
-                // TODO: rewrite this pointer-casting with less boilerplate
-                (
-                    WackType::Pointer(WackPointerType::Any),
-                    WackType::Pointer(WackPointerType::Any),
-                ) => {}
-                // a pointer is allowed to "cast" to untyped pointer if the target type is erased pair
-                (
-                    WackType::Pointer(WackPointerType::Of(inner)),
-                    WackType::Pointer(WackPointerType::Any),
-                ) => match *inner {
-                    WackType::Pair(_, _) => {}
-                    _ => assert_eq!(snd_target_ty, snd_elem_type),
-                },
-                (_, _) => assert_eq!(snd_target_ty, snd_elem_type),
-            }
+            Self::assert_eq_with_pairtype_erasure(fst_target_ty.clone(), fst_elem_type);
+            Self::assert_eq_with_pairtype_erasure(snd_target_ty.clone(), snd_elem_type);
 
             // evaluate expressions of both elements, ensure matching types
             let ((fst_value, fst_ty), (snd_value, snd_ty)) = (
@@ -772,7 +761,10 @@ pub(crate) mod ast_lowering_ctx {
             // it should never be the case that these types disagree
             // TODO: it may be the case that element types can be coerced safely to the
             //       overall array type, so this assert may trigger false-positives
-            assert_eq!(WackType::from_semantic_type(elem_sem_type), elem_ty);
+            Self::assert_eq_with_pairtype_erasure(
+                WackType::from_semantic_type(elem_sem_type),
+                elem_ty.clone(),
+            );
 
             // check that the obtained pointer isn't null pair literal,
             // and if not, obtain the pointer to the element value

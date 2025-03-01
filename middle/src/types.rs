@@ -128,7 +128,10 @@ impl WackType {
             // // So assume it's AnyType, we should fail somewhere later if it's incorrect(I think)
             // Self::ErasedPair => (SemanticType::AnyType, SemanticType::AnyType),
             //
-            _ => unreachable!("The type is assumed to be pair, but wasn't."),
+            _ => unreachable!(
+                "The type is assumed to be pair, but was actually {:#?}",
+                self
+            ),
         }
     }
 }
