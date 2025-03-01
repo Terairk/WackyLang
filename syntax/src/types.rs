@@ -108,7 +108,7 @@ impl BaseType {
     pub const STRING_PTR_BYTES: usize = Self::PTR_BYTES;
 
     /// The length of the string is a pointer-sized value.
-    pub const STRING_LEN_BYTES: usize = Self::PTR_BYTES;
+    pub const STRING_LEN_BYTES: usize = Self::INT_BYTES;
 
     /// The string's "elements" are characters.
     pub const STRING_ELEM_BYTES: usize = Self::CHAR_BYTES;
@@ -118,7 +118,7 @@ impl BaseType {
     pub const ARRAY_PTR_BYTES: usize = Self::PTR_BYTES;
 
     /// The length of the array is a pointer-sized value.
-    pub const ARRAY_LEN_BYTES: usize = Self::PTR_BYTES;
+    pub const ARRAY_LEN_BYTES: usize = Self::INT_BYTES;
 
     /// A pair is a pointer to two contiguous values on the heap.
     /// A pair null-literal is simply an all-zero null pointer.
