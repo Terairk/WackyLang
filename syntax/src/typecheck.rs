@@ -104,6 +104,7 @@ impl SN<ArrayElem<RenamedName, SemanticType>> {
                 Some(SemanticType::AnyType) => Some(SemanticType::AnyType),
                 _ => None,
             }
+            
         }
         resolved_type
     }
@@ -364,10 +365,11 @@ impl Folder for TypeResolver {
             self.add_error(TypeMismatch(
                 resolved_rvalue.span(),
                 resolved_type.clone(),
-                expected_type,
-            ))
+                expected_type.clone(),
+            ));
         }
-        self.symid_table.insert(name.inner().clone(), resolved_type);
+        self.symid_table
+            .insert(name.inner().clone(), expected_type);
         Stat::VarDefinition {
             r#type,
             name: self.fold_name_sn(name),

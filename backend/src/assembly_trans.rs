@@ -1,13 +1,10 @@
-use crate::assembly_ast::AssemblyType::Longword;
+use crate::assembly_ast::AssemblyType::{Byte, Longword};
 use crate::assembly_ast::Register::{AX, DI};
-use crate::predefined::{inbuiltExit, inbuiltFree, inbuiltFreePair, inbuiltMalloc, inbuiltNullAccess, inbuiltPrintBool, inbuiltPrintChar, inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln, inbuiltReadChar, inbuiltReadInt};
-use crate::{
-    assembly_ast::{
-        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode,
-        Operand, Register,
-    },
-    gen_predefined::ERR_DIVZERO,
+use crate::assembly_ast::{
+    AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
+    Register,
 };
+use crate::predefined::{inbuiltArrLoad1, inbuiltArrLoad4, inbuiltArrLoad8, inbuiltDivZero, inbuiltExit, inbuiltFree, inbuiltFreePair, inbuiltMalloc, inbuiltNullAccess, inbuiltPrintBool, inbuiltPrintChar, inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln, inbuiltReadChar, inbuiltReadInt};
 use middle::wackir::{
     BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackProgram, WackValue,
 };
@@ -126,7 +123,7 @@ impl AsmGen {
             let wack_value = WackValue::Var(param.clone());
             let param_name = self.lower_value(wack_value, &mut asm);
             asm.push(AsmInstruction::Mov {
-                typ: AssemblyType::Longword,
+                typ: Longword,
                 src: Operand::Reg(*reg),
                 dst: param_name,
             });
@@ -164,7 +161,7 @@ impl AsmGen {
 
     /// TODO: Fix bug with printing null pointer
     /// Lowering value doesn't differentiate between null pointer and 0
-    /// So, we should add special value to Operand 
+    /// So, we should add special value to Operand
     fn lower_print(&mut self, src: WackValue, ty: SemanticType, asm: &mut Vec<AsmInstruction>) {
         let operand = self.lower_value(src, asm);
         let func_name = match ty {
@@ -334,9 +331,10 @@ impl AsmGen {
                 println!("alloc size {}", size);
                 let operand = self.lower_value(dst_ptr, asm);
                 // Moving size to RDI for malloc function
-                asm.push(AsmInstruction::Mov { typ: Longword,
+                asm.push(AsmInstruction::Mov {
+                    typ: Longword,
                     src: Operand::Imm(size as i32),
-                    dst: Operand::Reg(DI)
+                    dst: Operand::Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::MALLOC);
                 asm.push(AsmInstruction::Call(inbuiltMalloc.to_owned(), false));
@@ -366,7 +364,7 @@ impl AsmGen {
                 let operand_src_ptr = self.lower_value(src_ptr, asm);
                 let operand_dst = self.lower_value(dst, asm);
                 asm.push(AsmInstruction::Mov {
-                   typ: Longword,
+                    typ: Longword,
                     src: operand_src_ptr,
                     dst: operand_dst,
                 });
@@ -380,31 +378,84 @@ impl AsmGen {
                     op2: Operand::Imm(0),
                 });
                 insert_flag_gbl(GenFlags::NULL_DEREF);
-                // Jump to _errNull code if pointer is null 
+                // Jump to _errNull code if pointer is null
                 asm.push(AsmInstruction::JmpCC {
-                   condition: CondCode::E,
+                    condition: CondCode::E,
                     label: inbuiltNullAccess.to_owned(),
                 });
             }
-            WackInstr::AddPtr { src_ptr, 
-                index, 
-                scale, 
-                offset, 
-                dst_ptr 
+            WackInstr::AddPtr {
+                src_ptr,
+                index,
+                scale,
+                offset,
+                dst_ptr,
             } => {
-                let operand_src_ptr = self.lower_value(src_ptr, asm);
-                let operand_index = self.lower_value(index, asm);
+                use Register::{AX, DX};
+                let src_ptr_operand = self.lower_value(src_ptr, asm);
                 let value = WackValue::Var(dst_ptr);
-                let operand_dst_ptr = self.lower_value(value, asm);
-                // TODO: Make new_dst = dst + value * index, it is impossible(?)/idk how rn
-                let new_dst = match operand_src_ptr.clone() {
-                    Operand::Reg(reg) => Operand::Memory(reg, offset as i32),
-                    Operand::Pseudo(str) => Operand::PseudoMem(str, offset as i32),
-                    _ => unreachable!("add ptr should be called only to pseudo/register"),
-                };
+                let dst_ptr_operand = self.lower_value(value, asm);
+                let index_operand = self.lower_value(index, asm);
+                asm.push(AsmInstruction::Mov {
+                    typ: Quadword,
+                    src: src_ptr_operand.clone(),
+                    dst: Operand::Reg(AX),
+                });
+                asm.push(AsmInstruction::Mov {
+                    typ: Quadword,
+                    src: index_operand,
+                    dst: Operand::Reg(DX),
+                });
                 asm.push(AsmInstruction::Lea {
-                    src: operand_src_ptr,
-                    dst: new_dst,
+                    src: Operand::Indexed {
+                        offset: offset as i32,
+                        base: AX,
+                        index: DX,
+                        scale: scale as i32,
+                    },
+                    dst: dst_ptr_operand,
+                });
+            }
+            WackInstr::ArrayAccess {
+                src_array_ptr,
+                index,
+                scale,
+                dst_elem_ptr
+            } => {
+                let src_array_operand = self.lower_value(src_array_ptr, asm);
+                let value = WackValue::Var(dst_elem_ptr);
+                let dst_ptr_operand = self.lower_value(value, asm);
+                asm.push(AsmInstruction::Mov {
+                    typ: Longword,
+                    src: src_array_operand,
+                    dst: Operand::Reg(Register::R9),
+                });
+                let index_operand = self.lower_value(index, asm);
+                asm.push(AsmInstruction::Mov {
+                    typ: Longword,
+                    src: index_operand,
+                    dst: Operand::Reg(Register::R10),
+                });
+                let (asm_type, inbuilt_instr) = match scale {
+                    1 => {
+                        insert_flag_gbl(GenFlags::ARRAY_ACCESS1);
+                        (Byte, inbuiltArrLoad1)
+                    },
+                    4 => {
+                        insert_flag_gbl(GenFlags::ARRAY_ACCESS4);
+                        (Longword, inbuiltArrLoad4)
+                    },
+                    8 => {
+                        insert_flag_gbl(GenFlags::ARRAY_ACCESS8);
+                        (Quadword, inbuiltArrLoad8)
+                    },
+                    _ => unreachable!("unexpected scale value in array access"),
+                };
+                asm.push(AsmInstruction::Call(inbuilt_instr.to_owned(), false));
+                asm.push(AsmInstruction::Mov {
+                    typ: asm_type,
+                    src: Operand::Reg(Register::R9),
+                    dst: dst_ptr_operand,
                 });
             }
             _ => unimplemented!(),
@@ -413,8 +464,7 @@ impl AsmGen {
             // WackInstr::ZeroExtend { .. } => {}
             // WackInstr::GetAddress { .. } => {}
             // WackInstr::Store { .. } => {}
-            // WackInstr::CopyFromOffset { .. } => {}
-            // WackInstr::ArrayAccess { .. } => {} !
+            // WackInstr::CopyFromOffset { .. } => {} ?
         }
     }
 
@@ -650,7 +700,7 @@ impl AsmGen {
                     },
                     Asm::JmpCC {
                         condition: CondCode::E,
-                        label: ERR_DIVZERO.to_owned(),
+                        label: inbuiltDivZero.to_owned(),
                     },
                     Asm::Mov {
                         typ: AssemblyType::Longword,

@@ -40,7 +40,9 @@ pub static PREDEFINED_FUNCTIONS2: Lazy<HashMap<GenFlags, AsmFunction>> = Lazy::n
     m.insert(GenFlags::PRINT_BOOLEAN, printb.clone());
     m.insert(GenFlags::PRINT_INT, printi.clone());
     m.insert(GenFlags::PRINT_LN, println.clone());
-    m.insert(GenFlags::ARRAY_ACCESS, arrLoad.clone());
+    m.insert(GenFlags::ARRAY_ACCESS1, arrLoad1.clone());
+    m.insert(GenFlags::ARRAY_ACCESS4, arrLoad4.clone());
+    m.insert(GenFlags::ARRAY_ACCESS8, arrLoad8.clone());
     m.insert(GenFlags::ARR_BOUNDS, errOutOfBounds.clone());
     m.insert(GenFlags::CHR_BOUNDS, errBadChar.clone());
     m.insert(GenFlags::OVERFLOW, errOverflow.clone());
@@ -67,7 +69,9 @@ pub static inbuiltPrintChar: &str = "_printc";
 pub static inbuiltPrintBool: &str = "_printb";
 pub static inbuiltPrintInt: &str = "_printi";
 pub static inbuiltPrintln: &str = "_println";
-pub static inbuiltArrLoad: &str = "_arrLoad4";
+pub static inbuiltArrLoad1: &str = "_arrLoad1";
+pub static inbuiltArrLoad4: &str = "_arrLoad4";
+pub static inbuiltArrLoad8: &str = "_arrLoad8";
 pub static inbuiltOutOfBounds: &str = "_errOutOfBounds";
 pub static inbuiltBadChar: &str = "_errBadChar";
 pub static inbuiltOverflow: &str = "_errOverflow";
@@ -559,8 +563,64 @@ static println: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     directives: vec![Directive(println_str0, "")],
 });
 
-static arrLoad: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: inbuiltArrLoad.to_owned(),
+static arrLoad1: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
+    name: inbuiltArrLoad1.to_owned(),
+    global: false,
+    instructions: vec![
+        Push(Reg(BX)),
+        Cmp {
+            typ: Longword,
+            op1: Reg(R10),
+            op2: Imm(0),
+        },
+        Cmov {
+            condition: L,
+            typ: Quadword,
+            src: Reg(R10),
+            dst: Reg(SI),
+        },
+        JmpCC {
+            condition: L,
+            label: inbuiltOutOfBounds.to_owned(),
+        },
+        Mov {
+            typ: Longword,
+            src: Memory(R9, -4),
+            dst: Reg(BX),
+        },
+        Cmp {
+            typ: Longword,
+            op1: Reg(BX),
+            op2: Reg(R10),
+        },
+        Cmov {
+            condition: GE,
+            typ: Quadword,
+            src: Reg(R10),
+            dst: Reg(SI),
+        },
+        JmpCC {
+            condition: GE,
+            label: inbuiltOutOfBounds.to_owned(),
+        },
+        Mov {
+            typ: Byte,
+            src: Indexed {
+                offset: 0,
+                base: R9,
+                index: R10,
+                scale: 1,
+            },
+            dst: Reg(R9),
+        },
+        Pop(Reg(BX)),
+        Ret,
+    ],
+    directives: vec![],
+});
+
+static arrLoad4: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
+    name: inbuiltArrLoad4.to_owned(),
     global: false,
     instructions: vec![
         Push(Reg(BX)),
@@ -602,9 +662,66 @@ static arrLoad: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Mov {
             typ: Longword,
             src: Indexed {
+                offset: 0,
                 base: R9,
                 index: R10,
                 scale: 4,
+            },
+            dst: Reg(R9),
+        },
+        Pop(Reg(BX)),
+        Ret,
+    ],
+    directives: vec![],
+});
+
+static arrLoad8: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
+    name: inbuiltArrLoad8.to_owned(),
+    global: false,
+    instructions: vec![
+        Push(Reg(BX)),
+        Cmp {
+            typ: Longword,
+            op1: Reg(R10),
+            op2: Imm(0),
+        },
+        Cmov {
+            condition: L,
+            typ: Quadword,
+            src: Reg(R10),
+            dst: Reg(SI),
+        },
+        JmpCC {
+            condition: L,
+            label: inbuiltOutOfBounds.to_owned(),
+        },
+        Mov {
+            typ: Longword,
+            src: Memory(R9, -4),
+            dst: Reg(BX),
+        },
+        Cmp {
+            typ: Longword,
+            op1: Reg(BX),
+            op2: Reg(R10),
+        },
+        Cmov {
+            condition: GE,
+            typ: Quadword,
+            src: Reg(R10),
+            dst: Reg(SI),
+        },
+        JmpCC {
+            condition: GE,
+            label: inbuiltOutOfBounds.to_owned(),
+        },
+        Mov {
+            typ: Quadword,
+            src: Indexed {
+                offset: 0,
+                base: R9,
+                index: R10,
+                scale: 8,
             },
             dst: Reg(R9),
         },
