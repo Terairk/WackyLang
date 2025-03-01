@@ -1,16 +1,13 @@
 use crate::assembly_ast::AssemblyType::Longword;
 use crate::assembly_ast::Register::{AX, DI};
-use crate::predefined::{
-    inbuiltExit, inbuiltFree, inbuiltFreePair, inbuiltMalloc, inbuiltPrintBool, inbuiltPrintChar,
-    inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln, inbuiltReadChar,
-    inbuiltReadInt,
+use crate::assembly_ast::{
+    AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
+    Register,
 };
-use crate::{
-    assembly_ast::{
-        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode,
-        Operand, Register,
-    },
-    gen_predefined::ERR_DIVZERO,
+use crate::predefined::{
+    inbuiltDivZero, inbuiltExit, inbuiltFree, inbuiltFreePair, inbuiltMalloc, inbuiltNullAccess,
+    inbuiltPrintBool, inbuiltPrintChar, inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString,
+    inbuiltPrintln, inbuiltReadChar, inbuiltReadInt,
 };
 use middle::wackir::{
     BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackPrintType, WackProgram,
@@ -343,6 +340,7 @@ impl AsmGen {
                     src: Operand::Imm(size as i32),
                     dst: Operand::Reg(DI),
                 });
+                insert_flag_gbl(GenFlags::MALLOC);
                 asm.push(AsmInstruction::Call(inbuiltMalloc.to_owned(), false));
                 // Moving pointer received to dst_ptr
                 asm.push(AsmInstruction::Mov {
@@ -358,7 +356,6 @@ impl AsmGen {
                 println!("{:?}", operand2);
                 let new_dst = match operand2 {
                     Operand::Pseudo(str) => Operand::PseudoMem(str, offset as i32),
-                    // Operand::Memory(reg, off) => Operand::Memory(reg, off + offset as i32),
                     _ => unreachable!("copy to offset should be called only to memory"),
                 };
                 asm.push(AsmInstruction::Mov {
@@ -367,17 +364,60 @@ impl AsmGen {
                     dst: new_dst,
                 });
             }
+            WackInstr::Load { src_ptr, dst } => {
+                let operand_src_ptr = self.lower_value(src_ptr, asm);
+                let operand_dst = self.lower_value(WackValue::Var(dst), asm);
+                asm.push(AsmInstruction::Mov {
+                    typ: Longword,
+                    src: operand_src_ptr,
+                    dst: operand_dst,
+                });
+            }
+            WackInstr::NullPtrGuard(ptr) => {
+                let operand = self.lower_value(ptr, asm);
+                // Compare pointer with 0 to check if it's null
+                asm.push(AsmInstruction::Cmp {
+                    typ: Longword,
+                    op1: operand,
+                    op2: Operand::Imm(0),
+                });
+                insert_flag_gbl(GenFlags::NULL_DEREF);
+                // Jump to _errNull code if pointer is null
+                asm.push(AsmInstruction::JmpCC {
+                    condition: CondCode::E,
+                    label: inbuiltNullAccess.to_owned(),
+                });
+            }
+            WackInstr::AddPtr {
+                src_ptr,
+                index,
+                scale,
+                offset,
+                dst_ptr,
+            } => {
+                let operand_src_ptr = self.lower_value(src_ptr, asm);
+                let operand_index = self.lower_value(index, asm);
+                let value = WackValue::Var(dst_ptr);
+                let operand_dst_ptr = self.lower_value(value, asm);
+                // TODO: Make new_dst = dst + value * index, it is impossible(?)/idk how rn
+                let new_dst = match operand_src_ptr.clone() {
+                    Operand::Reg(reg) => Operand::Memory(reg, offset as i32),
+                    Operand::Pseudo(str) => Operand::PseudoMem(str, offset as i32),
+                    _ => unreachable!("add ptr should be called only to pseudo/register"),
+                };
+                asm.push(AsmInstruction::Lea {
+                    src: operand_src_ptr,
+                    dst: new_dst,
+                });
+            }
             _ => unimplemented!(),
             // WackInstr::SignExtend { .. } => {}
             // WackInstr::Truncate { .. } => {}
             // WackInstr::ZeroExtend { .. } => {}
             // WackInstr::GetAddress { .. } => {}
-            // WackInstr::Load { .. } => {}
             // WackInstr::Store { .. } => {}
-            // WackInstr::AddPtr { .. } => {}
             // WackInstr::CopyFromOffset { .. } => {}
             // WackInstr::ArrayAccess { .. } => {} !
-            // WackInstr::NullPtrGuard(_) => {} ! (nil)
         }
     }
 
@@ -613,7 +653,7 @@ impl AsmGen {
                     },
                     Asm::JmpCC {
                         condition: CondCode::E,
-                        label: ERR_DIVZERO.to_owned(),
+                        label: inbuiltDivZero.to_owned(),
                     },
                     Asm::Mov {
                         typ: AssemblyType::Longword,

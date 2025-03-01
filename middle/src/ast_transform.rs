@@ -242,6 +242,7 @@ pub(crate) mod ast_lowering_ctx {
             }
         }
 
+        #[allow(clippy::too_many_lines)]
         fn lower_stat(&mut self, stat: TypedStat, instructions: &mut Vec<WackInstr>) {
             match stat {
                 // TODO: add more type-checking code to lowerer SemTy vs. WackTy

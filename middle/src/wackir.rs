@@ -83,11 +83,9 @@
 
 use internment::ArcIntern;
 use std::fmt::{self, Debug};
-use std::hash::{Hash, Hasher};
-use std::ops::{Deref, DerefMut};
+use std::hash::Hash;
 use syntax::ast;
 use syntax::types::SemanticType;
-use util::rust_gadt_playground::ty_bool::Bool;
 
 // Treat WackFunction's slightly differently from main
 #[derive(Clone)]

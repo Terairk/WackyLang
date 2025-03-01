@@ -361,7 +361,7 @@ impl Folder for TypeResolver {
                 resolved_rvalue.span(),
                 resolved_type,
                 expected_type,
-            ))
+            ));
         }
         self.symid_table
             .insert(name.inner().clone(), r#type.inner().to_semantic_type());

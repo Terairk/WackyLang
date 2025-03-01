@@ -13,7 +13,7 @@ pub enum X86_64IntType {
 
 // impls relating to `X86_64IntType`
 pub mod x86_64_int_type {
-    use crate::types::X86_64IntType;
+    use crate::future_types_playground::X86_64IntType;
     use middle::types_future_playground::WackIntType_2;
     use thiserror::Error;
 
