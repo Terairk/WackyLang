@@ -154,7 +154,13 @@ impl SN<PairElem<RenamedName, SemanticType>> {
                     };
 
                     // reconstruct inner type, and use it as a refinement type for lvalue
-                    let refinement_ty = SemanticType::pair(fst_ty, snd_ty);
+                    // if the reconstructed type is `pair(any, any)` then collapse to `pair`
+                    let mut refinement_ty = SemanticType::pair(fst_ty, snd_ty);
+                    if refinement_ty
+                        == SemanticType::pair(SemanticType::AnyType, SemanticType::AnyType)
+                    {
+                        refinement_ty = SemanticType::ErasedPair;
+                    }
                     PairElem::Fst(lvalue.refine_lvalue_type(refinement_ty, resolver))
                 }
                 PairElem::Snd(lvalue) => {
@@ -168,7 +174,13 @@ impl SN<PairElem<RenamedName, SemanticType>> {
                     };
 
                     // reconstruct inner type, and use it as a refinement type for lvalue
-                    let refinement_ty = SemanticType::pair(fst_ty, snd_ty);
+                    // if the reconstructed type is `pair(any, any)` then collapse to `pair`
+                    let mut refinement_ty = SemanticType::pair(fst_ty, snd_ty);
+                    if refinement_ty
+                        == SemanticType::pair(SemanticType::AnyType, SemanticType::AnyType)
+                    {
+                        refinement_ty = SemanticType::ErasedPair;
+                    }
                     PairElem::Snd(lvalue.refine_lvalue_type(refinement_ty, resolver))
                 }
             }
