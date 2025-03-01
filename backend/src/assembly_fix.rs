@@ -11,8 +11,7 @@ use crate::{
     assembly_ast::Operand::*,
     assembly_ast::Register::*,
     assembly_ast::{
-        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType,
-        Operand, Register,
+        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, Operand, Register,
     },
     predefined::inbuiltOverflow,
 };
@@ -87,6 +86,18 @@ fn fix_binary(
 
 fn fix_move(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand, dst: Operand) {
     let new_instrs = match (src.clone(), dst.clone()) {
+        (Memory(_, _), Stack(_)) => vec![
+            Mov {
+                typ,
+                src,
+                dst: Reg(R8),
+            },
+            Mov {
+                typ,
+                src: Reg(R8),
+                dst,
+            },
+        ],
         (Operand::Stack(_), Operand::Stack(_)) => vec![
             AsmInstruction::Mov {
                 typ: typ,

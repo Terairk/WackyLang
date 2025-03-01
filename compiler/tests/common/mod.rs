@@ -339,6 +339,7 @@ pub fn compare_test_result(path: &Path) -> Result<String, String> {
 
     // Step 2: Run the compiled program and capture output
     let output = Command::new(&bin_path)
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
