@@ -16,7 +16,7 @@ use middle::wackir::{
     WackReadType, WackTempIdent, WackValue,
 };
 use std::collections::{BTreeMap, HashMap};
-use util::gen_flags::{insert_flag_gbl, GenFlags};
+use util::gen_flags::{GenFlags, insert_flag_gbl};
 /* ================== PUBLIC API ================== */
 
 #[inline]
@@ -143,6 +143,11 @@ impl AsmGen {
             dst: Reg(SP),
         });
         asm_instructions.push(Pop(Reg(BP)));
+        asm_instructions.push(AsmInstruction::Mov {
+            typ: Quadword,
+            src: Operand::Imm(0),
+            dst: Operand::Reg(AX),
+        });
         asm_instructions.push(Ret);
 
         // any functions we generate ourselves are not external
