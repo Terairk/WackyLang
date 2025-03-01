@@ -238,13 +238,8 @@ pub(crate) mod ast_lowering_ctx {
         fn lower_stat(&mut self, stat: TypedStat, instructions: &mut Vec<WackInstr>) {
             match stat {
                 TypedStat::Skip => (),
-                TypedStat::VarDefinition {
-                    r#type,
-                    name,
-                    rvalue,
-                } => {
+                TypedStat::VarDefinition { name, rvalue, .. } => {
                     // extract LHS
-                    let lhs_type = r#type.into_inner();
                     let lhs = WackValue::Var(name.into_inner().into());
 
                     // evaluate RHS, store into temp `rhs` variable
