@@ -123,7 +123,7 @@ impl AssemblyFormatter {
             AsmInstruction::Lea { src, dst } => {
                 let src_str = Self::format_operand(src, &AssemblyType::Quadword);
                 let dst_str = Self::format_operand(dst, &AssemblyType::Quadword);
-                format!("lea {}, {}", src_str, dst_str)
+                format!("leaq {}, {}", src_str, dst_str)
             }
             AsmInstruction::Unary {
                 operator,

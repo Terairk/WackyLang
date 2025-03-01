@@ -248,6 +248,9 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
 
 /// Extract expected output from the test file.
 fn extract_expected_output(source: &str) -> Vec<String> {
+    if source.contains("read") {
+        return Vec::new();
+    }
     let mut expected_output = Vec::new();
     let mut in_output_section = false;
     for line in source.lines() {

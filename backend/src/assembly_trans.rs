@@ -837,8 +837,8 @@ impl AsmGen {
                 let new_instrs = vec![
                     Asm::Cmp {
                         typ: src_typ,
-                        op1: src1_operand,
-                        op2: src2_operand,
+                        op1: src2_operand,
+                        op2: src1_operand,
                     },
                     Asm::Mov {
                         typ: dst_typ,
