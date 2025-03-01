@@ -124,6 +124,13 @@ impl AsmGen {
         }
     }
 
+    fn get_asm_type_for_ident(&self, ident: &WackTempIdent) -> AssemblyType {
+        return *self
+            .symbol_table
+            .get(ident)
+            .expect("Variable not in symbol table");
+    }
+
     fn lower_main_asm(&mut self, instrs: Vec<WackInstr>) -> AsmFunction {
         use AsmInstruction::{Mov, Pop, Push, Ret};
         use AssemblyType::Quadword;
@@ -341,7 +348,7 @@ impl AsmGen {
                 });
             }
             Copy { src, dst } => {
-                let src_typ = self.get_asm_type(&src);
+                let dst_typ = self.get_asm_type_for_ident(&dst);
                 let src_operand = self.lower_value(src, asm);
                 let dst_operand = self.lower_value(WackValue::Var(dst), asm);
                 match src_operand {
@@ -350,7 +357,7 @@ impl AsmGen {
                         dst: dst_operand,
                     }),
                     _ => asm.push(Asm::Mov {
-                        typ: src_typ,
+                        typ: dst_typ,
                         src: src_operand,
                         dst: dst_operand,
                     }),
