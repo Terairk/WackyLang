@@ -1,6 +1,10 @@
 use crate::assembly_ast::AssemblyType::Longword;
 use crate::assembly_ast::Register::{AX, DI};
-use crate::predefined::{inbuiltExit, inbuiltFree, inbuiltFreePair, inbuiltMalloc, inbuiltPrintBool, inbuiltPrintChar, inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln, inbuiltReadChar, inbuiltReadInt};
+use crate::predefined::{
+    inbuiltExit, inbuiltFree, inbuiltFreePair, inbuiltMalloc, inbuiltPrintBool, inbuiltPrintChar,
+    inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln, inbuiltReadChar,
+    inbuiltReadInt,
+};
 use crate::{
     assembly_ast::{
         AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode,
@@ -9,11 +13,11 @@ use crate::{
     gen_predefined::ERR_DIVZERO,
 };
 use middle::wackir::{
-    BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackProgram, WackValue,
+    BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackProgram, WackTempIdent, WackValue,
 };
 use std::collections::BTreeMap;
 use syntax::types::SemanticType;
-use util::gen_flags::{GenFlags, insert_flag_gbl};
+use util::gen_flags::{insert_flag_gbl, GenFlags};
 /* ================== PUBLIC API ================== */
 
 #[inline]
@@ -68,7 +72,7 @@ impl AsmGen {
 
     fn lower_main_asm(&mut self, instrs: Vec<WackInstr>) -> AsmFunction {
         use AsmInstruction::{Mov, Pop, Push, Ret};
-        use AssemblyType::{Longword, Quadword};
+        use AssemblyType::Quadword;
         use Operand::Reg;
         use Register::{BP, SP};
         let mut asm_instructions = Vec::new();
@@ -164,7 +168,7 @@ impl AsmGen {
 
     /// TODO: Fix bug with printing null pointer
     /// Lowering value doesn't differentiate between null pointer and 0
-    /// So, we should add special value to Operand 
+    /// So, we should add special value to Operand
     fn lower_print(&mut self, src: WackValue, ty: SemanticType, asm: &mut Vec<AsmInstruction>) {
         let operand = self.lower_value(src, asm);
         let func_name = match ty {
@@ -261,7 +265,7 @@ impl AsmGen {
             }
             Copy { src, dst } => {
                 let src_operand = self.lower_value(src, asm);
-                let dst_operand = self.lower_value(dst, asm);
+                let dst_operand = self.lower_value(WackValue::Var(dst), asm);
                 asm.push(Asm::Mov {
                     typ: AssemblyType::Longword,
                     src: src_operand,
@@ -292,7 +296,7 @@ impl AsmGen {
                 asm.push(AsmInstruction::Call(inbuiltExit.to_owned(), false));
             }
             WackInstr::Read { dst, ty } => {
-                let operand = self.lower_value(dst, asm);
+                let operand = self.lower_value(WackValue::Var(dst), asm);
                 asm.push(AsmInstruction::Mov {
                     typ: Longword,
                     src: operand,
@@ -332,11 +336,12 @@ impl AsmGen {
             }
             WackInstr::Alloc { size, dst_ptr } => {
                 println!("alloc size {}", size);
-                let operand = self.lower_value(dst_ptr, asm);
+                let operand = self.lower_value(WackValue::Var(dst_ptr), asm);
                 // Moving size to RDI for malloc function
-                asm.push(AsmInstruction::Mov { typ: Longword,
+                asm.push(AsmInstruction::Mov {
+                    typ: Longword,
                     src: Operand::Imm(size as i32),
-                    dst: Operand::Reg(DI)
+                    dst: Operand::Reg(DI),
                 });
                 asm.push(AsmInstruction::Call(inbuiltMalloc.to_owned(), false));
                 // Moving pointer received to dst_ptr
@@ -380,7 +385,7 @@ impl AsmGen {
         &mut self,
         fun_name: &str,
         args: &[WackValue],
-        dst: WackValue,
+        dst: WackTempIdent,
         asm: &mut Vec<AsmInstruction>,
     ) {
         use AsmInstruction as Asm;
@@ -465,7 +470,7 @@ impl AsmGen {
         }
 
         // handle return value
-        let assembly_dst = self.lower_value(dst, asm);
+        let assembly_dst = self.lower_value(WackValue::Var(dst), asm);
         asm.push(Asm::Mov {
             typ: AssemblyType::Longword,
             src: Reg(AX),
@@ -532,13 +537,13 @@ impl AsmGen {
         &mut self,
         op: &UnaryOp,
         src: WackValue,
-        dst: WackValue,
+        dst: WackTempIdent,
         asm: &mut Vec<AsmInstruction>,
     ) {
         use AsmInstruction as Asm;
         // TODO: check if this is what I need to do
         let src_operand = self.lower_value(src, asm);
-        let dst_operand = self.lower_value(dst, asm);
+        let dst_operand = self.lower_value(WackValue::Var(dst), asm);
 
         // Need to figure out how to get src_type and dst_type
         // for now treat everything as an Int cus its easier for me
@@ -582,7 +587,7 @@ impl AsmGen {
         op: &BinaryOp,
         src1: WackValue,
         src2: WackValue,
-        dst: WackValue,
+        dst: WackTempIdent,
         asm: &mut Vec<AsmInstruction>,
     ) {
         use AsmInstruction as Asm;
@@ -590,7 +595,7 @@ impl AsmGen {
 
         let src1_operand = self.lower_value(src1, asm);
         let src2_operand = self.lower_value(src2, asm);
-        let dst_operand = self.lower_value(dst, asm);
+        let dst_operand = self.lower_value(WackValue::Var(dst), asm);
 
         // We handle Div and Remainder operations differently
         // than the rest since it has specific semantics in x86-64
