@@ -1,8 +1,8 @@
 mod common;
 
-use std::path::Path;
-use std::panic;
 use common::*;
+use std::panic;
+use std::path::Path;
 
 #[test]
 fn run_full_compiler_tests() {
@@ -34,22 +34,27 @@ fn run_full_compiler_tests() {
                             passed_count += 1;
                             println!("Test passed: {test_name}");
                         }
-                        Err(error_msg) => { 
+                        Err(error_msg) => {
                             if !error_msg.starts_with("failed to assemble") {
                                 assemble_count += 1;
                             }
-                            println!("Test failed: {test_name} with cause {error_msg}") 
-                        },
+                            println!("Test failed: {test_name} with cause {error_msg}")
+                        }
                     },
                     Err(error_msg) => {
-                        println!("Test compilation gracefully failed: {test_name} with cause {error_msg}");
+                        println!(
+                            "Test compilation gracefully failed: {test_name} with cause {error_msg}"
+                        );
                     }
                 }
             }
         }
         Err(e) => eprintln!("Failed to collect test files: {e}"),
     }
-    println!("Compiled {}, assembled {}, passed {} out of {} tests!", 
-             compiled_count, assemble_count, passed_count, total_count);
+    println!(
+        "Compiled {}, assembled {}, passed {} out of {} tests!",
+        compiled_count, assemble_count, passed_count, total_count
+    );
     assert_eq!(passed_count, total_count);
 }
+

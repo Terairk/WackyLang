@@ -16,7 +16,8 @@ use middle::wackir::{
     WackReadType, WackTempIdent, WackValue,
 };
 use std::collections::{BTreeMap, HashMap};
-use util::gen_flags::{insert_flag_gbl, GenFlags};
+use syntax::types::SemanticType;
+use util::gen_flags::{GenFlags, insert_flag_gbl};
 /* ================== PUBLIC API ================== */
 
 #[inline]
@@ -66,7 +67,7 @@ fn convert_type(ty: &WackType) -> AssemblyType {
             BitWidth::W32 => Longword,
             BitWidth::W64 => Quadword,
         },
-        WackType::Label | WackType::Pointer(_) => Quadword, // labels are pointers to code
+        WackType::Pointer(_) => Quadword, // labels are pointers to code
         WackType::Array(_) => unimplemented!(
             "The Wack::Array <-> AssemblyType::ByteArray conversion is not implemented yet"
         ),
@@ -356,10 +357,11 @@ impl AsmGen {
             WackInstr::Read { dst, ty } => {
                 // TODO: double check this works, this might be wrong
                 let asm_typ = match ty {
-                    SemanticType::Int => Longword,
-                    SemanticType::Char => Byte,
+                    WackReadType::Int => Longword,
+                    WackReadType::Char => Byte,
                     _ => unreachable!(),
                 };
+                let dst = WackValue::Var(dst);
                 let operand = self.lower_value(dst, asm);
                 asm.push(AsmInstruction::Mov {
                     typ: asm_typ,
@@ -399,6 +401,7 @@ impl AsmGen {
             }
             WackInstr::Alloc { size, dst_ptr } => {
                 // println!("alloc size {}", size);
+                let dst_ptr = WackValue::Var(dst_ptr);
                 let operand = self.lower_value(dst_ptr, asm);
                 // Moving size to RDI for malloc function
                 asm.push(AsmInstruction::Mov {
@@ -427,6 +430,7 @@ impl AsmGen {
             }
             WackInstr::Load { src_ptr, dst } => {
                 // TODO: double check this
+                let dst = WackValue::Var(dst);
                 let dst_type = self.get_asm_type(&dst);
                 let operand_src_ptr = self.lower_value(src_ptr, asm);
                 let operand_dst = self.lower_value(dst, asm);
@@ -635,6 +639,7 @@ impl AsmGen {
         }
 
         // handle return value
+        let dst = WackValue::Var(dst);
         let dst_typ = self.get_asm_type(&dst);
         let assembly_dst = self.lower_value(dst, asm);
         asm.push(Asm::Mov {
@@ -709,10 +714,11 @@ impl AsmGen {
     ) {
         use AsmInstruction as Asm;
         // TODO: check if this is what I need to do
+        let dst = WackValue::Var(dst);
         let src_typ = self.get_asm_type(&src);
         let dst_typ = self.get_asm_type(&dst);
         let src_operand = self.lower_value(src, asm);
-        let dst_operand = self.lower_value(WackValue::Var(dst), asm);
+        let dst_operand = self.lower_value(dst, asm);
 
         let op = op.clone();
         #[allow(clippy::single_match_else)]
@@ -760,10 +766,11 @@ impl AsmGen {
         use BinaryOp::*;
 
         let src_typ = self.get_asm_type(&src1);
+        let dst = WackValue::Var(dst);
         let dst_typ = self.get_asm_type(&dst);
         let src1_operand = self.lower_value(src1, asm);
         let src2_operand = self.lower_value(src2, asm);
-        let dst_operand = self.lower_value(WackValue::Var(dst), asm);
+        let dst_operand = self.lower_value(dst, asm);
 
         // We handle Div and Remainder operations differently
         // than the rest since it has specific semantics in x86-64

@@ -21,7 +21,6 @@ pub enum WackType {
     Pointer(WackPointerType),
 
     /// Like pointer, points to a location, but the location is code
-    Label,
     Int {
         width: BitWidth,
     },
@@ -90,7 +89,6 @@ impl WackType {
             WackType::Array(_) => {
                 Err("Cannot know the size of arrays without knowing its length".into())
             }
-            WackType::Label => Err("It doesn't make sense to look up labels".into()),
         }
     }
 

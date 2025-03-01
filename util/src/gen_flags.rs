@@ -51,6 +51,11 @@ pub fn get_flags_gbl() -> GenFlags {
     *flags
 }
 
+pub fn reset_flags_gbl() {
+    let mut flags = GLOBAL_FLAGS.lock().unwrap();
+    *flags = GenFlags::empty();
+}
+
 /// Some flags like `PRINT_STR` should be set to true if we want to print strings
 /// Which most of these flags want to do
 // Furthermore, this function may not work if additional dependencies are required

@@ -12,15 +12,14 @@ syntax = { workspace = true }
 middle = { workspace = true }
 backend = { workspace = true }
 ariadne = { workspace = true }
+util = { workspace = true }
 
 chumsky = { workspace = true, features = [
-    "std",
-    "stacker",
-    "memoization",
-    "pratt",
-    "regex",
-    "nightly",
+  "std",
+  "stacker",
+  "memoization",
+  "pratt",
+  "regex",
+  "nightly",
 ] }
 clap = { workspace = true, features = ["derive"] }
-
-

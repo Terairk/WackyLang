@@ -1,21 +1,22 @@
-use chumsky::error::Rich;
-use chumsky::input::{Input, WithContext};
-use chumsky::{Parser, extra};
-use std::fs;
-use std::fs::create_dir_all;
-use std::path::{Path, PathBuf};
 use backend::assembly_fix::fix_program;
 use backend::assembly_trans::wacky_to_assembly;
 use backend::emission::AssemblyFormatter;
 use backend::predefined::generate_predefined;
 use backend::replace_pseudo::replace_pseudo_in_program;
+use chumsky::error::Rich;
+use chumsky::input::{Input, WithContext};
+use chumsky::{Parser, extra};
 use middle::ast_transform::lower_program;
-use syntax::{ast, build_semantic_error_report, build_syntactic_report};
+use std::fs;
+use std::fs::create_dir_all;
+use std::path::{Path, PathBuf};
 use syntax::parser::program_parser;
 use syntax::rename::rename;
 use syntax::source::{SourcedSpan, StrSourceId};
 use syntax::token::{Token, lexer};
 use syntax::typecheck::typecheck;
+use syntax::{ast, build_semantic_error_report, build_syntactic_report};
+use util::gen_flags::{get_flags_gbl, reset_flags_gbl};
 
 static SYNTAX_ERR_STR: &str = "Syntax error(s) found!";
 static SEMANTIC_ERR_STR: &str = "Semantic error(s) found!";
@@ -61,6 +62,8 @@ pub fn get_test_files(dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
     Ok(test_files)
 }
 pub fn compile_single_test(path: &Path) -> Result<String, String> {
+    reset_flags_gbl();
+
     let source = match fs::read_to_string(path) {
         Ok(content) => content,
         Err(e) => {
@@ -80,7 +83,7 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
         &lexer::<_, LexerExtra>(),
         source.with_context((source_id, ())),
     )
-        .into_output_errors();
+    .into_output_errors();
 
     // Done to appease the borrow checker while displaying errors
     if !lexing_errs.is_empty() {
@@ -89,7 +92,7 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
         }
         return Err(SYNTAX_ERR_STR.to_owned());
     }
-    
+
     let tokens = tokens.expect("If lexing errors are not empty, tokens should be Valid");
     // attach the span of each token to it before parsing, so it is not forgotten
     let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
@@ -127,8 +130,9 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
                 &path
                     .to_str()
                     .expect("should always be able to find it")
-                    .to_owned(), 
-                e, source.clone()
+                    .to_owned(),
+                e,
+                source.clone(),
             );
         }
     }
@@ -138,15 +142,17 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
     // -------------------------------------------------------------------------
 
     let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
-    
+
     let type_errors = &type_resolver.type_errors;
     if !type_errors.is_empty() {
         for e in type_errors {
-            build_semantic_error_report(&path
-                .to_str()
-                .expect("should always be able to find it")
-                .to_owned(), 
-                e, source.clone()
+            build_semantic_error_report(
+                &path
+                    .to_str()
+                    .expect("should always be able to find it")
+                    .to_owned(),
+                e,
+                source.clone(),
             );
         }
         return Err(SEMANTIC_ERR_STR.to_owned());
@@ -176,19 +182,18 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
     // may need to modify my Wacky IR / Assembly Ast
     let (wacky_ir, counter, symbol_table) = lower_program(typed_ast, type_resolver);
 
-
     // -------------------------------------------------------------------------
     //                          Assembly Pass
     // -------------------------------------------------------------------------
 
     // TODO: find how to use asm_gen for future passes
-    let (mut assembly_ast, _asm_gen) = wacky_to_assembly(wacky_ir, counter, symbol_table);
+    let (mut assembly_ast, asm_gen) = wacky_to_assembly(wacky_ir, counter, symbol_table);
 
     // -------------------------------------------------------------------------
     //                      Replace Pseudoreg Pass
     // -------------------------------------------------------------------------
 
-    replace_pseudo_in_program(&mut assembly_ast);
+    replace_pseudo_in_program(&mut assembly_ast, &asm_gen.symbol_table);
 
     // -------------------------------------------------------------------------
     //                      Fixing Instructions Pass
@@ -201,8 +206,7 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
     // -------------------------------------------------------------------------
 
     generate_predefined(&mut assembly_ast);
-    let formatted_assembly =
-        AssemblyFormatter::format_program(&assembly_ast, _asm_gen.str_literals);
+    let formatted_assembly = AssemblyFormatter::format_program(&assembly_ast, asm_gen.str_literals);
 
     // -------------------------------------------------------------------------
     //                          Full Pipeline
@@ -214,7 +218,6 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
     let valid_tests_dir = Path::new("../test_cases/valid");
     let test_artifacts_dir = Path::new("test_artifacts");
 
-
     // Ensure `path` is within `valid_tests`
     let relative_path = path.strip_prefix(valid_tests_dir).unwrap_or(path);
 
@@ -224,7 +227,8 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
 
     // Ensure the parent directory exists
     if let Some(parent) = output_file_path.parent() {
-        create_dir_all(parent).map_err(|e| format!("Failed to create directory {}: {e}", parent.display()))?;
+        create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directory {}: {e}", parent.display()))?;
     }
 
     match fs::write(&output_file_path, formatted_assembly) {
@@ -237,7 +241,6 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
             return Err(err_msg);
         }
     }
-
 
     // If both syntax and semantic analysis succeed, return success
     Ok(format!("Test compiled: {}", path.display()))
@@ -268,7 +271,7 @@ fn extract_expected_output(source: &str) -> Vec<String> {
     expected_output
 }
 
-/// If any output/exit is provided within a file, compare that with an actual test run 
+/// If any output/exit is provided within a file, compare that with an actual test run
 pub fn compare_test_result(path: &Path) -> Result<String, String> {
     use std::process::{Command, Stdio};
     let source = match fs::read_to_string(path) {
@@ -278,7 +281,7 @@ pub fn compare_test_result(path: &Path) -> Result<String, String> {
             return Err(format!("File read error: {e}"));
         }
     };
-    
+
     let expected_output = extract_expected_output(&source);
 
     if expected_output.is_empty() {
@@ -292,13 +295,17 @@ pub fn compare_test_result(path: &Path) -> Result<String, String> {
     // Ensure `path` is within `valid_tests`
     let relative_path = path.strip_prefix(valid_tests_dir).unwrap_or(path);
 
-
     let asm_path = test_artifacts_dir.join(relative_path).with_extension("s");
     let bin_path = test_artifacts_dir.join(relative_path);
-    
+
     // Step 1: Compile Assembly to Executable
     let output = Command::new("gcc")
-        .args(["-o", &bin_path.to_str().unwrap(), &asm_path.to_str().unwrap(), "-no-pie", "-lc"])
+        .args([
+            "-o",
+            &bin_path.to_str().unwrap(),
+            "-z noexecstack",
+            &asm_path.to_str().unwrap(),
+        ])
         .stderr(Stdio::piped()) // Capture stderr
         .output()
         .map_err(|e| format!("GCC execution error: {e}"))?;
@@ -315,9 +322,7 @@ pub fn compare_test_result(path: &Path) -> Result<String, String> {
         .output()
         .map_err(|e| format!("Execution error: {e}"))?;
 
-    let actual_output = String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .to_string();
+    let actual_output = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let expected_output_str = expected_output.join("\n");
 
     // Step 3: Compare output
