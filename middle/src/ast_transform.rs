@@ -71,7 +71,7 @@ pub(crate) mod ast_lowering_ctx {
     use extend::ext;
     use std::collections::HashMap;
     use syntax::ast;
-    use syntax::ast::{BinaryOper, Ident, UnaryOper};
+    use syntax::ast::{BinaryOper, Ident, LValue, UnaryOper};
     use syntax::node::Node;
     use syntax::rename::RenamedName;
     use syntax::typecheck::TypeResolver;
@@ -746,16 +746,19 @@ pub(crate) mod ast_lowering_ctx {
             elem_sem_type: SemanticType,
             instructions: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackPointerType) {
-            println!("{:#?}, {:#?}\n", elem_sem_type, elem.clone());
-
             // grab the inner value, and whether its Fst or Snd
             let (lvalue, is_fst) = match elem {
                 TypedPairElem::Fst(lvalue) => (lvalue, true),
                 TypedPairElem::Snd(lvalue) => (lvalue, false),
             };
+            // grab lvalue type, which contains the _full_ backwards-propagated type
+            let lvalue_ty = match lvalue.clone().into_inner() {
+                LValue::Ident(_, t) | LValue::ArrayElem(_, t) | LValue::PairElem(_, t) => t,
+            };
+            let pair_ptr_ty = WackType::from_semantic_type(lvalue_ty);
 
             // the lvalue should evaluate to pointer of type pair
-            let (pair_src_ptr, pair_ptr_ty) = self.lower_lvalue(lvalue.into_inner(), instructions);
+            let (pair_src_ptr, _) = self.lower_lvalue(lvalue.into_inner(), instructions);
             let pair_src_ptr = WackValue::Var(pair_src_ptr);
             let raw_pair_ty = WackPointerType::try_from_wack_type(pair_ptr_ty)
                 .expect("Lowered value should be a pointer to raw pair-value")
