@@ -220,6 +220,8 @@ impl SemanticType {
         from == to
     }
 
+    #[must_use]
+    #[inline]
     pub fn can_coerce_into(&self, to: &SemanticType) -> bool {
         use SemanticType::*;
 

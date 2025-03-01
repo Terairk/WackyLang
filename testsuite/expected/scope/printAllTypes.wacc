@@ -1,5 +1,5 @@
 ( [1, 2, 3] , [a, b, c] )
-[ 0x56503bd55350 = (a, true), 0x56503bd55370 = (b, false) ]
+[ 0x55ff58834350 = (a, true), 0x55ff58834370 = (b, false) ]
 1, 2
 array, of, strings
 true, false, true
