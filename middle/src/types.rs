@@ -25,6 +25,9 @@ pub enum WackType {
 }
 
 impl WackType {
+    /// A pointer on a 64-bit machine is 8 bytes.
+    pub const PTR_BYTES: usize = 8;
+
     pub const ANY_POINTER: WackType = WackType::Pointer(WackPointerType::Any);
 
     pub fn pointer_of(of: WackType) -> Self {
@@ -70,6 +73,44 @@ impl WackType {
             SemanticType::AnyType | SemanticType::Error(_) => {
                 unreachable!("There should not be `AnyType` or `Error` types by this stage")
             }
+        }
+    }
+
+    #[inline]
+    pub fn try_size_of(&self) -> Result<usize, Box<str>> {
+        match self {
+            WackType::Pointer(_) => Ok(Self::PTR_BYTES), // pointers are the same size regardless
+            WackType::Int { width } => Ok(width.into_bit_width() as usize),
+            WackType::Pair(fst, snd) => Ok(fst.try_size_of()? + snd.try_size_of()?),
+            WackType::Array(_) => {
+                Err("Cannot know the size of arrays without knowing its length".into())
+            }
+        }
+    }
+
+    /// # Safety
+    /// If you are _sure_ the semantic type is that of an array, you can unsafely extract
+    /// the inner element type; if it isn't an array-type, a runtime panic will occur.
+    #[inline]
+    #[must_use]
+    pub unsafe fn into_array_elem_type(self) -> Self {
+        // extract the semantic types
+        match self {
+            Self::Array(elems_ty) => *elems_ty,
+            _ => unreachable!("The type is assumed to be array, but wasn't."),
+        }
+    }
+
+    /// # Safety
+    /// If you are _sure_ the semantic type is that of a pair, you can unsafely extract
+    /// the inner element types; if it isn't a pair-type, a runtime panic will occur.
+    #[inline]
+    #[must_use]
+    pub unsafe fn into_pair_elem_types(self) -> (Self, Self) {
+        // extract the semantic types
+        match self {
+            Self::Pair(fst, snd) => (*fst, *snd),
+            _ => unreachable!("The type is assumed to be pair, but wasn't."),
         }
     }
 }

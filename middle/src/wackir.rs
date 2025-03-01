@@ -86,6 +86,8 @@ use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
 use syntax::ast;
+use syntax::types::SemanticType;
+use util::rust_gadt_playground::ty_bool::Bool;
 
 // Treat WackFunction's slightly differently from main
 #[derive(Clone)]
@@ -331,6 +333,16 @@ pub enum WackReadType {
     Char,
 }
 
+impl WackReadType {
+    pub fn from_semantic_type(semantic_ty: SemanticType) -> Result<Self, Box<str>> {
+        match semantic_ty {
+            SemanticType::Int => Ok(Self::Int),
+            SemanticType::Char => Ok(Self::Char),
+            _ => Err(format!("incorrect semantic type found `{}`", semantic_ty).into()),
+        }
+    }
+}
+
 /// A type-argument to the print instruction: this is a type-hint purely, the underlying data
 /// could be of any type - for decoupling concerns since it doesn't need to be nested
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -340,7 +352,30 @@ pub enum WackPrintType {
     Char,
     StringOrCharArray,
     OtherArray,
+    /// If null-ptr, must print "nil"
     Pair,
+}
+
+impl WackPrintType {
+    pub fn from_semantic_type(semantic_ty: SemanticType) -> Result<Self, Box<str>> {
+        match semantic_ty {
+            SemanticType::Int => Ok(Self::Int),
+            SemanticType::Bool => Ok(Self::Bool),
+            SemanticType::Char => Ok(Self::Char),
+            SemanticType::String => Ok(Self::StringOrCharArray),
+            SemanticType::Array(inner_ty) => match &*inner_ty {
+                SemanticType::Char => Ok(Self::StringOrCharArray),
+                SemanticType::AnyType | SemanticType::Error(_) => {
+                    Err(format!("found error/any semantic type `{}`", inner_ty).into())
+                }
+                _ => Ok(Self::OtherArray),
+            },
+            SemanticType::Pair(_, _) | SemanticType::ErasedPair => Ok(Self::Pair),
+            SemanticType::AnyType | SemanticType::Error(_) => {
+                Err(format!("found error/any semantic type `{}`", semantic_ty).into())
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
