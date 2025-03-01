@@ -816,7 +816,7 @@ static errBadChar: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     ],
     directives: vec![Directive(
         errBadChar_str0,
-        "fatal error: int %d is not ascii character 0-127 \n",
+        "fatal error: int %d is not ascii character 0-127 \\n",
     )],
 });
 

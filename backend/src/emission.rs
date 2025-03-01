@@ -384,10 +384,6 @@ impl AssemblyFormatter {
             AsmUnaryOperator::Not => "not",
             AsmUnaryOperator::Shr => "shr",
             AsmUnaryOperator::Len => panic!("Len asm operator not implemented yet"),
-            AsmUnaryOperator::Ord => {
-                panic!("Ord asm operator not implemented yet, this should be a no-op anyway")
-            }
-            AsmUnaryOperator::Chr => panic!("Chr asm operator not implemented yet"),
         }
     }
 
