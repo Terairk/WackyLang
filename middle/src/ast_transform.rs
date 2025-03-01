@@ -768,7 +768,7 @@ pub(crate) mod ast_lowering_ctx {
             let wack_elems_ty = unsafe { raw_pair_ty.into_pair_elem_types() };
             let (elem_ty, offset) = match (is_fst, wack_elems_ty) {
                 (true, (fst, _)) => (fst, 0), // the first element has zero-offset from start of pair
-                (false, (_, snd)) => (snd.clone(), snd.try_size_of().unwrap()), // the second element follows directly after the first
+                (false, (fst, snd)) => (snd.clone(), fst.try_size_of().unwrap()), // the second element follows directly after the first
             }; // TODO: think about padding and alignment: this may not be the definitive layout
 
             // it should never be the case that these types disagree
