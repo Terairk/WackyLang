@@ -5,18 +5,19 @@ use backend::predefined::generate_predefined;
 use backend::replace_pseudo::replace_pseudo_in_program;
 use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
-use chumsky::{Parser, extra};
+use chumsky::{extra, Parser};
 use middle::ast_transform::lower_program;
+use regex::Regex;
 use std::fs;
 use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
 use syntax::parser::program_parser;
 use syntax::rename::rename;
 use syntax::source::{SourcedSpan, StrSourceId};
-use syntax::token::{Token, lexer};
+use syntax::token::{lexer, Token};
 use syntax::typecheck::typecheck;
 use syntax::{ast, build_semantic_error_report, build_syntactic_report};
-use util::gen_flags::{get_flags_gbl, reset_flags_gbl};
+use util::gen_flags::reset_flags_gbl;
 
 static SYNTAX_ERR_STR: &str = "Syntax error(s) found!";
 static SEMANTIC_ERR_STR: &str = "Semantic error(s) found!";
@@ -274,6 +275,24 @@ fn extract_expected_output(source: &str) -> Vec<String> {
     expected_output
 }
 
+/// Replaces actual output runtime errors/addresses with appropriate blocks from expected output
+pub fn transform_actual_output_to_expected_form(output: String) -> String {
+    let mut transformed_output = Vec::new();
+    let hex_address_regex = Regex::new(r"0x[0-9a-fA-F]+").unwrap();
+
+    for line in output.lines() {
+        if line.contains("fatal error:") || line.contains("Error: Division by zero") {
+            transformed_output.push("#runtime_error#".to_string());
+        } else if hex_address_regex.is_match(line) {
+            transformed_output.push(hex_address_regex.replace_all(line, "#addrs#").to_string());
+        } else {
+            transformed_output.push(line.to_string());
+        }
+    }
+
+    transformed_output.join("\n")
+}
+
 /// If any output/exit is provided within a file, compare that with an actual test run
 pub fn compare_test_result(path: &Path) -> Result<String, String> {
     use std::process::{Command, Stdio};
@@ -326,15 +345,16 @@ pub fn compare_test_result(path: &Path) -> Result<String, String> {
         .map_err(|e| format!("Execution error: {e}"))?;
 
     let actual_output = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let transformed_actual_output = transform_actual_output_to_expected_form(actual_output);
     let expected_output_str = expected_output.join("\n");
 
     // Step 3: Compare output
-    let test_result = if actual_output == expected_output_str {
+    let test_result = if transformed_actual_output == expected_output_str {
         Ok("Test passed!".to_string())
     } else {
         Err(format!(
             "non matching output - expected: \n{}\nbut got: \n{}",
-            expected_output_str, actual_output
+            expected_output_str, transformed_actual_output
         ))
     };
 

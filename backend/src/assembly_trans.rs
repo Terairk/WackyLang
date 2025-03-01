@@ -146,6 +146,11 @@ impl AsmGen {
             dst: Reg(SP),
         });
         asm_instructions.push(Pop(Reg(BP)));
+        asm_instructions.push(AsmInstruction::Mov {
+            typ: Quadword,
+            src: Operand::Imm(0),
+            dst: Operand::Reg(AX),
+        });
         asm_instructions.push(Ret);
 
         // any functions we generate ourselves are not external
