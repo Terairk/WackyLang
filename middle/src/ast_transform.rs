@@ -836,7 +836,7 @@ pub(crate) mod ast_lowering_ctx {
                 let array_elem_ty = unsafe { raw_array_ty.into_array_elem_type() };
 
                 // obtain scale from the inner element type
-                let scale = array_elem_ty.try_size_of().unwrap();
+                let scale_bytes = array_elem_ty.try_size_of().unwrap();
 
                 // obtain pointer to element
                 elem_ptr_ty = WackPointerType::of(array_elem_ty.clone());
@@ -845,7 +845,7 @@ pub(crate) mod ast_lowering_ctx {
                 instructions.push(WackInstr::ArrayAccess {
                     src_array_ptr: WackValue::Var(src_array_ptr.clone()),
                     index: index_value,
-                    scale,
+                    scale: scale_bytes,
                     dst_elem_ptr: elem_dst_ptr.clone(),
                 });
 
