@@ -21,7 +21,7 @@ use middle::wackir::{
     WackReadType, WackTempIdent, WackValue,
 };
 use std::collections::{BTreeMap, HashMap};
-use util::gen_flags::{insert_flag_gbl, GenFlags};
+use util::gen_flags::{GenFlags, insert_flag_gbl};
 /* ================== PUBLIC API ================== */
 
 #[inline]
@@ -353,7 +353,7 @@ impl AsmGen {
                 });
             }
             Copy { src, dst } => {
-                let dst_typ = self.get_asm_type_for_ident(&dst);
+                let src_typ = self.get_asm_type(&src);
                 let src_operand = self.lower_value(src, asm);
                 let dst_operand = self.lower_value(WackValue::Var(dst), asm);
                 match src_operand {
