@@ -47,6 +47,8 @@ impl Expr<RenamedName, SemanticType> {
 }
 
 impl SN<LValue<RenamedName, SemanticType>> {
+    #[must_use]
+    #[inline]
     pub fn get_type(&self, type_resolver: &TypeResolver) -> SemanticType {
         match (**self).clone() {
             LValue::ArrayElem(arr_elem, _t) => arr_elem
@@ -57,6 +59,17 @@ impl SN<LValue<RenamedName, SemanticType>> {
                 .unwrap_or(SemanticType::Error(self.span())),
             LValue::Ident(_n, t) => t,
         }
+    }
+
+    fn refine_lvalue_type(self, refinement_ty: SemanticType, resolver: &TypeResolver) -> Self {
+        self.map_inner(|lvalue| match lvalue {
+            LValue::Ident(ident, _t) => LValue::Ident(ident, refinement_ty),
+            LValue::ArrayElem(array_elem, _t) => LValue::ArrayElem(array_elem, refinement_ty),
+            LValue::PairElem(pair_elem, _t) => LValue::PairElem(
+                pair_elem.refine_pair_elem_type(refinement_ty.clone(), resolver),
+                refinement_ty,
+            ),
+        })
     }
 }
 
@@ -91,7 +104,7 @@ impl SN<RValue<RenamedName, SemanticType>> {
             RValue::ArrayLiter(arr_lit, _t) => RValue::ArrayLiter(arr_lit, to),
             RValue::NewPair(fst, snd, _t) => RValue::NewPair(fst, snd, to),
             RValue::PairElem(pair, _t) => {
-                RValue::PairElem(Self::refine_pair_elem_type(pair, to.clone(), resolver), to)
+                RValue::PairElem(pair.refine_pair_elem_type(to.clone(), resolver), to)
             }
             RValue::Call {
                 func_name,
@@ -103,70 +116,6 @@ impl SN<RValue<RenamedName, SemanticType>> {
                 return_type: to,
             },
         }))
-    }
-    // fst snd p : int
-    // snd p : pair(int, any)
-    // p : pair(any, pair(int, any))
-    fn refine_pair_elem_type(
-        pair_elem: SN<PairElem<RenamedName, SemanticType>>,
-        refinement_ty: SemanticType,
-        resolver: &TypeResolver,
-    ) -> SN<PairElem<RenamedName, SemanticType>> {
-        pair_elem.map_inner(|pair_elem| {
-            match pair_elem {
-                PairElem::Fst(lvalue) => {
-                    // refinement type becomes FST-type
-                    let fst_ty = refinement_ty;
-
-                    // if there is any type in lvalue for SND-type, use it, or use any as fallback
-                    let snd_ty = match lvalue.get_type(resolver) {
-                        SemanticType::Pair(_, snd_ty) => *snd_ty,
-                        _ => SemanticType::AnyType,
-                    };
-
-                    // reconstruct inner type, and use it as a refinement type for lvalue
-                    let refinement_ty = SemanticType::pair(fst_ty, snd_ty);
-                    PairElem::Fst(Self::refine_lvalue_elem_type(
-                        lvalue,
-                        refinement_ty,
-                        resolver,
-                    ))
-                }
-                PairElem::Snd(lvalue) => {
-                    // refinement type becomes SND-type
-                    let snd_ty = refinement_ty;
-
-                    // if there is any type in lvalue for FST-type, use it, or use any as fallback
-                    let fst_ty = match lvalue.get_type(resolver) {
-                        SemanticType::Pair(fst_ty, _) => *fst_ty,
-                        _ => SemanticType::AnyType,
-                    };
-
-                    // reconstruct inner type, and use it as a refinement type for lvalue
-                    let refinement_ty = SemanticType::pair(fst_ty, snd_ty);
-                    PairElem::Snd(Self::refine_lvalue_elem_type(
-                        lvalue,
-                        refinement_ty,
-                        resolver,
-                    ))
-                }
-            }
-        })
-    }
-
-    fn refine_lvalue_elem_type(
-        lvalue: SN<LValue<RenamedName, SemanticType>>,
-        refinement_ty: SemanticType,
-        resolver: &TypeResolver,
-    ) -> SN<LValue<RenamedName, SemanticType>> {
-        lvalue.map_inner(|lvalue| match lvalue {
-            LValue::Ident(ident, _t) => LValue::Ident(ident, refinement_ty),
-            LValue::ArrayElem(array_elem, _t) => LValue::ArrayElem(array_elem, refinement_ty),
-            LValue::PairElem(pair_elem, _t) => LValue::PairElem(
-                Self::refine_pair_elem_type(pair_elem, refinement_ty.clone(), resolver),
-                refinement_ty,
-            ),
-        })
     }
 }
 
@@ -185,6 +134,45 @@ impl SN<PairElem<RenamedName, SemanticType>> {
                 _ => None,
             },
         }
+    }
+
+    fn refine_pair_elem_type(
+        self,
+        refinement_ty: SemanticType,
+        resolver: &TypeResolver,
+    ) -> SN<PairElem<RenamedName, SemanticType>> {
+        self.map_inner(|pair_elem| {
+            match pair_elem {
+                PairElem::Fst(lvalue) => {
+                    // refinement type becomes FST-type
+                    let fst_ty = refinement_ty;
+
+                    // if there is any type in lvalue for SND-type, use it, or use any as fallback
+                    let snd_ty = match lvalue.get_type(resolver) {
+                        SemanticType::Pair(_, snd_ty) => *snd_ty,
+                        _ => SemanticType::AnyType,
+                    };
+
+                    // reconstruct inner type, and use it as a refinement type for lvalue
+                    let refinement_ty = SemanticType::pair(fst_ty, snd_ty);
+                    PairElem::Fst(lvalue.refine_lvalue_type(refinement_ty, resolver))
+                }
+                PairElem::Snd(lvalue) => {
+                    // refinement type becomes SND-type
+                    let snd_ty = refinement_ty;
+
+                    // if there is any type in lvalue for FST-type, use it, or use any as fallback
+                    let fst_ty = match lvalue.get_type(resolver) {
+                        SemanticType::Pair(fst_ty, _) => *fst_ty,
+                        _ => SemanticType::AnyType,
+                    };
+
+                    // reconstruct inner type, and use it as a refinement type for lvalue
+                    let refinement_ty = SemanticType::pair(fst_ty, snd_ty);
+                    PairElem::Snd(lvalue.refine_lvalue_type(refinement_ty, resolver))
+                }
+            }
+        })
     }
 }
 
@@ -335,7 +323,7 @@ impl Folder for TypeResolver {
                 rvalue,
             } => self.fold_var_definition(r#type, name, rvalue),
             Stat::Assignment { lvalue, rvalue } => {
-                let resolved_lvalue = self.fold_lvalue(lvalue);
+                let mut resolved_lvalue = self.fold_lvalue(lvalue);
                 let mut resolved_rvalue = self.fold_rvalue(rvalue);
                 let resolved_lval_type = resolved_lvalue.get_type(self);
                 let resolved_rval_type = resolved_rvalue.get_type(self);
@@ -349,8 +337,17 @@ impl Folder for TypeResolver {
                 } else {
                     // try to coerce, or fail and emmit error
                     resolved_rvalue =
-                        match resolved_rvalue.try_coerce_into(resolved_lval_type, self) {
-                            Ok(new) => new,
+                        match resolved_rvalue.try_coerce_into(resolved_lval_type.clone(), self) {
+                            Ok(new) => {
+                                // if coersion was successful, refine the LHS aswell. This is useful to
+                                // reclaim useful type information for cases of both-directional nested lhs-lhs
+                                // e.g. `fst snd ident = snd arr[3]`, we need to know the type of each stage of that
+                                resolved_lvalue =
+                                    resolved_lvalue.refine_lvalue_type(resolved_lval_type, self);
+
+                                // return new type
+                                new
+                            }
                             Err((old, resolved_rval_type)) => {
                                 self.add_error(TypeMismatch(
                                     old.span(),
