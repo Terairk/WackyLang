@@ -49,16 +49,17 @@ impl WackType {
         Self::Pair(Box::new(fst), Box::new(snd))
     }
 
+    #[inline]
     pub fn from_semantic_type(semantic_type: SemanticType) -> Self {
         match semantic_type {
-            SemanticType::Int => Self::Int {
-                width: BitWidth::W32,
-            },
             SemanticType::Bool => Self::Int {
                 width: BitWidth::W8,
             },
             SemanticType::Char => Self::Int {
                 width: BitWidth::W8,
+            },
+            SemanticType::Int => Self::Int {
+                width: BitWidth::W32,
             },
             // a string has the same type-representation as `char[]`
             SemanticType::String => {
@@ -66,7 +67,13 @@ impl WackType {
             }
             // an array type in WACC translates to a __pointer__ to an array in memory
             SemanticType::Array(elem_ty) => {
-                Self::pointer_of(Self::array(Self::from_semantic_type(*elem_ty)))
+                Self::pointer_of(Self::array(match Self::from_semantic_type(*elem_ty) {
+                    // arrays of type Any: `any[]` are a direct result of them being
+                    // empty array literals, meaning it is fine to default to untyped pointer-elements
+                    // in order to avoid weird typing bugs
+                    Self::Uninhabited => Self::Pointer(WackPointerType::Any),
+                    other => other,
+                }))
             }
             // a pair type in WACC translates to a __pointer__ to a pair in memory
             SemanticType::Pair(fst, snd) => Self::pointer_of(Self::pair(

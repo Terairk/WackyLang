@@ -62,6 +62,11 @@ impl SN<LValue<RenamedName, SemanticType>> {
     }
 
     fn refine_lvalue_type(self, refinement_ty: SemanticType, resolver: &TypeResolver) -> Self {
+        // make sure we are not coercing to `AnyType` as this looses type information
+        if (refinement_ty == SemanticType::AnyType) {
+            return self;
+        };
+
         self.map_inner(|lvalue| match lvalue {
             LValue::Ident(ident, _t) => LValue::Ident(ident, refinement_ty),
             LValue::ArrayElem(array_elem, _t) => LValue::ArrayElem(array_elem, refinement_ty),
@@ -99,10 +104,15 @@ impl SN<RValue<RenamedName, SemanticType>> {
             return Err((self, resolved_type));
         }
 
+        // make sure we are not coercing to `AnyType` as this looses type information
+        if (to == SemanticType::AnyType) {
+            return Ok(self);
+        };
+
         Ok(self.map_inner(|inner| match inner {
             RValue::Expr(expr, _t) => RValue::Expr(expr, to),
             RValue::ArrayLiter(arr_lit, _t) => RValue::ArrayLiter(arr_lit, to),
-            RValue::NewPair(fst, snd, _t) => RValue::NewPair(fst, snd, to),
+            RValue::NewPair(fst, snd, _from) => RValue::NewPair(fst, snd, to),
             RValue::PairElem(pair, _t) => {
                 RValue::PairElem(pair.refine_pair_elem_type(to.clone(), resolver), to)
             }
@@ -141,6 +151,11 @@ impl SN<PairElem<RenamedName, SemanticType>> {
         refinement_ty: SemanticType,
         resolver: &TypeResolver,
     ) -> SN<PairElem<RenamedName, SemanticType>> {
+        // make sure we are not coercing to `AnyType` as this looses type information
+        if (refinement_ty == SemanticType::AnyType) {
+            return self;
+        };
+
         self.map_inner(|pair_elem| {
             match pair_elem {
                 PairElem::Fst(lvalue) => {
@@ -354,8 +369,9 @@ impl Folder for TypeResolver {
                                 // if coersion was successful, refine the LHS aswell. This is useful to
                                 // reclaim useful type information for cases of both-directional nested lhs-lhs
                                 // e.g. `fst snd ident = snd arr[3]`, we need to know the type of each stage of that
+                                let resolved_rval_type = new.get_type(self);
                                 resolved_lvalue =
-                                    resolved_lvalue.refine_lvalue_type(resolved_lval_type, self);
+                                    resolved_lvalue.refine_lvalue_type(resolved_rval_type, self);
 
                                 // return new type
                                 new
@@ -540,6 +556,7 @@ impl Folder for TypeResolver {
             RValue::ArrayLiter(exprs, _) => {
                 let resolved_exprs = exprs.fold_with(|expr| self.fold_expr(expr));
                 if resolved_exprs.is_empty() {
+                    println!("bobsyouncle!!!");
                     return RValue::ArrayLiter(
                         resolved_exprs,
                         SemanticType::Array(Box::new(SemanticType::AnyType)),
