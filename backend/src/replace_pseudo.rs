@@ -13,15 +13,29 @@
 
 use std::collections::HashMap;
 
-use crate::assembly_ast::{AsmInstruction, AsmProgram, Operand};
+use middle::wackir::WackTempIdent;
+
+use crate::assembly_ast::{AsmInstruction, AsmProgram, AssemblyType, Operand};
+type SymbolTableWack = HashMap<WackTempIdent, AssemblyType>;
+type SymbolTable = HashMap<String, AssemblyType>;
 
 /* ================== PUBLIC API ================== */
 #[inline]
-pub fn replace_pseudo_in_program(program: &mut AsmProgram) {
+pub fn replace_pseudo_in_program(program: &mut AsmProgram, symbol_table: &SymbolTableWack) {
+    // Quick dirty fix since I don't have WackTempIdent's anymore and only have String's
+    // This is a temporary fix until I can figure out how to get the WackTempIdent's back
+    // / don't convert them to Strings
+
+    let symbol_table: SymbolTable = symbol_table
+        .clone()
+        .into_iter()
+        .map(|(k, v)| (k.into(), v))
+        .collect();
+    // println!("{:?}", symbol_table);
     for func in &mut program.asm_functions {
         // Start fresh for each function.
         let mut mapping: HashMap<String, i32> = HashMap::new();
-        let mut next_stack_offset = -4;
+        let mut next_stack_offset = 0;
         let mut last_offset = 0;
 
         for instr in &mut func.instructions {
@@ -30,6 +44,7 @@ pub fn replace_pseudo_in_program(program: &mut AsmProgram) {
                 &mut mapping,
                 &mut next_stack_offset,
                 &mut last_offset,
+                &symbol_table,
             );
         }
 
@@ -60,6 +75,7 @@ fn replace_pseudo_operand(
     mapping: &mut HashMap<String, i32>,
     next_stack_offset: &mut i32,
     last_offset: &mut i32,
+    symbol_table: &SymbolTable,
 ) {
     if let Operand::Pseudo(ref ident) = *op {
         // If already assigned, use existing mapping
@@ -67,11 +83,18 @@ fn replace_pseudo_operand(
             *op = Operand::Stack(offset);
         } else {
             // Assign new stack offset
+            // Correct alignment to match System V ABI;
+            let asm_type = symbol_table.get(ident).unwrap();
+            let alignment = get_alignment(*asm_type);
+            // println!("next_stack_offset: {next_stack_offset}, alignment = {alignment}");
+            *next_stack_offset -= alignment;
+            *next_stack_offset = round_down(*next_stack_offset, alignment);
+            // println!("next_stack_offset: {next_stack_offset}");
+
             let offset = *next_stack_offset;
             mapping.insert(ident.clone(), offset);
             *last_offset = offset;
             // may have unexpected side effects if it underflows
-            *next_stack_offset -= 4;
             *op = Operand::Stack(offset);
         }
     }
@@ -96,23 +119,29 @@ fn replace_pseudo_in_instruction(
     mapping: &mut HashMap<String, i32>,
     next_stack_offset: &mut i32,
     last_offset: &mut i32,
+    symbol_table: &SymbolTable,
 ) {
+    use AsmInstruction::*;
     match instr {
-        AsmInstruction::Mov { src, dst, .. }
-        | AsmInstruction::MovZeroExtend { src, dst, .. }
-        | AsmInstruction::Lea { src, dst } => {
-            replace_pseudo_operand(src, mapping, next_stack_offset, last_offset);
-            replace_pseudo_operand(dst, mapping, next_stack_offset, last_offset);
+        Mov { src, dst, .. }
+        | Cmov { src, dst, .. }
+        | MovZeroExtend { src, dst, .. }
+        | Lea { src, dst } => {
+            replace_pseudo_operand(src, mapping, next_stack_offset, last_offset, symbol_table);
+            replace_pseudo_operand(dst, mapping, next_stack_offset, last_offset, symbol_table);
         }
-        AsmInstruction::Binary { op1, op2, .. } | AsmInstruction::Cmp { op1, op2, .. } => {
-            replace_pseudo_operand(op1, mapping, next_stack_offset, last_offset);
-            replace_pseudo_operand(op2, mapping, next_stack_offset, last_offset);
+        Binary { op1, op2, .. } | Cmp { op1, op2, .. } | Test { op1, op2, .. } => {
+            replace_pseudo_operand(op1, mapping, next_stack_offset, last_offset, symbol_table);
+            replace_pseudo_operand(op2, mapping, next_stack_offset, last_offset, symbol_table);
         }
-        AsmInstruction::Unary { operand, .. }
-        | AsmInstruction::Idiv(operand)
-        | AsmInstruction::SetCC { operand, .. }
-        | AsmInstruction::Push(operand) => {
-            replace_pseudo_operand(operand, mapping, next_stack_offset, last_offset);
+        Unary { operand, .. } | Idiv(operand) | SetCC { operand, .. } | Push(operand) => {
+            replace_pseudo_operand(
+                operand,
+                mapping,
+                next_stack_offset,
+                last_offset,
+                symbol_table,
+            );
         }
         // Other instructions which don't have operands that need replacement are left unchanged.
         _ => {}
@@ -123,4 +152,18 @@ fn replace_pseudo_in_instruction(
 // meant for negative numbers
 const fn round_down_16(x: i32) -> i32 {
     x & !15
+}
+
+const fn round_down(x: i32, multiple: i32) -> i32 {
+    x & !(multiple - 1)
+}
+
+fn get_alignment(typ: AssemblyType) -> i32 {
+    use AssemblyType::*;
+    match typ {
+        Byte => 1,
+        Longword => 4,
+        Quadword => 8,
+        _ => 8,
+    }
 }

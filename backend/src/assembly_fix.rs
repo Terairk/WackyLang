@@ -8,7 +8,7 @@
 
 use crate::{
     assembly_ast::{
-        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode,
+        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType,
         Operand, Register,
     },
     predefined::inbuiltOverflow,
@@ -83,7 +83,7 @@ fn fix_move(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand, dst:
     let new_instrs = match (src.clone(), dst.clone()) {
         (Operand::Stack(_), Operand::Stack(_)) => vec![
             AsmInstruction::Mov {
-                typ: typ.clone(),
+                typ: typ,
                 src,
                 dst: Operand::Reg(Register::R10),
             },

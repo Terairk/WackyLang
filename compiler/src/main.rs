@@ -286,7 +286,7 @@ fn main() -> ExitCode {
     // -------------------------------------------------------------------------
 
     // TODO: find how to use asm_gen for future passes
-    let (mut assembly_ast, _asm_gen) = wacky_to_assembly(wacky_ir, counter, symbol_table);
+    let (mut assembly_ast, asm_gen) = wacky_to_assembly(wacky_ir, counter, symbol_table);
     if args.assembly {
         println!("{assembly_ast:#?}");
         return ExitCode::SUCCESS;
@@ -296,7 +296,7 @@ fn main() -> ExitCode {
     //                      Replace Pseudoreg Pass
     // -------------------------------------------------------------------------
 
-    replace_pseudo_in_program(&mut assembly_ast);
+    replace_pseudo_in_program(&mut assembly_ast, &asm_gen.symbol_table);
     if args.pseudo {
         println!("{assembly_ast:#?}");
         return ExitCode::SUCCESS;
@@ -317,8 +317,7 @@ fn main() -> ExitCode {
     // -------------------------------------------------------------------------
 
     generate_predefined(&mut assembly_ast);
-    let formatted_assembly =
-        AssemblyFormatter::format_program(&assembly_ast, _asm_gen.str_literals);
+    let formatted_assembly = AssemblyFormatter::format_program(&assembly_ast, asm_gen.str_literals);
     if args.codegen {
         println!("{formatted_assembly}");
         return ExitCode::SUCCESS;

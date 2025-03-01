@@ -942,7 +942,7 @@ static readc: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             dst: Memory(SP, 0),
         },
         Lea {
-            src: Reg(SP),
+            src: Memory(SP, 0),
             dst: Reg(SI),
         },
         Lea {

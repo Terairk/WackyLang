@@ -199,11 +199,6 @@ pub(crate) mod ast_lowering_ctx {
         // Makes a label for jump's for now
         fn make_label(&mut self, name: &str) -> WackTempIdent {
             let ident: WackTempIdent = Ident::from_str(name).with_ctx_mut(self).into();
-
-            // Add entry to symbol table
-            self.symbol_table.insert(ident.clone(), WackType::Label);
-
-            // return
             ident
         }
 
@@ -539,14 +534,11 @@ pub(crate) mod ast_lowering_ctx {
                     // returned the obtained value
                     (WackValue::Var(dst_value), elem_ty)
                 }
-                // TODO: please add types to this
                 TypedRValue::Call {
                     func_name,
                     args,
                     return_type,
                 } => {
-                    // TODO: add more type-checking code to lowerer SemTy vs. WackTy
-
                     // lower the arguments
                     let (wacky_args, wacky_args_ty): (Vec<WackValue>, Vec<WackType>) = args
                         .into_iter()
