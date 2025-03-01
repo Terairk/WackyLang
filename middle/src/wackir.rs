@@ -222,7 +222,6 @@ pub enum WackInstr {
     /// The instruction will handle any offsetting that needs to be done.
     ArrayAccess {
         src_array_ptr: WackValue,
-        typ: SemanticType,
         index: WackValue,
         scale: usize,
         dst_elem_ptr: WackTempIdent,

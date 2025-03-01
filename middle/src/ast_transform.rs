@@ -662,7 +662,6 @@ pub(crate) mod ast_lowering_ctx {
                 elem_dst_ptr = self.make_temporary();
                 instructions.push(WackInstr::ArrayAccess {
                     src_array_ptr: WackValue::Var(src_array_ptr.clone()),
-                    typ: array_elem_type.clone(),
                     index: index_value,
                     scale,
                     dst_elem_ptr: elem_dst_ptr.clone(),

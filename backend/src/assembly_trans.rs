@@ -1,14 +1,10 @@
-use crate::assembly_ast::AssemblyType::Longword;
+use crate::assembly_ast::AssemblyType::{Byte, Longword};
 use crate::assembly_ast::Register::{AX, DI};
 use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
     Register,
 };
-use crate::predefined::{
-    inbuiltDivZero, inbuiltExit, inbuiltFree, inbuiltFreePair, inbuiltMalloc, inbuiltNullAccess,
-    inbuiltPrintBool, inbuiltPrintChar, inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString,
-    inbuiltPrintln, inbuiltReadChar, inbuiltReadInt,
-};
+use crate::predefined::{inbuiltArrLoad1, inbuiltArrLoad4, inbuiltArrLoad8, inbuiltDivZero, inbuiltExit, inbuiltFree, inbuiltFreePair, inbuiltMalloc, inbuiltNullAccess, inbuiltPrintBool, inbuiltPrintChar, inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln, inbuiltReadChar, inbuiltReadInt};
 use middle::wackir::{
     BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackProgram, WackValue,
 };
@@ -395,33 +391,33 @@ impl AsmGen {
                 offset,
                 dst_ptr,
             } => {
+                use Register::{AX, DX};
                 let src_ptr_operand = self.lower_value(src_ptr, asm);
                 let value = WackValue::Var(dst_ptr);
                 let dst_ptr_operand = self.lower_value(value, asm);
-                let dst_reg = if let Operand::Reg(reg) = dst_ptr_operand {
-                    reg
-                } else {
-                    unreachable!("dst operand should always be a register")
-                };
                 let index_operand = self.lower_value(index, asm);
-                let index_reg = if let Operand::Reg(reg) = index_operand {
-                    reg
-                } else {
-                    unreachable!("index operand should always be a register")
-                };
+                asm.push(AsmInstruction::Mov {
+                    typ: Quadword,
+                    src: src_ptr_operand.clone(),
+                    dst: Operand::Reg(AX),
+                });
+                asm.push(AsmInstruction::Mov {
+                    typ: Quadword,
+                    src: index_operand,
+                    dst: Operand::Reg(DX),
+                });
                 asm.push(AsmInstruction::Lea {
-                    src: src_ptr_operand,
-                    dst: Operand::Indexed {
+                    src: Operand::Indexed {
                         offset: offset as i32,
-                        base: dst_reg,
-                        index: index_reg,
+                        base: AX,
+                        index: DX,
                         scale: scale as i32,
-                    }
+                    },
+                    dst: dst_ptr_operand,
                 });
             }
             WackInstr::ArrayAccess {
                 src_array_ptr,
-                typ,
                 index,
                 scale,
                 dst_elem_ptr
@@ -429,35 +425,38 @@ impl AsmGen {
                 let src_array_operand = self.lower_value(src_array_ptr, asm);
                 let value = WackValue::Var(dst_elem_ptr);
                 let dst_ptr_operand = self.lower_value(value, asm);
-                let dst_reg = if let Operand::Reg(reg) = dst_ptr_operand {
-                    reg
-                } else {
-                    unreachable!("dst operand should always be a register")
-                };
+                asm.push(AsmInstruction::Mov {
+                    typ: Longword,
+                    src: src_array_operand,
+                    dst: Operand::Reg(Register::R9),
+                });
                 let index_operand = self.lower_value(index, asm);
-                let index_reg = if let Operand::Reg(reg) = index_operand {
-                    reg
-                } else {
-                    unreachable!("index operand should always be a register")
+                asm.push(AsmInstruction::Mov {
+                    typ: Longword,
+                    src: index_operand,
+                    dst: Operand::Reg(Register::R10),
+                });
+                let (asm_type, inbuilt_instr) = match scale {
+                    1 => {
+                        insert_flag_gbl(GenFlags::ARRAY_ACCESS1);
+                        (Byte, inbuiltArrLoad1)
+                    },
+                    4 => {
+                        insert_flag_gbl(GenFlags::ARRAY_ACCESS4);
+                        (Longword, inbuiltArrLoad4)
+                    },
+                    8 => {
+                        insert_flag_gbl(GenFlags::ARRAY_ACCESS8);
+                        (Quadword, inbuiltArrLoad8)
+                    },
+                    _ => unreachable!("unexpected scale value in array access"),
                 };
-                let asm_type = match typ {
-                    SemanticType::Bool | SemanticType::Char => AssemblyType::Byte,
-                    SemanticType::Int => Longword,
-                    SemanticType::Array(_) | SemanticType::Pair(_, _) => Quadword,
-                    _ => unreachable!("unexpected type in array access"),
-                };
-                let dst_operand = Operand::Indexed {
-                    offset: 0,
-                    base: dst_reg,
-                    index: index_reg,
-                    scale: scale as i32,
-                };
+                asm.push(AsmInstruction::Call(inbuilt_instr.to_owned(), false));
                 asm.push(AsmInstruction::Mov {
                     typ: asm_type,
-                    src: src_array_operand,
-                    dst: dst_operand,
+                    src: Operand::Reg(Register::R9),
+                    dst: dst_ptr_operand,
                 });
-
             }
             _ => unimplemented!(),
             // WackInstr::SignExtend { .. } => {}
