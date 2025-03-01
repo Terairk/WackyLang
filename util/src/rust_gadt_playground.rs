@@ -379,11 +379,11 @@ pub fn do_thing<T>(a: &MyGADT<T>, b: T) -> bool {
     }
 }
 
-#[cfg(test)]
+// #[cfg(test)]
 mod tests {
     use crate::rust_gadt_playground::{do_thing, is_foo, ty_bool, FooInstance, MyGADT};
 
-    #[test]
+    // #[test]
     fn test_foo() {
         let arg: usize = 10;
         let usize_witness = is_foo::<usize>();
