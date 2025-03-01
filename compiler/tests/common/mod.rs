@@ -4,7 +4,6 @@ use chumsky::{Parser, extra};
 use std::fs;
 use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
 use backend::assembly_fix::fix_program;
 use backend::assembly_trans::wacky_to_assembly;
 use backend::emission::AssemblyFormatter;
@@ -298,13 +297,15 @@ pub fn compare_test_result(path: &Path) -> Result<String, String> {
     let bin_path = test_artifacts_dir.join(relative_path);
     
     // Step 1: Compile Assembly to Executable
-    let compile_status = Command::new("gcc")
+    let output = Command::new("gcc")
         .args(["-o", &bin_path.to_str().unwrap(), &asm_path.to_str().unwrap(), "-no-pie", "-lc"])
-        .status()
-        .map_err(|e| format!("GCC error: {e}"))?;
+        .stderr(Stdio::piped()) // Capture stderr
+        .output()
+        .map_err(|e| format!("GCC execution error: {e}"))?;
 
-    if !compile_status.success() {
-        return Err("Failed to compile assembly".to_string());
+    if !output.status.success() {
+        let error_message = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("failed to assemble: \n{}", error_message));
     }
 
     // Step 2: Run the compiled program and capture output

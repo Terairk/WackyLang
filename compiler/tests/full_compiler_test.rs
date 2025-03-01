@@ -11,6 +11,7 @@ fn run_full_compiler_tests() {
     let mut passed_count = 0;
     let mut total_count = 0;
     let mut compiled_count = 0;
+    let mut assemble_count = 0;
 
     match get_test_files(tests_dir) {
         Ok(test_files) => {
@@ -29,10 +30,16 @@ fn run_full_compiler_tests() {
                 match result.unwrap() {
                     Ok(_) => match compare_test_result(&test_file) {
                         Ok(_) => {
+                            assemble_count += 1;
                             passed_count += 1;
                             println!("Test passed: {test_name}");
                         }
-                        Err(error_msg) => println!("Test failed: {test_name} with cause {error_msg}"),
+                        Err(error_msg) => { 
+                            if !error_msg.starts_with("failed to assemble") {
+                                assemble_count += 1;
+                            }
+                            println!("Test failed: {test_name} with cause {error_msg}") 
+                        },
                     },
                     Err(error_msg) => {
                         println!("Test compilation gracefully failed: {test_name} with cause {error_msg}");
@@ -42,6 +49,7 @@ fn run_full_compiler_tests() {
         }
         Err(e) => eprintln!("Failed to collect test files: {e}"),
     }
-    println!("Compiled {compiled_count} out of {total_count}, passed {passed_count} out of {total_count} tests!");
+    println!("Compiled {}, assembled {}, passed {} out of {} tests!", 
+             compiled_count, assemble_count, passed_count, total_count);
     assert_eq!(passed_count, total_count);
 }
