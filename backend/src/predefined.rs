@@ -49,6 +49,7 @@ pub static PREDEFINED_FUNCTIONS2: Lazy<HashMap<GenFlags, AsmFunction>> = Lazy::n
     m.insert(GenFlags::READ_INT, readi.clone());
     m.insert(GenFlags::READ_CHR, readc.clone());
     m.insert(GenFlags::EXIT, exit.clone());
+    m.insert(GenFlags::NULL_DEREF, errNull.clone());
     m
 });
 
