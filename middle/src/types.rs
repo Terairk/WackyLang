@@ -19,7 +19,12 @@ impl WackFuncType {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum WackType {
     Pointer(WackPointerType),
-    Int { width: BitWidth },
+
+    /// Like pointer, points to a location, but the location is code
+    Label,
+    Int {
+        width: BitWidth,
+    },
     Array(Box<WackType>),
     Pair(Box<WackType>, Box<WackType>),
 }
@@ -85,6 +90,7 @@ impl WackType {
             WackType::Array(_) => {
                 Err("Cannot know the size of arrays without knowing its length".into())
             }
+            WackType::Label => Err("It doesn't make sense to look up labels".into()),
         }
     }
 
@@ -125,6 +131,20 @@ pub enum WackPointerType {
 impl WackPointerType {
     pub fn of(ty: WackType) -> Self {
         Self::Of(Box::new(ty))
+    }
+
+    pub fn deref_type(&self) -> Option<WackType> {
+        match self {
+            Self::Any => None,
+            Self::Of(ty) => Some(*ty.clone()),
+        }
+    }
+
+    pub fn try_from_wack_type(wack_type: WackType) -> Option<Self> {
+        match wack_type {
+            WackType::Pointer(p) => Some(p),
+            _ => None,
+        }
     }
 }
 

@@ -400,4 +400,95 @@ mod tests {
     }
 }
 
-// We can use type-equality to implement type equality constraints
+//
+// Modeling the WACC expressions as GADTs in Haskell:
+// ```haskell
+// data TyInt = TyInt -- marker types for my language
+// data TyBool = TyBool
+// data TyChar = TyChar
+// data TyStr = TyStr
+// data TyPair = TyPair -- pairs are actually parametrized on two inner types, (a,b)
+//                      -- but i don't know how to introduce that polymorphism here...
+//
+// data ArrayTy a = ArrayTy a -- arrays are parametrized on the inner element type
+//                            -- and ideally `TyPair` should be simmilarly polymorphic
+//                            -- but it is used in `Liter a` so im not sure how to do that...
+//
+// data Liter a where
+//   LInt :: Int -> Liter TyInt
+//   LBool :: Bool -> Liter TyBool
+//   LChar :: Char -> Liter TyChar
+//   LStr :: String -> Liter TyStr
+//   LNullPair :: Liter TyPair -- only pair literals allowed are `null`, all else
+//                                 -- is runtime-obtained values
+//
+// data Ident a = Ident String -- obtained from symbol table, marked with phantom type
+//                             -- though I don't know if this is correct..............
+//
+// data ArrayElem a where
+//   ArrayElem :: Ident (ArrayTy a) -> Expr TyInt -> ArrayElem a
+//   -- Take an identifier linked to an array-type, and applying an integer
+//   -- expression to it, i.e. `ident[i]` should extrat the inner type
+//
+// data Expr a where
+//   -- construct from other values
+//   ELiter :: Liter a -> Expr a
+//   EIdent :: Ident a -> Expr a
+//   EArrayElem :: ArrayElem a -> Expr a
+//   EUnary :: UnaryOp a -> Expr a
+//   EBinary :: BinaryOp a -> Expr a
+//
+// data UnaryOp a where
+//   UNot :: Expr TyBool -> UnaryOp TyBool
+//   UMinus :: Expr TyInt -> UnaryOp TyInt
+//   ULen :: Expr (ArrayTy a) -> UnaryOp TyInt
+//   UOrd :: Expr TyChar -> UnaryOp TyInt
+//   UChr :: Expr TyInt -> UnaryOp TyChar
+//
+// data BinaryOp a where
+//   BMul :: Expr TyInt -> Expr TyInt -> BinaryOp TyInt
+//   BDiv :: Expr TyInt -> Expr TyInt -> BinaryOp TyInt
+//   BMod :: Expr TyInt -> Expr TyInt -> BinaryOp TyInt
+//   BAdd :: Expr TyInt -> Expr TyInt -> BinaryOp TyInt
+//   BSub :: Expr TyInt -> Expr TyInt -> BinaryOp TyInt
+//   BLteInt :: Expr TyInt -> Expr TyInt -> BinaryOp TyBool
+//   BLtInt :: Expr TyInt -> Expr TyInt -> BinaryOp TyBool
+//   BGteInt :: Expr TyInt -> Expr TyInt -> BinaryOp TyBool
+//   BGtInt :: Expr TyInt -> Expr TyInt -> BinaryOp TyBool
+//   BLteChar :: Expr TyChar -> Expr TyChar -> BinaryOp TyBool
+//   BLtChar :: Expr TyChar -> Expr TyChar -> BinaryOp TyBool
+//   BGteChar :: Expr TyChar -> Expr TyChar -> BinaryOp TyBool
+//   BGtChar :: Expr TyChar -> Expr TyChar -> BinaryOp TyBool
+//   BEq :: Expr a -> Expr a -> BinaryOp TyBool
+//   BNeq :: Expr a -> Expr a -> BinaryOp TyBool
+//   BAnd :: Expr TyBool -> Expr TyBool -> BinaryOp TyBool
+//   BOr :: Expr TyBool -> Expr TyBool -> BinaryOp TyBool
+// ```
+//
+//
+// Modeling WACC types in Haskell using GADT notation
+// ```haskell
+// data SemanticType where
+//   STBase :: BaseType -> SemanticType
+//   STArray :: ArrayType -> SemanticType
+//   STPair :: PairType -> SemanticType
+//
+// data BaseType where
+//   BTInt :: BaseType
+//   BTBool :: BaseType
+//   BTChar :: BaseType
+//   BTString :: BaseType
+//
+// data ArrayType where
+//   ArrayType :: SemanticType -> ArrayType
+//
+// data PairType where
+//   PairType :: PairElemType -> PairElemType -> PairType
+//
+// data PairElemType where
+//   PETArray :: ArrayType -> PairElemType
+//   PETBase :: BaseType -> PairElemType
+//   PETPair :: PairElemType -- erased pair type, meaning that you cannot have a type of:
+//                           -- e.g. `pair(int, pair(int, int))`, it is forced to be erased
+//                           -- e.g. `pair(int, pair)` like that..
+// ```
