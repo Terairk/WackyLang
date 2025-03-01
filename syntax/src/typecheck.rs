@@ -359,7 +359,7 @@ impl Folder for TypeResolver {
         if !resolved_type.can_coerce_into(&expected_type) {
             self.add_error(TypeMismatch(
                 resolved_rvalue.span(),
-                resolved_type,
+                resolved_type.clone(),
                 expected_type,
             ));
         }
