@@ -73,6 +73,9 @@ fn convert_type(ty: &WackType) -> AssemblyType {
         WackType::Pair(_, _) => {
             unimplemented!("The AssemblyType system does not support raw pair-types yet")
         }
+        WackType::Uninhabited => {
+            unimplemented!("The AssemblyType system does not support raw uninhabited types yet")
+        }
     }
 }
 

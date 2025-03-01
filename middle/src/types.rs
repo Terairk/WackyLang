@@ -26,6 +26,9 @@ pub enum WackType {
     },
     Array(Box<WackType>),
     Pair(Box<WackType>, Box<WackType>),
+
+    // this type represents a placeholder type for things that will never be accessed
+    Uninhabited,
 }
 
 impl WackType {
@@ -73,9 +76,13 @@ impl WackType {
             // an erased-pair type can point to just-about anything...
             SemanticType::ErasedPair => Self::ANY_POINTER,
 
+            // Map AnyType to Uninhabited, as they are logically the same thing - types that will
+            // never be inhabited/used directly
+            SemanticType::AnyType => Self::Uninhabited,
+
             // something went wrong in the frontend if these branches were reached
-            SemanticType::AnyType | SemanticType::Error(_) => {
-                unreachable!("There should not be `AnyType` or `Error` types by this stage")
+            SemanticType::Error(_) => {
+                unreachable!("There should not be `Error` types by this stage")
             }
         }
     }
@@ -83,12 +90,13 @@ impl WackType {
     #[inline]
     pub fn try_size_of(&self) -> Result<usize, Box<str>> {
         match self {
-            WackType::Pointer(_) => Ok(Self::PTR_BYTES), // pointers are the same size regardless
-            WackType::Int { width } => Ok(width.into_bit_width() as usize),
-            WackType::Pair(fst, snd) => Ok(fst.try_size_of()? + snd.try_size_of()?),
-            WackType::Array(_) => {
+            Self::Pointer(_) => Ok(Self::PTR_BYTES), // pointers are the same size regardless
+            Self::Int { width } => Ok(width.into_bit_width() as usize),
+            Self::Pair(fst, snd) => Ok(fst.try_size_of()? + snd.try_size_of()?),
+            Self::Array(_) => {
                 Err("Cannot know the size of arrays without knowing its length".into())
             }
+            Self::Uninhabited => Err("Uninhabited types should never be accessed".into()),
         }
     }
 
