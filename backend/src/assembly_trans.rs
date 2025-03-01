@@ -42,7 +42,7 @@ pub struct AsmGen {
     pub counter: usize,
     pub str_counter: usize,
     pub str_literals: BTreeMap<String, String>,
-    pub symbol_table: HashMap<WackTempIdent, WackType>,
+    pub symbol_table: HashMap<WackTempIdent, AssemblyType>,
     // and a table to store these literals with their lengths
     // we need to mangle them as well
     // also maybe keep track of RIP relative addressing
@@ -54,8 +54,31 @@ pub struct AsmGen {
     // So we automatically know if we should use PLT or not
 }
 
+const fn convert_type(ty: &WackType) -> AssemblyType {
+    use AssemblyType::{Byte, Longword, Quadword};
+    use WackType::{Array, Bool, Char, ErasedPair, Int, Pair, Pointer, String};
+    match *ty {
+        Int => Longword,
+        Bool | Char => Byte,
+        String | Array(_) | Pair(_, _) | ErasedPair | Pointer(_) => Quadword,
+    }
+}
+
+const fn get_type_from_literal(lit: &WackLiteral) -> AssemblyType {
+    match *lit {
+        WackLiteral::Int(_) => Longword,
+        WackLiteral::Bool(_) | WackLiteral::Char(_) => Byte,
+        WackLiteral::StringLit(_) => AssemblyType::Quadword,
+        WackLiteral::NullPair => AssemblyType::Quadword,
+    }
+}
+
 impl AsmGen {
     fn new(counter: usize, symbol_table: HashMap<WackTempIdent, WackType>) -> Self {
+        let symbol_table = symbol_table
+            .into_iter()
+            .map(|(k, v)| (k, convert_type(&v)))
+            .collect();
         Self {
             counter,
             str_counter: 0,
@@ -73,6 +96,17 @@ impl AsmGen {
         self.str_counter += 1;
         self.str_literals.insert(s.to_owned(), label.clone());
         label
+    }
+
+    fn get_asm_type(&self, value: &WackValue) -> AssemblyType {
+        use WackValue::{Literal, Var};
+        match value {
+            Literal(lit) => get_type_from_literal(lit),
+            Var(ident) => *self
+                .symbol_table
+                .get(ident)
+                .expect("Variable not in symbol table"),
+        }
     }
 
     fn lower_main_asm(&mut self, instrs: Vec<WackInstr>) -> AsmFunction {
@@ -133,9 +167,10 @@ impl AsmGen {
         let arg_regs = [DI, SI, DX, CX, R8, R9];
         for (param, reg) in params.iter().zip(arg_regs.iter()) {
             let wack_value = WackValue::Var(param.clone());
+            let typ = self.get_asm_type(&wack_value);
             let param_name = self.lower_value(wack_value, &mut asm);
             asm.push(AsmInstruction::Mov {
-                typ: Longword,
+                typ,
                 src: Operand::Reg(*reg),
                 dst: param_name,
             });
@@ -147,11 +182,12 @@ impl AsmGen {
             "Move remaining parameters from stack into our stack frame".to_owned(),
         ));
         let mut stack_index = 0;
-        for param in params.iter().skip(arg_regs.len()).rev() {
+        for param in params.iter().skip(arg_regs.len()) {
             let wack_value = WackValue::Var(param.clone());
+            let typ = self.get_asm_type(&wack_value);
             let param_name = self.lower_value(wack_value, &mut asm);
             asm.push(AsmInstruction::Mov {
-                typ: AssemblyType::Longword,
+                typ,
                 src: Operand::Stack(16 + stack_index),
                 dst: param_name,
             });
@@ -540,23 +576,24 @@ impl AsmGen {
             asm.push(Asm::Comment(
                 "Pushing arguments to stack in reverse order".to_owned(),
             ));
-            for tacky_arg in stack_args {
+            for tacky_arg in stack_args.iter().rev() {
+                let typ = self.get_asm_type(tacky_arg);
                 let assembly_arg: Operand = self.lower_value(tacky_arg.clone(), asm);
-                let new_instrs: Vec<AsmInstruction> = match assembly_arg {
-                    Imm(_) | Reg(_) => vec![Asm::Push(assembly_arg)],
-                    _ => vec![
-                        // Use register AX here as temporary storage
-                        // Note this is the only register that can be used here
-                        // We can't use callee saved registers here
-                        Asm::Mov {
-                            typ: AssemblyType::Longword,
-                            src: assembly_arg,
-                            dst: Operand::Reg(AX),
-                        },
-                        Asm::Push(Reg(AX)),
-                    ],
-                };
-                asm.extend(new_instrs);
+                if let Operand::Reg(_) = assembly_arg {
+                    asm.push(Asm::Push(assembly_arg));
+                } else if let Operand::Imm(_) = assembly_arg {
+                    asm.push(Asm::Push(assembly_arg));
+                } else if typ == AssemblyType::Quadword {
+                    asm.push(Asm::Push(assembly_arg));
+                } else {
+                    // This solves the issue of pushing -4(%rbp) to the stack
+                    asm.push(Asm::Mov {
+                        typ: Longword,
+                        src: assembly_arg,
+                        dst: Reg(AX),
+                    });
+                    asm.push(Asm::Push(Reg(AX)));
+                }
             }
         }
 

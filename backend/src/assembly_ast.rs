@@ -215,7 +215,7 @@ pub enum Register {
     BP,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Copy, Eq)]
 pub enum AssemblyType {
     Byte,     // 1 byte
     Longword, // 4 bytes
