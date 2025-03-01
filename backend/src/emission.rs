@@ -35,6 +35,7 @@ impl AssemblyFormatter {
             output.push_str(format!("# length of {}\n", label).as_str());
             output.push_str(format!("   .int {}\n", string.len()).as_str());
             output.push_str(format!(".L_{}:\n", label).as_str());
+            let string = escape_string(&string);
             output.push_str(format!("   .asciz \"{}\"\n", string).as_str());
         }
 
@@ -63,6 +64,7 @@ impl AssemblyFormatter {
             lines.push(format!("# length of {label}"));
             lines.push(format!("    .int {}", value.len()));
             lines.push(format!(".L_{label}:"));
+            let value = escape_string(&value);
             lines.push(format!("    .asciz \"{value}\""));
         }
         lines.push(".text".to_owned());
@@ -422,4 +424,10 @@ impl AssemblyFormatter {
             format!("    {}", line)
         }
     }
+}
+
+fn escape_string(s: &str) -> String {
+    // println!("Escaping string: {s}");
+    // replace " with \"
+    s.replace("\"", "\\\"")
 }

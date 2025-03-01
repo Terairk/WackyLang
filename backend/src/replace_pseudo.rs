@@ -31,6 +31,7 @@ pub fn replace_pseudo_in_program(program: &mut AsmProgram, symbol_table: &Symbol
         .into_iter()
         .map(|(k, v)| (k.into(), v))
         .collect();
+    // println!("{:?}", symbol_table);
     for func in &mut program.asm_functions {
         // Start fresh for each function.
         let mut mapping: HashMap<String, i32> = HashMap::new();
@@ -85,10 +86,10 @@ fn replace_pseudo_operand(
             // Correct alignment to match System V ABI;
             let asm_type = symbol_table.get(ident).unwrap();
             let alignment = get_alignment(*asm_type);
-            println!("next_stack_offset: {next_stack_offset}");
+            // println!("next_stack_offset: {next_stack_offset}, alignment = {alignment}");
             *next_stack_offset -= alignment;
             *next_stack_offset = round_down(*next_stack_offset, alignment);
-            println!("next_stack_offset: {next_stack_offset}");
+            // println!("next_stack_offset: {next_stack_offset}");
 
             let offset = *next_stack_offset;
             mapping.insert(ident.clone(), offset);
@@ -160,8 +161,8 @@ const fn round_down(x: i32, multiple: i32) -> i32 {
 fn get_alignment(typ: AssemblyType) -> i32 {
     use AssemblyType::*;
     match typ {
-        Byte => 4,
-        Longword => 8,
+        Byte => 1,
+        Longword => 4,
         Quadword => 8,
         _ => 8,
     }
