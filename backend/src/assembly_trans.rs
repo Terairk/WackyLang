@@ -4,19 +4,29 @@ use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
     Register,
 };
-use crate::predefined::{inbuiltArrLoad1, inbuiltArrLoad4, inbuiltArrLoad8, inbuiltDivZero, inbuiltExit, inbuiltFree, inbuiltFreePair, inbuiltMalloc, inbuiltNullAccess, inbuiltPrintBool, inbuiltPrintChar, inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln, inbuiltReadChar, inbuiltReadInt};
-use middle::wackir::{
-    BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackProgram, WackValue,
+use crate::predefined::{
+    inbuiltArrLoad1, inbuiltArrLoad4, inbuiltArrLoad8, inbuiltDivZero, inbuiltExit, inbuiltFree,
+    inbuiltFreePair, inbuiltMalloc, inbuiltNullAccess, inbuiltPrintBool, inbuiltPrintChar,
+    inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln, inbuiltReadChar,
+    inbuiltReadInt,
 };
-use std::collections::BTreeMap;
+use middle::wack_type::WackType;
+use middle::wackir::{
+    BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackProgram, WackTempIdent, WackValue,
+};
+use std::collections::{BTreeMap, HashMap};
 use syntax::types::SemanticType;
 use util::gen_flags::{GenFlags, insert_flag_gbl};
 /* ================== PUBLIC API ================== */
 
 #[inline]
 #[must_use]
-pub fn wacky_to_assembly(program: WackProgram, counter: usize) -> (AsmProgram, AsmGen) {
-    let mut asm_gen = AsmGen::new(counter);
+pub fn wacky_to_assembly(
+    program: WackProgram,
+    counter: usize,
+    symbol_table: HashMap<WackTempIdent, WackType>,
+) -> (AsmProgram, AsmGen) {
+    let mut asm_gen = AsmGen::new(counter, symbol_table);
     let mut asm_functions: Vec<AsmFunction> = Vec::new();
     asm_functions.push(asm_gen.lower_main_asm(program.main_body));
     for wack_function in program.functions {
@@ -32,6 +42,7 @@ pub struct AsmGen {
     pub counter: usize,
     pub str_counter: usize,
     pub str_literals: BTreeMap<String, String>,
+    pub symbol_table: HashMap<WackTempIdent, WackType>,
     // and a table to store these literals with their lengths
     // we need to mangle them as well
     // also maybe keep track of RIP relative addressing
@@ -44,11 +55,12 @@ pub struct AsmGen {
 }
 
 impl AsmGen {
-    fn new(counter: usize) -> Self {
+    fn new(counter: usize, symbol_table: HashMap<WackTempIdent, WackType>) -> Self {
         Self {
             counter,
             str_counter: 0,
             str_literals: BTreeMap::new(),
+            symbol_table,
         }
     }
 
@@ -242,6 +254,7 @@ impl AsmGen {
                 asm.push(Asm::JmpCC {
                     condition: CondCode::E,
                     label: target.into(),
+                    is_func: false,
                 });
             }
             JumpIfNotZero { condition, target } => {
@@ -254,6 +267,7 @@ impl AsmGen {
                 asm.push(Asm::JmpCC {
                     condition: CondCode::NE,
                     label: target.into(),
+                    is_func: false,
                 });
             }
             Copy { src, dst } => {
@@ -382,6 +396,7 @@ impl AsmGen {
                 asm.push(AsmInstruction::JmpCC {
                     condition: CondCode::E,
                     label: inbuiltNullAccess.to_owned(),
+                    is_func: true,
                 });
             }
             WackInstr::AddPtr {
@@ -420,7 +435,7 @@ impl AsmGen {
                 src_array_ptr,
                 index,
                 scale,
-                dst_elem_ptr
+                dst_elem_ptr,
             } => {
                 let src_array_operand = self.lower_value(src_array_ptr, asm);
                 let value = WackValue::Var(dst_elem_ptr);
@@ -440,15 +455,15 @@ impl AsmGen {
                     1 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS1);
                         (Byte, inbuiltArrLoad1)
-                    },
+                    }
                     4 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS4);
                         (Longword, inbuiltArrLoad4)
-                    },
+                    }
                     8 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS8);
                         (Quadword, inbuiltArrLoad8)
-                    },
+                    }
                     _ => unreachable!("unexpected scale value in array access"),
                 };
                 asm.push(AsmInstruction::Call(inbuilt_instr.to_owned(), false));
@@ -701,6 +716,7 @@ impl AsmGen {
                     Asm::JmpCC {
                         condition: CondCode::E,
                         label: inbuiltDivZero.to_owned(),
+                        is_func: true,
                     },
                     Asm::Mov {
                         typ: AssemblyType::Longword,

@@ -224,7 +224,7 @@ pub enum WackInstr {
         src_array_ptr: WackValue,
         index: WackValue,
         scale: usize,
-        dst_elem_ptr: WackValue,
+        dst_elem_ptr: WackTempIdent,
     },
 
     Jump(WackTempIdent),
@@ -891,7 +891,29 @@ impl fmt::Debug for WackInstr {
             Self::Println { src, ty } => {
                 write!(f, "Println {{ src: {:?}, ty: {:?} }}", src, ty)
             }
-            _ => todo!("Implement these later"),
+            Self::SignExtend { src, dst } => {
+                write!(f, "SignExtend {{ src: {:?}, dst: {:?} }}", src, dst)
+            }
+            Self::Truncate { src, dst } => {
+                write!(f, "Truncate {{ src: {:?}, dst: {:?} }}", src, dst)
+            }
+            Self::NullPtrGuard(val) => write!(f, "NullPtrGuard({:?})", val),
+            Self::Alloc { size, dst_ptr } => {
+                write!(f, "Alloc {{ size: {:?}, dst_ptr: {:?} }}", size, dst_ptr)
+            }
+            Self::ArrayAccess {
+                src_array_ptr,
+                index,
+                scale,
+                dst_elem_ptr,
+            } => write!(
+                f,
+                "ArrayAccess {{ src_array_ptr: {:?}, index: {:?}, scale: {:?}, dst_elem_ptr: {:?} }}",
+                src_array_ptr, index, scale, dst_elem_ptr
+            ),
+            Self::GetAddress { src, dst } => {
+                write!(f, "GetAddress {{ src: {:?}, dst: {:?} }}", src, dst)
+            }
         }
     }
 }

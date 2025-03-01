@@ -92,12 +92,18 @@ pub enum AsmInstruction {
         op1: Operand,
         op2: Operand,
     },
+    Test {
+        typ: AssemblyType,
+        op1: Operand,
+        op2: Operand,
+    },
     Idiv(Operand), // We convert from Binary(Div, _, _, _) -> IDiv
     Cdq,           // Need this for division
     Jmp(String),
     JmpCC {
         condition: CondCode,
         label: String,
+        is_func: bool, // Field to guide code emission to know if its local or not
     },
     JmpOverflow(String), // Distinguish this from JmpCC due to jumping to other functions
     SetCC {

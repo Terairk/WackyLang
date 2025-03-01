@@ -156,6 +156,12 @@ impl AssemblyFormatter {
                 let op2_str = Self::format_operand(op2, typ);
                 format!("cmp{} {}, {}", suffix, op1_str, op2_str)
             }
+            AsmInstruction::Test { typ, op1, op2 } => {
+                let suffix = Self::assembly_type_suffix(typ);
+                let op1_str = Self::format_operand(op1, typ);
+                let op2_str = Self::format_operand(op2, typ);
+                format!("test{} {}, {}", suffix, op1_str, op2_str)
+            }
             AsmInstruction::Idiv(op) => {
                 // idivl because we only work with ints in WACC
                 let op_str = Self::format_operand(op, &AssemblyType::Longword);
@@ -163,8 +169,15 @@ impl AssemblyFormatter {
             }
             AsmInstruction::Cdq => "cdq".to_owned(),
             AsmInstruction::Jmp(label) => format!("jmp .L_{label}"),
-            AsmInstruction::JmpCC { condition, label } => {
+            AsmInstruction::JmpCC {
+                condition,
+                label,
+                is_func,
+            } => {
                 let cond = Self::format_cond_code(condition);
+                if *is_func {
+                    return format!("j{cond} {label}");
+                }
                 format!("j{cond} .L_{label}")
             }
             AsmInstruction::JmpOverflow(func_handler) => format!("jo {func_handler}"),
@@ -242,11 +255,20 @@ impl AssemblyFormatter {
                     format!(".L_{}+{}(%rip)", label, offset)
                 }
             }
-            Operand::Indexed { offset, base, index, scale } => {
+            Operand::Indexed {
+                offset,
+                base,
+                index,
+                scale,
+            } => {
                 // Format: offset(base, index, scale)
                 let reg1 = Self::format_register(base, &AssemblyType::Quadword);
                 let reg2 = Self::format_register(index, &AssemblyType::Quadword);
-                let offset_str = if *offset == 0 { String::new() } else { format!("{}", offset) };
+                let offset_str = if *offset == 0 {
+                    String::new()
+                } else {
+                    format!("{}", offset)
+                };
                 if *scale == 1 {
                     return format!("{offset_str}({reg1}, {reg2})");
                 }

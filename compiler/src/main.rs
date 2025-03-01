@@ -273,10 +273,11 @@ fn main() -> ExitCode {
 
     // TODO: add string constant pass to either this pass or assembly pass
     // may need to modify my Wacky IR / Assembly Ast
-    let (wacky_ir, counter) = lower_program(typed_ast, type_resolver);
+    let (wacky_ir, counter, symbol_table) = lower_program(typed_ast, type_resolver);
 
     if args.wacky {
         println!("{wacky_ir:#?}");
+        println!("{symbol_table:#?}");
         return ExitCode::SUCCESS;
     }
 
@@ -285,7 +286,7 @@ fn main() -> ExitCode {
     // -------------------------------------------------------------------------
 
     // TODO: find how to use asm_gen for future passes
-    let (mut assembly_ast, _asm_gen) = wacky_to_assembly(wacky_ir, counter);
+    let (mut assembly_ast, _asm_gen) = wacky_to_assembly(wacky_ir, counter, symbol_table);
     if args.assembly {
         println!("{assembly_ast:#?}");
         return ExitCode::SUCCESS;

@@ -25,7 +25,10 @@ type TypedPairElem = PairElem<RenamedName, SemanticType>;
 // I can probably take it in by reference but I'd prefer not to clone
 #[must_use]
 #[inline]
-pub fn lower_program(program: TypedAST, type_resolver: TypeResolver) -> (WackProgram, usize) {
+pub fn lower_program(
+    program: TypedAST,
+    type_resolver: TypeResolver,
+) -> (WackProgram, usize, HashMap<WackTempIdent, WackType>) {
     let mut ctx = AstLoweringCtx::new_from(type_resolver);
     let mut main_body = Vec::new();
     ctx.lower_stat_block(program.body, &mut main_body);
@@ -41,7 +44,7 @@ pub fn lower_program(program: TypedAST, type_resolver: TypeResolver) -> (WackPro
         main_body,
     };
 
-    (wack_program, ctx.ident_counter())
+    (wack_program, ctx.ident_counter(), ctx.get_symbol_table())
 }
 
 /* ================== INTERNAL API ================== */
@@ -166,6 +169,10 @@ pub(crate) mod ast_lowering_ctx {
 
         pub(crate) const fn ident_counter(&self) -> usize {
             self.ident_counter
+        }
+
+        pub(crate) fn get_symbol_table(&self) -> HashMap<WackTempIdent, WackType> {
+            self.symbol_table.clone()
         }
 
         #[allow(clippy::arithmetic_side_effects)]
@@ -661,12 +668,10 @@ pub(crate) mod ast_lowering_ctx {
             instructions: &mut Vec<WackInstr>,
         ) -> WackValue {
             // get array name: the pointer to the beginning, and the element type
-            //
-            let mut src_array_ptr =
-                WackValue::Var(array_elem.array_name.clone().into_inner().into());
+            let mut src_array_ptr: WackTempIdent = array_elem.array_name.into_inner().into();
             let mut array_type = self
                 .symbol_table
-                .get(&array_elem.array_name.into_inner().into())
+                .get(&src_array_ptr)
                 .expect("This symbol should always be found, unless a previous stage has bugs.")
                 .clone();
 
@@ -675,7 +680,7 @@ pub(crate) mod ast_lowering_ctx {
             let mut index = elem_ix_iter.next().unwrap().into_inner();
 
             // track output element pointer
-            let mut elem_dst_ptr: WackValue;
+            let mut elem_dst_ptr: WackTempIdent;
             loop {
                 // obtain index value, and the corresponding element type (for the scale)
                 let index_value = self.lower_expr(index.clone(), instructions);
@@ -684,11 +689,10 @@ pub(crate) mod ast_lowering_ctx {
                 let scale = array_elem_type.size_of();
 
                 // obtain pointer to element
-                // TODO: unsure if we add the Type or Pointer, for now do Pointer
                 elem_dst_ptr =
-                    self.make_wacky_variable(WackType::Pointer(Box::new(array_elem_type.clone())));
+                    self.make_temporary(WackType::Pointer(Box::new(array_elem_type.clone())));
                 instructions.push(WackInstr::ArrayAccess {
-                    src_array_ptr: src_array_ptr.clone(),
+                    src_array_ptr: WackValue::Var(src_array_ptr.clone()),
                     index: index_value,
                     scale,
                     dst_elem_ptr: elem_dst_ptr.clone(),
@@ -698,10 +702,11 @@ pub(crate) mod ast_lowering_ctx {
                 // dereference it to obtain another array, and set up for another loop;
                 if let Some(next_index) = elem_ix_iter.next() {
                     // update `src_array_pointer` by dereferencing the `elem_dst_ptr`
-                    src_array_ptr = self.make_wacky_variable(array_elem_type.clone());
+                    src_array_ptr =
+                        self.make_temporary(WackType::Pointer(Box::new(array_elem_type.clone())));
                     instructions.push(WackInstr::Load {
-                        src_ptr: elem_dst_ptr.clone(),
-                        dst: src_array_ptr.clone(),
+                        src_ptr: WackValue::Var(elem_dst_ptr.clone()),
+                        dst: WackValue::Var(src_array_ptr.clone()),
                     });
 
                     // load up the next index, and update base array's type
@@ -712,13 +717,13 @@ pub(crate) mod ast_lowering_ctx {
                     // semantic type; if it does, there is a bug in the frontend
                     // TODO: it may be the case that element types can be coerced safely to the
                     //       overall array type, so this assert may trigger false-positives
-                    // assert_eq!(array_elem_type, sem_type.into());
+                    assert_eq!(array_elem_type, sem_type.into());
                     break;
                 }
             }
 
             // return variable holding pointer to element
-            elem_dst_ptr
+            WackValue::Var(elem_dst_ptr)
         }
 
         // Very confusing but converts a syntax literal to Wacky Value
