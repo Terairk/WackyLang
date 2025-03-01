@@ -289,14 +289,21 @@ pub(crate) mod ast_lowering_ctx {
                 TypedStat::Free(expr) => {
                     // get value and typecheck
                     let sem_ty = expr.inner().get_type();
-                    let (value, wack_ty) = self.lower_expr(expr.into_inner(), instructions);
-                    assert_eq!(WackType::from_semantic_type(sem_ty.clone()), wack_ty);
+                    let (value, wack_ptr_ty) = self.lower_expr(expr.into_inner(), instructions);
+                    assert_eq!(WackType::from_semantic_type(sem_ty), wack_ptr_ty);
 
                     // perform either checked or unchecked free based on type
-                    let instr = match wack_ty {
+                    let wack_derefed_ty = WackPointerType::try_from_wack_type(wack_ptr_ty.clone())
+                        .expect("Only pointer-types can be freed")
+                        .deref_type()
+                        .expect("We can only free typed pointers");
+                    let instr = match wack_derefed_ty {
                         WackType::Pair(_, _) => WackInstr::FreeChecked(value),
                         WackType::Array(_) => WackInstr::FreeUnchecked(value),
-                        _ => unreachable!("free value should be a pair or array"),
+                        _ => unreachable!(
+                            "free value should be a pointer to pair or array, but found {:#?}",
+                            wack_ptr_ty
+                        ),
                     };
                     instructions.push(instr);
                 }
@@ -656,14 +663,14 @@ pub(crate) mod ast_lowering_ctx {
                 .deref_type()
                 .expect("The pointer should be typed, adn of raw-pair-value type");
             // SAFETY: if there are no bugs in the frontend typechecking, this should never fail
-            let elem_types = unsafe { raw_newpair_ty.into_pair_elem_types() };
+            let (fst_elem_type, snd_elem_type) = unsafe { raw_newpair_ty.into_pair_elem_types() };
 
             // compute the amount of memory this pair literal needs:
             //   `alloc_size_bytes = fst_bytes + snd_bytes`
             // the pair is stored on the heap as two directly-adjacent regions of memory
             // which represent either the first or second elements, respectively.
-            let fst_bytes = elem_types.0.try_size_of().unwrap();
-            let snd_bytes = elem_types.1.try_size_of().unwrap();
+            let fst_bytes = fst_elem_type.try_size_of().unwrap();
+            let snd_bytes = snd_elem_type.try_size_of().unwrap();
             let alloc_size_bytes = fst_bytes + snd_bytes;
 
             //  allocate enough memory on the heap to store both elements and of the pair
@@ -676,22 +683,47 @@ pub(crate) mod ast_lowering_ctx {
             // it should never be the case that these types disagree
             // TODO: it may be the case that element types can be coerced safely to the
             //       overall pair type, so this assert may trigger false-positives
-            assert_eq!(
-                WackType::from_semantic_type(elems.0.get_type()),
-                elem_types.0
-            );
-            assert_eq!(
-                WackType::from_semantic_type(elems.1.get_type()),
-                elem_types.1
-            );
+            let fst_target_ty = WackType::from_semantic_type(elems.0.get_type());
+            let snd_target_ty = WackType::from_semantic_type(elems.1.get_type());
+            match (fst_target_ty.clone(), fst_elem_type.clone()) {
+                (
+                    WackType::Pointer(WackPointerType::Any),
+                    WackType::Pointer(WackPointerType::Any),
+                ) => {}
+                // a pointer is allowed to "cast" to untyped pointer if the target type is erased pair
+                (
+                    WackType::Pointer(WackPointerType::Of(inner)),
+                    WackType::Pointer(WackPointerType::Any),
+                ) => match *inner {
+                    WackType::Pair(_, _) => {}
+                    _ => assert_eq!(fst_target_ty, fst_elem_type),
+                },
+                (_, _) => assert_eq!(fst_target_ty, fst_elem_type),
+            }
+            match (snd_target_ty.clone(), snd_elem_type.clone()) {
+                // TODO: rewrite this pointer-casting with less boilerplate
+                (
+                    WackType::Pointer(WackPointerType::Any),
+                    WackType::Pointer(WackPointerType::Any),
+                ) => {}
+                // a pointer is allowed to "cast" to untyped pointer if the target type is erased pair
+                (
+                    WackType::Pointer(WackPointerType::Of(inner)),
+                    WackType::Pointer(WackPointerType::Any),
+                ) => match *inner {
+                    WackType::Pair(_, _) => {}
+                    _ => assert_eq!(snd_target_ty, snd_elem_type),
+                },
+                (_, _) => assert_eq!(snd_target_ty, snd_elem_type),
+            }
 
             // evaluate expressions of both elements, ensure matching types
             let ((fst_value, fst_ty), (snd_value, snd_ty)) = (
                 self.lower_expr(elems.0, instructions),
                 self.lower_expr(elems.1, instructions),
             );
-            assert_eq!(elem_types.0, fst_ty);
-            assert_eq!(elem_types.1, snd_ty);
+            assert_eq!(fst_target_ty, fst_ty);
+            assert_eq!(snd_target_ty, snd_ty);
 
             // insert each element to their corresponding slots in the allocated pair
             let mut offset = 0; // the first element has zero-offset from start of pair
@@ -765,6 +797,9 @@ pub(crate) mod ast_lowering_ctx {
             sem_type: SemanticType,
             instructions: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackPointerType) {
+            // we are returning a POINTER to the target type, rather than the target type itself
+            let target_type = WackType::pointer_of(WackType::from_semantic_type(sem_type));
+
             // get array name: the pointer to the beginning, and the element type
             let mut src_array_ptr: WackTempIdent = array_elem.array_name.into_inner().into();
             let mut array_ptr_ty = self
@@ -827,7 +862,7 @@ pub(crate) mod ast_lowering_ctx {
                     // semantic type; if it does, there is a bug in the frontend
                     // TODO: it may be the case that element types can be coerced safely to the
                     //       overall array type, so this assert may trigger false-positives
-                    assert_eq!(elem_ptr_ty_wrapped, WackType::from_semantic_type(sem_type));
+                    assert_eq!(elem_ptr_ty_wrapped, target_type);
                     break;
                 }
             }
