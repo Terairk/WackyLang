@@ -301,7 +301,7 @@ pub(crate) mod ast_lowering_ctx {
                     // get value and typecheck
                     let sem_ty = expr.inner().get_type();
                     let (value, wack_ty) = self.lower_expr(expr.into_inner(), instructions);
-                    assert_eq!(WackType::from_semantic_type(sem_ty.clone()), wack_ty);
+                    assert_eq!(WackType::from_semantic_type(sem_ty), wack_ty);
 
                     // push return instruction
                     let instr = WackInstr::Return(value);

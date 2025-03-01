@@ -116,6 +116,18 @@ impl WackType {
         // extract the semantic types
         match self {
             Self::Pair(fst, snd) => (*fst, *snd),
+
+            //
+            // TODO: this was copied from the semantic-version of the same function: update this function somehow to reflect the same changes
+            //
+            // // TODO: Check if it correct
+            // // According to the Spec, we should allow one side of the assignments to be untyped, i.e.:
+            // // pair(int, pair) q = ... ;
+            // // int x = fst snd q is valid even if we don't know the type during compile time
+            // // It may fail runtime due to incorrect types, but we should not care here
+            // // So assume it's AnyType, we should fail somewhere later if it's incorrect(I think)
+            // Self::ErasedPair => (SemanticType::AnyType, SemanticType::AnyType),
+            //
             _ => unreachable!("The type is assumed to be pair, but wasn't."),
         }
     }
