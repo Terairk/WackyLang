@@ -39,6 +39,7 @@ impl-trait-for-tuples = "0.2"
 clap = "4.5"
 bitflags = "2.8"
 # Utility dependencies
+itertools = "0.14"
 thiserror = "2"
 internment = "0.8"
 recursion = "0.5"

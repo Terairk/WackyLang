@@ -2,7 +2,7 @@
 // that our code will then call.
 
 use crate::assembly_ast::{
-    AsmBinaryOperator::*, AsmFunction, AsmInstruction, AsmProgram, AsmUnaryOperator::*, Directive,
+    AsmBinaryOperator::*, AsmFunction, AsmProgram, AsmUnaryOperator::*, Directive,
 };
 use crate::assembly_ast::{
     AsmInstruction::*, AssemblyType::*, CondCode::*, Operand::*, Register::*,
@@ -10,7 +10,7 @@ use crate::assembly_ast::{
 
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use util::gen_flags::{GenFlags, get_flags_gbl, rewrite_global_flag};
+use util::gen_flags::{get_flags_gbl, rewrite_global_flag, GenFlags};
 
 #[inline]
 pub fn generate_predefined(program: &mut AsmProgram) {

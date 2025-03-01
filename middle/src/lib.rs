@@ -1,5 +1,10 @@
+// enable Rust-unstable features for convenience
+#![feature(trait_alias)]
+#![feature(stmt_expr_attributes)]
+
 pub mod ast_transform;
-pub mod wack_type;
+pub mod types;
+pub mod types_future_playground;
 pub mod wackir;
 
 #[inline]

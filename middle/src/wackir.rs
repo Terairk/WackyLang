@@ -83,9 +83,9 @@
 
 use internment::ArcIntern;
 use std::fmt::{self, Debug};
-use std::hash::{Hash, Hasher};
-use std::ops::{Deref, DerefMut};
-use syntax::{ast, types::SemanticType};
+use std::hash::Hash;
+use syntax::ast;
+use syntax::types::SemanticType;
 
 // Treat WackFunction's slightly differently from main
 #[derive(Clone)]
@@ -111,32 +111,32 @@ pub enum WackInstr {
     /// This instruction returns a value from within a function body.
     Return(WackValue),
 
-    /// Extends a 32-bit signed integer value to a 64-bit signed integer value,
-    /// preserving the sign-bit in the process.
-    SignExtend {
-        src: WackValue,
-        dst: WackValue,
-    },
+    // /// Extends a 32-bit signed integer value to a 64-bit signed integer value,
+    // /// preserving the sign-bit in the process.
+    // SignExtend {
+    //     src: WackValue,
+    //     dst: WackValue,
+    // }, // TODO: uncomment when its _actually_ needed
 
-    /// Converts a 64-bit integer value to a 32-bit integer value, by moving the
-    /// lowest 4 bytes to the [`dst`].
-    Truncate {
-        src: WackValue,
-        dst: WackValue,
-    },
+    // /// Converts a 64-bit integer value to a 32-bit integer value, by moving the
+    // /// lowest 4 bytes to the [`dst`].
+    // Truncate {
+    //     src: WackValue,
+    //     dst: WackValue,
+    // }, // TODO: uncomment when its _actually_ needed
 
-    /// Extends a 32-bit integer value to a 64-bit integer value, by filling the
-    /// new highest 4 bytes with zeros, without regard to any sign-bit in [`src`].
-    ZeroExtend {
-        src: WackValue,
-        dst: WackValue,
-    },
-
+    // /// Extends a 32-bit integer value to a 64-bit integer value, by filling the
+    // /// new highest 4 bytes with zeros, without regard to any sign-bit in [`src`].
+    // ZeroExtend {
+    //     src: WackValue,
+    //     dst: WackValue,
+    // }, // TODO: uncomment when its _actually_ needed
+    //
     /// USAGE: `dst = op(src)`
     Unary {
         op: UnaryOp,
         src: WackValue,
-        dst: WackValue,
+        dst: WackTempIdent, // you can only store into an identifier
     },
 
     /// USAGE: `dst = op(src1, src2)`
@@ -144,39 +144,39 @@ pub enum WackInstr {
         op: BinaryOp,
         src1: WackValue,
         src2: WackValue,
-        dst: WackValue,
+        dst: WackTempIdent, // you can only store into an identifier
     },
 
     /// USAGE: `dst = src`
     Copy {
         src: WackValue,
-        dst: WackValue,
+        dst: WackTempIdent, // you can only store into an identifier
     },
 
-    /// USAGE: `dst = &src`
-    ///
-    /// NOTE: [`src`] must be a variable, not constant.
-    GetAddress {
-        src: WackValue,
-        dst: WackValue,
-    },
-
+    // /// USAGE: `dst = &src`
+    // ///
+    // /// NOTE: [`src`] must be a variable, not constant.
+    // GetAddress {
+    //     src: WackValue,
+    //     dst: WackValue,
+    // }, // TODO: uncomment when its _actually_ needed
+    //
     /// USAGE: `dst = *src_ptr`
     ///
     /// NOTE: [`src_ptr`] must be a pointer/memory address.h
     Load {
         src_ptr: WackValue,
-        dst: WackValue,
+        dst: WackTempIdent, // you can only store into an identifier
     },
 
-    /// USAGE: `*dst_ptr = src`
-    ///
-    /// NOTE: [`dst_ptr`] must be a pointer/memory address.
-    Store {
-        src: WackValue,
-        dst_ptr: WackValue,
-    },
-
+    // /// USAGE: `*dst_ptr = src`
+    // ///
+    // /// NOTE: [`dst_ptr`] must be a pointer/memory address.
+    // Store {
+    //     src: WackValue,
+    //     dst_ptr: WackValue,
+    // },  // TODO: uncomment when its _actually_ needed
+    //
     /// USAGE: `dst_ptr = offset + src_ptr + (index * scale)`
     ///
     /// NOTE: [`src_ptr`] and [`dst_ptr`] must be a pointers/memory addresses;
@@ -190,7 +190,7 @@ pub enum WackInstr {
         index: WackValue,
         scale: usize,
         offset: usize,
-        dst_ptr: WackTempIdent,
+        dst_ptr: WackTempIdent, // you can only store into an identifier
     },
 
     /// Copies the bytes of scalar value represented by [`src`], to the memory location (plus offset)
@@ -203,17 +203,17 @@ pub enum WackInstr {
     /// It can be seen as an automated version of C's `memcpy`.
     CopyToOffset {
         src: WackValue,
-        dst: WackTempIdent,
+        dst: WackTempIdent, // you can only store into an identifier
         offset: usize,
     },
 
-    /// ??
-    CopyFromOffset {
-        src: WackTempIdent,
-        dst: WackValue,
-        offset: u32,
-    },
-
+    // /// ??
+    // CopyFromOffset {
+    //     src: WackTempIdent,
+    //     dst: WackValue,
+    //     offset: u32,
+    // }, // TODO: uncomment when its _actually_ needed
+    //
     /// Performs checked array-access, indexing into the array at [`src_array_ptr`] and storing
     /// the pointer of the element corresponding to [`index`] into the [`dst_elem_ptr`] operand.
     ///
@@ -224,27 +224,27 @@ pub enum WackInstr {
         src_array_ptr: WackValue,
         index: WackValue,
         scale: usize,
-        dst_elem_ptr: WackTempIdent,
+        dst_elem_ptr: WackTempIdent, // you can only store into an identifier
     },
 
     Jump(WackTempIdent),
     JumpIfZero {
         condition: WackValue,
-        target: WackTempIdent,
+        target: WackTempIdent, // you can only store into an identifier
     },
     JumpIfNotZero {
         condition: WackValue,
-        target: WackTempIdent,
+        target: WackTempIdent, // you can only store into an identifier
     },
     Label(WackTempIdent),
     FunCall {
         fun_name: WackGlobIdent,
         args: Vec<WackValue>,
-        dst: WackValue,
+        dst: WackTempIdent, // you can only store into an identifier
     },
     Read {
-        dst: WackValue,
-        ty: SemanticType,
+        dst: WackTempIdent, // you can only store into an identifier
+        ty: WackReadType,
     },
     /// Allocates [`size`] bytes on the heap (or crashes with out-of-memory runtime error) and
     /// stores the memory address of the start of the allocated memory-region in [`dst`].
@@ -252,7 +252,7 @@ pub enum WackInstr {
     /// It can be seen as an automated version of C's `malloc`.
     Alloc {
         size: usize,
-        dst_ptr: WackValue,
+        dst_ptr: WackTempIdent, // you can only store into an identifier
     },
 
     /// This frees the memory associated with the pointer that the value holds, without
@@ -272,11 +272,11 @@ pub enum WackInstr {
     Exit(WackValue),
     Print {
         src: WackValue,
-        ty: SemanticType,
+        ty: WackPrintType,
     },
     Println {
         src: WackValue,
-        ty: SemanticType,
+        ty: WackPrintType,
     },
 }
 
@@ -319,6 +319,59 @@ impl WackInstr {
             scale,
             offset: Self::DEFAULT_ADD_PTR_OFFSET,
             dst_ptr,
+        }
+    }
+}
+
+/// A type-argument to the read instruction: this is a type-hint purely, the underlying data
+/// could be of any type - for decoupling concerns since it doesn't need to be nested
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WackReadType {
+    Int,
+    Char,
+}
+
+impl WackReadType {
+    pub fn from_semantic_type(semantic_ty: SemanticType) -> Result<Self, Box<str>> {
+        match semantic_ty {
+            SemanticType::Int => Ok(Self::Int),
+            SemanticType::Char => Ok(Self::Char),
+            _ => Err(format!("incorrect semantic type found `{}`", semantic_ty).into()),
+        }
+    }
+}
+
+/// A type-argument to the print instruction: this is a type-hint purely, the underlying data
+/// could be of any type - for decoupling concerns since it doesn't need to be nested
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WackPrintType {
+    Int,
+    Bool,
+    Char,
+    StringOrCharArray,
+    OtherArray,
+    /// If null-ptr, must print "nil"
+    Pair,
+}
+
+impl WackPrintType {
+    pub fn from_semantic_type(semantic_ty: SemanticType) -> Result<Self, Box<str>> {
+        match semantic_ty {
+            SemanticType::Int => Ok(Self::Int),
+            SemanticType::Bool => Ok(Self::Bool),
+            SemanticType::Char => Ok(Self::Char),
+            SemanticType::String => Ok(Self::StringOrCharArray),
+            SemanticType::Array(inner_ty) => match &*inner_ty {
+                SemanticType::Char => Ok(Self::StringOrCharArray),
+                SemanticType::AnyType | SemanticType::Error(_) => {
+                    Err(format!("found error/any semantic type `{}`", inner_ty).into())
+                }
+                _ => Ok(Self::OtherArray),
+            },
+            SemanticType::Pair(_, _) | SemanticType::ErasedPair => Ok(Self::Pair),
+            SemanticType::AnyType | SemanticType::Error(_) => {
+                Err(format!("found error/any semantic type `{}`", semantic_ty).into())
+            }
         }
     }
 }
@@ -529,14 +582,9 @@ pub mod wack_char {
     }
 }
 
-// #[derive(Clone, Debug, PartialEq, Eq)]
-// #[repr(transparent)]
-// pub struct WackBool(pub u8);
-
 // I know that these are the same as the ones in ast.rs but I'm not sure if I want to
 // couple them together or not. For now I'll separate them just in case I need to move
 // Len, Ord, Chr somewhere else
-// TODO: just use the UnaryOper from ast.rs
 #[derive(Clone, Debug)]
 pub enum UnaryOp {
     Not,
@@ -688,8 +736,8 @@ pub struct WackTempIdent(ast::Ident, usize);
 
 // impls relating to `WackTempIdent`
 pub mod wack_temp_ident {
-    use crate::ast_transform::AstLoweringCtx;
     use crate::ast_transform::ast_lowering_ctx::With;
+    use crate::ast_transform::AstLoweringCtx;
     use crate::wackir::WackTempIdent;
     use std::fmt;
     use std::fmt::{Debug, Formatter};
@@ -810,9 +858,9 @@ impl fmt::Debug for WackInstr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Return(val) => write!(f, "Return({:?})", val),
-            Self::ZeroExtend { src, dst } => {
-                write!(f, "ZeroExtend {{ src: {:?}, dst: {:?} }}", src, dst)
-            }
+            // Self::ZeroExtend { src, dst } => {
+            //     write!(f, "ZeroExtend {{ src: {:?}, dst: {:?} }}", src, dst)
+            // } // TODO: uncomment when its _actually_ needed
             Self::Unary { op, src, dst } => write!(
                 f,
                 "Unary {{ op: {:?}, src: {:?}, dst: {:?} }}",
@@ -834,9 +882,9 @@ impl fmt::Debug for WackInstr {
             Self::Load { src_ptr, dst } => {
                 write!(f, "Load {{ src_ptr: {:?}, dst: {:?} }}", src_ptr, dst)
             }
-            Self::Store { src, dst_ptr } => {
-                write!(f, "Store {{ src: {:?}, dst_ptr: {:?} }}", src, dst_ptr)
-            }
+            // Self::Store { src, dst_ptr } => {
+            //     write!(f, "Store {{ src: {:?}, dst_ptr: {:?} }}", src, dst_ptr)
+            // } // TODO: uncomment when its _actually_ needed
             Self::AddPtr {
                 src_ptr,
                 index,
@@ -853,11 +901,11 @@ impl fmt::Debug for WackInstr {
                 "CopyToOffset {{ src: {:?}, dst: {:?}, offset: {:?} }}",
                 src, dst, offset
             ),
-            Self::CopyFromOffset { src, offset, dst } => write!(
-                f,
-                "CopyFromOffset {{ src: {:?}, offset: {:?}, dst: {:?} }}",
-                src, offset, dst
-            ),
+            // Self::CopyFromOffset { src, offset, dst } => write!(
+            //     f,
+            //     "CopyFromOffset {{ src: {:?}, offset: {:?}, dst: {:?} }}",
+            //     src, offset, dst
+            // ), // TODO: uncomment when its _actually_ needed
             Self::Jump(target) => write!(f, "Jump({:?})", target),
             Self::JumpIfZero { condition, target } => write!(
                 f,
@@ -891,29 +939,22 @@ impl fmt::Debug for WackInstr {
             Self::Println { src, ty } => {
                 write!(f, "Println {{ src: {:?}, ty: {:?} }}", src, ty)
             }
-            Self::SignExtend { src, dst } => {
-                write!(f, "SignExtend {{ src: {:?}, dst: {:?} }}", src, dst)
-            }
-            Self::Truncate { src, dst } => {
-                write!(f, "Truncate {{ src: {:?}, dst: {:?} }}", src, dst)
-            }
-            Self::NullPtrGuard(val) => write!(f, "NullPtrGuard({:?})", val),
-            Self::Alloc { size, dst_ptr } => {
-                write!(f, "Alloc {{ size: {:?}, dst_ptr: {:?} }}", size, dst_ptr)
-            }
             Self::ArrayAccess {
                 src_array_ptr,
                 index,
                 scale,
                 dst_elem_ptr,
-            } => write!(
-                f,
-                "ArrayAccess {{ src_array_ptr: {:?}, index: {:?}, scale: {:?}, dst_elem_ptr: {:?} }}",
-                src_array_ptr, index, scale, dst_elem_ptr
-            ),
-            Self::GetAddress { src, dst } => {
-                write!(f, "GetAddress {{ src: {:?}, dst: {:?} }}", src, dst)
+            } => {
+                write!(
+                    f,
+                    "ArrayAccess {{ src_array_ptr: {:?}, index: {:?}, scale: {:?}, dst_elem_ptr: {:?} }}",
+                    src_array_ptr, index, scale, dst_elem_ptr
+                )
             }
+            Self::Alloc { size, dst_ptr } => {
+                write!(f, "Alloc {{ size: {:?}, dst_ptr: {:?} }}", size, dst_ptr)
+            }
+            Self::NullPtrGuard(ptr) => write!(f, "NullPtrGuard {{ ptr: {:?} }}", ptr),
         }
     }
 }

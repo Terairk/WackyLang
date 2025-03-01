@@ -258,6 +258,7 @@ impl Folder for TypeResolver {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     #[inline]
     fn fold_stat(&mut self, stat: Stat<Self::N, Self::T>) -> Stat<Self::OutputN, Self::OutputT> {
         match stat {
@@ -269,21 +270,30 @@ impl Folder for TypeResolver {
             } => self.fold_var_definition(r#type, name, rvalue),
             Stat::Assignment { lvalue, rvalue } => {
                 let resolved_lvalue = self.fold_lvalue(lvalue);
-                let resolved_rvalue = self.fold_rvalue(rvalue);
+                let mut resolved_rvalue = self.fold_rvalue(rvalue);
                 let resolved_lval_type = resolved_lvalue.get_type(self);
                 let resolved_rval_type = resolved_rvalue.get_type(self);
                 if resolved_lval_type == SemanticType::AnyType
                     && resolved_rval_type == SemanticType::AnyType
                 {
+                    // check for double-Any errors
                     self.add_error(SemanticError::AssignmentWithBothSidesUnknown(
                         resolved_lvalue.span(),
                     ));
-                } else if !&resolved_rval_type.can_coerce_into(&resolved_lval_type) {
-                    self.add_error(TypeMismatch(
-                        resolved_rvalue.span(),
-                        resolved_rvalue.get_type(self),
-                        resolved_lvalue.get_type(self),
-                    ));
+                } else {
+                    // try to coerce, or fail and emmit error
+                    resolved_rvalue =
+                        match resolved_rvalue.try_coerce_into(resolved_lval_type, self) {
+                            Ok(new) => new,
+                            Err((old, resolved_rval_type)) => {
+                                self.add_error(TypeMismatch(
+                                    old.span(),
+                                    resolved_rval_type,
+                                    resolved_lvalue.get_type(self),
+                                ));
+                                old
+                            }
+                        };
                 }
                 Stat::Assignment {
                     lvalue: resolved_lvalue,
@@ -388,14 +398,21 @@ impl Folder for TypeResolver {
     ) -> Stat<Self::OutputN, Self::OutputT> {
         let expected_type = r#type.to_semantic_type();
         let resolved_rvalue = self.fold_rvalue(rvalue);
-        let resolved_type = resolved_rvalue.get_type(self);
-        if !resolved_type.can_coerce_into(&expected_type) {
-            self.add_error(TypeMismatch(
-                resolved_rvalue.span(),
-                resolved_type.clone(),
-                expected_type.clone(),
-            ));
-        }
+
+        // try to coerce the resolved rvalue, or add error
+        let resolved_rvalue = match resolved_rvalue.try_coerce_into(expected_type.clone(), self) {
+            Ok(new) => new,
+            Err((old, resolved_type)) => {
+                self.add_error(TypeMismatch(
+                    old.span(),
+                    resolved_type,
+                    expected_type.clone(),
+                ));
+                old
+            }
+        };
+
+        // insert into symbol table and return folded variable definition
         self.symid_table.insert(name.inner().clone(), expected_type);
         Stat::VarDefinition {
             r#type,

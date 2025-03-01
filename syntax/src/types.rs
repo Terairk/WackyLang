@@ -220,6 +220,8 @@ impl SemanticType {
         from == to
     }
 
+    #[must_use]
+    #[inline]
     pub fn can_coerce_into(&self, to: &SemanticType) -> bool {
         use SemanticType::*;
 
@@ -298,9 +300,15 @@ impl SemanticType {
             // int x = fst snd q is valid even if we don't know the type during compile time
             // It may fail runtime due to incorrect types, but we should not care here
             // So assume it's AnyType, we should fail somewhere later if it's incorrect(I think)
-            Self::ErasedPair => (SemanticType::AnyType, SemanticType::AnyType), 
+            Self::ErasedPair => (SemanticType::AnyType, SemanticType::AnyType),
             _ => unreachable!("The type is assumed to be pair, but wasn't."),
         }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn array(elem: Self) -> Self {
+        Self::Array(Box::new(elem))
     }
 }
 

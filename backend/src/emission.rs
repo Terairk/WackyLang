@@ -1,6 +1,5 @@
 use core::panic;
 use std::collections::BTreeMap;
-use util::gen_flags::get_flags_gbl;
 
 use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AsmUnaryOperator, AssemblyType,

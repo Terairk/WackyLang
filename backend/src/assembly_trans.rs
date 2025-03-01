@@ -10,13 +10,13 @@ use crate::predefined::{
     inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln, inbuiltReadChar,
     inbuiltReadInt,
 };
-use middle::wack_type::WackType;
+use middle::types::{BitWidth, WackType};
 use middle::wackir::{
-    BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackProgram, WackTempIdent, WackValue,
+    BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackPrintType, WackProgram,
+    WackReadType, WackTempIdent, WackValue,
 };
 use std::collections::{BTreeMap, HashMap};
-use syntax::types::SemanticType;
-use util::gen_flags::{GenFlags, insert_flag_gbl};
+use util::gen_flags::{insert_flag_gbl, GenFlags};
 /* ================== PUBLIC API ================== */
 
 #[inline]
@@ -54,13 +54,25 @@ pub struct AsmGen {
     // So we automatically know if we should use PLT or not
 }
 
-const fn convert_type(ty: &WackType) -> AssemblyType {
+fn convert_type(ty: &WackType) -> AssemblyType {
     use AssemblyType::{Byte, Longword, Quadword};
-    use WackType::{Array, Bool, Char, ErasedPair, Int, Pair, Pointer, String};
-    match *ty {
-        Int => Longword,
-        Bool | Char => Byte,
-        String | Array(_) | Pair(_, _) | ErasedPair | Pointer(_) => Quadword,
+
+    match ty {
+        WackType::Int { width } => match width {
+            BitWidth::W8 => Byte,
+            BitWidth::W16 => {
+                unimplemented!("The assembly typesystem does not support 16-bit width integers yet")
+            }
+            BitWidth::W32 => Longword,
+            BitWidth::W64 => Quadword,
+        },
+        WackType::Label | WackType::Pointer(_) => Quadword, // labels are pointers to code
+        WackType::Array(_) => unimplemented!(
+            "The Wack::Array <-> AssemblyType::ByteArray conversion is not implemented yet"
+        ),
+        WackType::Pair(_, _) => {
+            unimplemented!("The AssemblyType system does not support raw pair-types yet")
+        }
     }
 }
 
@@ -111,7 +123,7 @@ impl AsmGen {
 
     fn lower_main_asm(&mut self, instrs: Vec<WackInstr>) -> AsmFunction {
         use AsmInstruction::{Mov, Pop, Push, Ret};
-        use AssemblyType::{Longword, Quadword};
+        use AssemblyType::Quadword;
         use Operand::Reg;
         use Register::{BP, SP};
         let mut asm_instructions = Vec::new();
@@ -210,10 +222,10 @@ impl AsmGen {
     /// TODO: Fix bug with printing null pointer
     /// Lowering value doesn't differentiate between null pointer and 0
     /// So, we should add special value to Operand
-    fn lower_print(&mut self, src: WackValue, ty: SemanticType, asm: &mut Vec<AsmInstruction>) {
+    fn lower_print(&mut self, src: WackValue, ty: WackPrintType, asm: &mut Vec<AsmInstruction>) {
         let operand = self.lower_value(src, asm);
         let func_name = match ty {
-            SemanticType::Int => {
+            WackPrintType::Int => {
                 asm.push(AsmInstruction::Mov {
                     typ: Longword,
                     src: operand,
@@ -222,7 +234,7 @@ impl AsmGen {
                 insert_flag_gbl(GenFlags::PRINT_INT);
                 inbuiltPrintInt.to_owned()
             }
-            SemanticType::Bool => {
+            WackPrintType::Bool => {
                 asm.push(AsmInstruction::Mov {
                     typ: AssemblyType::Byte,
                     src: operand,
@@ -231,7 +243,7 @@ impl AsmGen {
                 insert_flag_gbl(GenFlags::PRINT_BOOLEAN);
                 inbuiltPrintBool.to_owned()
             }
-            SemanticType::Char => {
+            WackPrintType::Char => {
                 asm.push(AsmInstruction::Mov {
                     typ: AssemblyType::Byte,
                     src: operand,
@@ -240,7 +252,7 @@ impl AsmGen {
                 insert_flag_gbl(GenFlags::PRINT_CHR);
                 inbuiltPrintChar.to_owned()
             }
-            SemanticType::String => {
+            WackPrintType::StringOrCharArray => {
                 asm.push(AsmInstruction::Lea {
                     src: operand,
                     dst: Operand::Reg(DI),
@@ -248,20 +260,21 @@ impl AsmGen {
                 insert_flag_gbl(GenFlags::PRINT_STR);
                 inbuiltPrintString.to_owned()
             }
-            SemanticType::Array(_) | SemanticType::Pair(_, _) | SemanticType::ErasedPair => {
+            WackPrintType::OtherArray | WackPrintType::Pair => {
                 asm.push(AsmInstruction::Lea {
                     src: operand,
                     dst: Operand::Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::PRINT_PTR);
                 inbuiltPrintPtr.to_owned()
+
+                //TODO: does this print `nil` for null pointers??
             }
-            SemanticType::AnyType => panic!("AnyType in print"),
-            SemanticType::Error(_) => panic!("Error type in print"),
         };
         asm.push(AsmInstruction::Call(func_name, false));
     }
 
+    #[allow(clippy::too_many_lines)]
     fn lower_instruction(&mut self, instr: WackInstr, asm: &mut Vec<AsmInstruction>) {
         use AsmInstruction as Asm;
         use AssemblyType::{Longword, Quadword};
@@ -310,7 +323,7 @@ impl AsmGen {
             Copy { src, dst } => {
                 let src_typ = self.get_asm_type(&src);
                 let src_operand = self.lower_value(src, asm);
-                let dst_operand = self.lower_value(dst, asm);
+                let dst_operand = self.lower_value(WackValue::Var(dst), asm);
                 asm.push(Asm::Mov {
                     typ: src_typ,
                     src: src_operand,
@@ -354,15 +367,14 @@ impl AsmGen {
                     dst: Operand::Reg(DI),
                 });
                 match ty {
-                    SemanticType::Int => {
+                    WackReadType::Int => {
                         insert_flag_gbl(GenFlags::READ_INT);
                         asm.push(AsmInstruction::Call(inbuiltReadInt.to_owned(), false));
                     }
-                    SemanticType::Char => {
+                    WackReadType::Char => {
                         insert_flag_gbl(GenFlags::READ_CHR);
                         asm.push(AsmInstruction::Call(inbuiltReadChar.to_owned(), false));
                     }
-                    _ => unreachable!(), // anything else should be caught in frontend
                 }
             }
             WackInstr::FreeUnchecked(value) => {
@@ -523,14 +535,13 @@ impl AsmGen {
                     src: Operand::Reg(Register::R9),
                     dst: dst_ptr_operand,
                 });
-            }
-            _ => unimplemented!(),
-            // WackInstr::SignExtend { .. } => {}
-            // WackInstr::Truncate { .. } => {}
-            // WackInstr::ZeroExtend { .. } => {}
-            // WackInstr::GetAddress { .. } => {}
-            // WackInstr::Store { .. } => {}
-            // WackInstr::CopyFromOffset { .. } => {} ?
+            } // _ => unimplemented!(), // The following instructions are (for now) deleted
+              // WackInstr::SignExtend { .. } => {}
+              // WackInstr::Truncate { .. } => {}
+              // WackInstr::ZeroExtend { .. } => {}
+              // WackInstr::GetAddress { .. } => {}
+              // WackInstr::Store { .. } => {}
+              // WackInstr::CopyFromOffset { .. } => {} ?
         }
     }
 
@@ -538,11 +549,11 @@ impl AsmGen {
         &mut self,
         fun_name: &str,
         args: &[WackValue],
-        dst: WackValue,
+        dst: WackTempIdent,
         asm: &mut Vec<AsmInstruction>,
     ) {
         use AsmInstruction as Asm;
-        use Operand::{Imm, Reg};
+        use Operand::Reg;
         use Register::{AX, CX, DI, DX, R8, R9, SI};
         let arg_regs = [DI, SI, DX, CX, R8, R9];
 
@@ -693,7 +704,7 @@ impl AsmGen {
         &mut self,
         op: &UnaryOp,
         src: WackValue,
-        dst: WackValue,
+        dst: WackTempIdent,
         asm: &mut Vec<AsmInstruction>,
     ) {
         use AsmInstruction as Asm;
@@ -701,7 +712,7 @@ impl AsmGen {
         let src_typ = self.get_asm_type(&src);
         let dst_typ = self.get_asm_type(&dst);
         let src_operand = self.lower_value(src, asm);
-        let dst_operand = self.lower_value(dst, asm);
+        let dst_operand = self.lower_value(WackValue::Var(dst), asm);
 
         let op = op.clone();
         #[allow(clippy::single_match_else)]
@@ -742,7 +753,7 @@ impl AsmGen {
         op: &BinaryOp,
         src1: WackValue,
         src2: WackValue,
-        dst: WackValue,
+        dst: WackTempIdent,
         asm: &mut Vec<AsmInstruction>,
     ) {
         use AsmInstruction as Asm;
@@ -752,7 +763,7 @@ impl AsmGen {
         let dst_typ = self.get_asm_type(&dst);
         let src1_operand = self.lower_value(src1, asm);
         let src2_operand = self.lower_value(src2, asm);
-        let dst_operand = self.lower_value(dst, asm);
+        let dst_operand = self.lower_value(WackValue::Var(dst), asm);
 
         // We handle Div and Remainder operations differently
         // than the rest since it has specific semantics in x86-64
