@@ -14,7 +14,7 @@ pub enum X86_64IntType {
 // impls relating to `X86_64IntType`
 pub mod x86_64_int_type {
     use crate::types::X86_64IntType;
-    use middle::types::WackIntType;
+    use middle::types_future_playground::WackIntType_2;
     use thiserror::Error;
 
     #[derive(Error, Debug)]
@@ -39,7 +39,7 @@ pub mod x86_64_int_type {
         /// TODO: add some docs here eventually
         #[inline]
         pub const fn try_from_wack_int(
-            wack_int: WackIntType,
+            wack_int: WackIntType_2,
         ) -> Result<Self, InvalidBitWidthError> {
             Self::try_from_u32(wack_int.bit_width())
         }
@@ -59,11 +59,11 @@ pub mod x86_64_int_type {
         }
     }
 
-    impl TryFrom<WackIntType> for X86_64IntType {
+    impl TryFrom<WackIntType_2> for X86_64IntType {
         type Error = InvalidBitWidthError;
 
         #[inline]
-        fn try_from(value: WackIntType) -> Result<Self, Self::Error> {
+        fn try_from(value: WackIntType_2) -> Result<Self, Self::Error> {
             Self::try_from_wack_int(value)
         }
     }

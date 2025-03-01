@@ -1,156 +1,136 @@
-// NOTE: labels can be cast to pointers via an instruction
-//       you MAY be able to get function pointers?????????? out of functions...
+use syntax::types::SemanticType;
 
+/// These are separate types for now, but will be merged later
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct WackFuncType {
+    args: Box<[WackType]>,
+    ret: Box<WackType>,
+}
+
+impl WackFuncType {
+    pub fn from_semantic_type(args: Vec<SemanticType>, ret: SemanticType) -> Self {
+        let args: Box<[WackType]> = args.into_iter().map(WackType::from_semantic_type).collect();
+        let ret = Box::new(WackType::from_semantic_type(ret));
+        Self { args, ret }
+    }
+}
+
+/// Very basic types that __will do for now__, but will be replaced later.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum WackType {
-    Void,
-    Fn(WackFnType),
-    FirstClass(FirstClassType),
+    Pointer(WackPointerType),
+    Int { width: BitWidth },
+    Array(Box<WackType>),
+    Pair(Box<WackType>, Box<WackType>),
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct WackFnType {
-    arg_types: Box<[WackType]>, // change later to supportable fn types
-    ret: Box<[WackType]>,       // change later to supportable fn return types
+impl WackType {
+    pub const ANY_POINTER: WackType = WackType::Pointer(WackPointerType::Any);
+
+    pub fn pointer_of(of: WackType) -> Self {
+        Self::Pointer(WackPointerType::of(of))
+    }
+
+    pub fn array(elem_ty: WackType) -> Self {
+        Self::Array(Box::new(elem_ty))
+    }
+
+    pub fn pair(fst: WackType, snd: WackType) -> Self {
+        Self::Pair(Box::new(fst), Box::new(snd))
+    }
+
+    pub fn from_semantic_type(semantic_type: SemanticType) -> Self {
+        match semantic_type {
+            SemanticType::Int => Self::Int {
+                width: BitWidth::W32,
+            },
+            SemanticType::Bool => Self::Int {
+                width: BitWidth::W8,
+            },
+            SemanticType::Char => Self::Int {
+                width: BitWidth::W8,
+            },
+            // a string has the same type-representation as `char[]`
+            SemanticType::String => {
+                Self::from_semantic_type(SemanticType::array(SemanticType::Char))
+            }
+            // an array type in WACC translates to a __pointer__ to an array in memory
+            SemanticType::Array(elem_ty) => {
+                Self::pointer_of(Self::array(Self::from_semantic_type(*elem_ty)))
+            }
+            // a pair type in WACC translates to a __pointer__ to a pair in memory
+            SemanticType::Pair(fst, snd) => Self::pointer_of(Self::pair(
+                Self::from_semantic_type(*fst),
+                Self::from_semantic_type(*snd),
+            )),
+            // an erased-pair type can point to just-about anything...
+            SemanticType::ErasedPair => Self::ANY_POINTER,
+
+            // something went wrong in the frontend if these branches were reached
+            SemanticType::AnyType | SemanticType::Error(_) => {
+                unreachable!("There should not be `AnyType` or `Error` types by this stage")
+            }
+        }
+    }
 }
 
+/// Using semi-typed pointers for now, but will eventually make them fully untyped.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum FirstClassType {
-    SingleValue(SingleValueType),
-    Label,
-    // Token, // Uncomment if we ever need unintrospectable/unobscurable-values types lol 😂
-    // Metadata, // Uncomment if we ever need to attach metadata lol 😂
-    Aggregate(WackAggregateType),
+pub enum WackPointerType {
+    Any,
+    Of(Box<WackType>),
+}
+
+impl WackPointerType {
+    pub fn of(ty: WackType) -> Self {
+        Self::Of(Box::new(ty))
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum SingleValueType {
-    Int(WackIntType),
-    // Float(WackFloatType), // Uncomment if we ever need float types
-    // X86Amx, // Uncomment if we ever need to use Advanced Matrix Extensions lol 😂
-    Pointer,
-    // TargetExtensionType, // Uncomment if we ever need to use target-dependent types lol 😂
-    // Vector, // Uncomment if we ever need to use SIMD-vector types lol 😂
+#[repr(u8)]
+pub enum BitWidth {
+    W8 = 8,
+    W16 = 16,
+    W32 = 32,
+    W64 = 64,
 }
 
-/// An integer type, with no distinction between signed/unsigned.
-///
-/// It can be any arbitrary bit-width, from 1 to 2^23 bits. However, the most common bit-widths
-/// correspond to [`WackIntType::INT_8`], [`WackIntType::INT_16`], [`WackIntType::INT_32`], and
-/// [`WackIntType::INT_64`].
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[repr(transparent)]
-pub struct WackIntType {
-    bit_width: u32,
-}
-
-// impl blocks relating to `WackInt`
-pub mod wack_int {
-    use crate::types::WackIntType;
+// impls relating to `BitWidth`
+pub mod x86_64_int_type {
+    use crate::types::BitWidth;
     use thiserror::Error;
 
     #[derive(Error, Debug)]
-    #[error("Expected an integer bit-width between 1 and 2^23 bits, found {0} bits")]
+    #[error("Expected TODO_FIX_ERROR_MESSAGE, found {0} bits")]
     pub struct InvalidBitWidthError(u32);
 
-    impl WackIntType {
-        /// The maximum bit-width is 2^23 bits, mirroring LLVM's type-system
-        pub const MAX_BIT_WIDTH: u32 = 2 << Self::MAX_BIT_WIDTH_LOG2;
-        const MAX_BIT_WIDTH_LOG2: u8 = 23;
-
-        /// The minimum bit-width is 1 bit, mirroring LLVM's type-system
-        pub const MIN_BIT_WIDTH: u32 = 1;
-
-        /// An 8-bit (or 1-byte) integer type (no distinction between signed/unsigned).
-        pub const INT_8: Self = Self { bit_width: 8 };
-
-        /// An 16-bit (or 2-byte) unsigned integer type (no distinction between signed/unsigned).
-        pub const INT_16: Self = Self { bit_width: 16 };
-
-        /// An 32-bit (or 32-byte) unsigned integer type (no distinction between signed/unsigned).
-        pub const INT_32: Self = Self { bit_width: 32 };
-
-        /// An 64-bit (or 8-byte) unsigned integer type (no distinction between signed/unsigned).
-        pub const INT_64: Self = Self { bit_width: 64 };
-
-        /// # Safety
-        /// Only safe if you are _absolutely certain_ that [`width`] is between [`Self::MIN_WIDTH`]
-        /// and [`Self::MAX_WIDTH`].
-        #[inline]
-        #[must_use]
-        pub const unsafe fn new_with_unchecked(bit_width: u32) -> Self {
-            Self { bit_width }
-        }
-
+    impl BitWidth {
         /// # Errors
-        /// Will only construct if [`width`] is between [`Self::MIN_WIDTH`] and [`Self::MAX_WIDTH`].
+        /// TODO: add some docs here eventually
         #[inline]
-        pub const fn try_new_with(bit_width: u32) -> Result<Self, InvalidBitWidthError> {
-            match bit_width {
-                Self::MIN_BIT_WIDTH..=Self::MAX_BIT_WIDTH => Ok(Self { bit_width }),
-                _ => Err(InvalidBitWidthError(bit_width)),
+        pub const fn try_from_u32(width: u32) -> Result<Self, InvalidBitWidthError> {
+            match width {
+                8 => Ok(Self::W8),
+                16 => Ok(Self::W16),
+                32 => Ok(Self::W32),
+                64 => Ok(Self::W64),
+                _ => Err(InvalidBitWidthError(width)),
             }
         }
 
-        #[inline]
+        #[allow(clippy::as_conversions)]
         #[must_use]
-        pub const fn bit_width(&self) -> u32 {
-            self.bit_width
+        #[inline]
+        pub const fn into_bit_width(self) -> u8 {
+            self as u8
         }
 
-        #[inline]
+        #[allow(clippy::as_conversions)]
         #[must_use]
-        pub const fn into_bit_width(self) -> u32 {
-            self.bit_width
+        #[inline]
+        pub const fn bit_width(&self) -> u8 {
+            Self::into_bit_width(*self)
         }
     }
-
-    impl TryFrom<u32> for WackIntType {
-        type Error = InvalidBitWidthError;
-
-        #[inline]
-        fn try_from(value: u32) -> Result<Self, Self::Error> {
-            Self::try_new_with(value)
-        }
-    }
-}
-
-/// TODO: make docs from https://llvm.org/docs/LangRef.html#floating-point-types
-///       if we ever end up using floating point type...
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[repr(u8)]
-pub enum WackFloatType {
-    Ieee(Ieee754),
-    BFloat,
-    X86Fp80,
-    PpcFp128,
-}
-
-/// TODO: make docs from https://llvm.org/docs/LangRef.html#floating-point-types
-///       if we ever end up using floating point type...
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[repr(u8)]
-pub enum Ieee754 {
-    Bin16,
-    Bin32,
-    Bin64,
-    Bin128,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum WackAggregateType {
-    Array(WackArrayType),
-    Struct(WackStructType),
-}
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct WackArrayType {
-    size: usize,
-    elem_type: Box<WackType>, // change to "sized" types
-}
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct WackStructType {
-    field_types: Vec<WackType>, // change to "sized" type
-    packed: bool,
 }

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use crate::wackir::{WackProgram, WackTempIdent};
+use crate::types::{WackFuncType, WackType};
+use crate::wackir::{WackGlobIdent, WackProgram, WackTempIdent};
 use syntax::ast::{
     ArrayElem, Expr, Func, FuncParam, Ident, LValue, PairElem, Program, RValue, Stat, StatBlock,
 };
@@ -47,10 +48,10 @@ pub fn lower_program(program: TypedAST, type_resolver: TypeResolver) -> (WackPro
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct AstLoweringCtx {
     ident_counter: usize,
-    func_table: HashMap<Ident, (SemanticType, Vec<SemanticType>)>,
-    symbol_table: HashMap<WackTempIdent, SemanticType>,
-    // used to rename function to wacc_function
-    func_map: HashMap<Ident, Ident>,
+    func_table: HashMap<WackGlobIdent, WackFuncType>,
+    symbol_table: HashMap<WackTempIdent, WackType>,
+    /// used to rename function to wacc_function
+    func_rename_map: HashMap<Ident, WackGlobIdent>,
 }
 
 // impls relating to `AstLoweringCtx`
@@ -59,8 +60,10 @@ pub(crate) mod ast_lowering_ctx {
         AstLoweringCtx, TypedArrayElem, TypedExpr, TypedFunc, TypedFuncParam, TypedLValue,
         TypedPairElem, TypedRValue, TypedStat, TypedStatBlock,
     };
+    use crate::types::{WackFuncType, WackType};
     use crate::wackir::{
-        BinaryOp, UnaryOp, WackBool, WackFunction, WackInstr, WackLiteral, WackTempIdent, WackValue,
+        BinaryOp, UnaryOp, WackBool, WackFunction, WackGlobIdent, WackInstr, WackLiteral,
+        WackTempIdent, WackValue,
     };
     use extend::ext;
     use std::collections::HashMap;
@@ -130,35 +133,43 @@ pub(crate) mod ast_lowering_ctx {
         }
     }
 
-    fn rename_function_ident(ident: &Ident) -> Ident {
-        Ident::from_str(&format!("wacc_{ident}"))
+    fn rename_function_ident(ident: &Ident) -> WackGlobIdent {
+        Ident::from_str(&format!("wacc_{ident}")).into()
     }
 
     impl AstLoweringCtx {
         pub(crate) fn new_from(type_resolver: TypeResolver) -> Self {
+            // extract renamer + counter
             let renamer = type_resolver.renamer;
-            let mut func_map: HashMap<Ident, Ident> = HashMap::new();
             let ident_counter = renamer.counter();
+
+            // create mapping to new function names, and new function table
+            let mut func_map: HashMap<Ident, WackGlobIdent> = HashMap::new();
             let func_table = renamer
                 .id_func_table
                 .functions
                 .into_iter()
                 .map(|(id, (func, params))| {
+                    // rename functions
                     let new_id = rename_function_ident(&id);
                     func_map.insert(id, new_id.clone());
-                    (new_id, (func, params))
+
+                    // crate new function table entry
+                    (new_id, WackFuncType::from_semantic_type(params, func))
                 })
                 .collect();
-            let symbol_table: HashMap<WackTempIdent, SemanticType> = type_resolver
+
+            // create new symbol table
+            let symbol_table: HashMap<WackTempIdent, WackType> = type_resolver
                 .symid_table
                 .into_iter()
-                .map(|(id, sym_ty)| (id.into(), sym_ty))
+                .map(|(id, sym_ty)| (id.into(), WackType::from_semantic_type(sym_ty)))
                 .collect();
             Self {
                 ident_counter,
                 func_table,
                 symbol_table,
-                func_map,
+                func_rename_map: func_map,
             }
         }
 
@@ -195,11 +206,12 @@ pub(crate) mod ast_lowering_ctx {
                 .map(|param| self.lower_func_param(&param))
                 .collect();
 
+            // Fetch the renamed name from function map
             let name = self
-                .func_map
+                .func_rename_map
                 .get(&func.name)
                 .expect("Function should be in map")
-                .into();
+                .clone();
 
             WackFunction {
                 name,
@@ -251,19 +263,22 @@ pub(crate) mod ast_lowering_ctx {
                 TypedStat::Read(lvalue) => {
                     let sem_type = lvalue.inner().get_type();
                     let value = self.lower_lvalue(lvalue.into_inner(), instructions);
-                    let instr = WackInstr::Read { dst: value, ty: sem_type };
+                    let instr = WackInstr::Read {
+                        dst: value,
+                        ty: sem_type,
+                    };
                     instructions.push(instr);
-                },
+                }
                 TypedStat::Free(expr) => {
                     let sem_type = expr.inner().get_type();
                     let value = self.lower_expr(expr.into_inner(), instructions);
                     let instr = match sem_type {
-                        SemanticType::Pair(_, _) => { WackInstr::FreeChecked(value) },
-                        SemanticType::Array(_) => { WackInstr::FreeUnchecked(value) },
+                        SemanticType::Pair(_, _) => WackInstr::FreeChecked(value),
+                        SemanticType::Array(_) => WackInstr::FreeUnchecked(value),
                         _ => unreachable!("free value should be a pair or array"),
                     };
                     instructions.push(instr);
-                },
+                }
                 TypedStat::Return(expr) => {
                     let sem_type = expr.inner().get_type();
                     let value = self.lower_expr(expr.into_inner(), instructions);
@@ -440,17 +455,23 @@ pub(crate) mod ast_lowering_ctx {
                     args,
                     return_type,
                 } => {
+                    // lower the arguments
                     let wacky_args = args
                         .into_iter()
                         .map(|arg| self.lower_expr(arg.into_inner(), instructions))
                         .collect();
+
+                    // Fetch the function identifier
                     let dst = WackValue::Var(self.make_temporary());
                     let wacky_func_name = self
-                        .func_map
+                        .func_rename_map
                         .get(&func_name)
-                        .expect("Function should be in map");
+                        .expect("Function should be in map")
+                        .clone();
+
+                    // Push the call instruction
                     let instr = WackInstr::FunCall {
-                        fun_name: wacky_func_name.into(),
+                        fun_name: wacky_func_name,
                         args: wacky_args,
                         dst: dst.clone(),
                     };

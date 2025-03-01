@@ -295,6 +295,12 @@ impl SemanticType {
             _ => unreachable!("The type is assumed to be pair, but wasn't."),
         }
     }
+
+    #[inline]
+    #[must_use]
+    pub fn array(elem: Self) -> Self {
+        Self::Array(Box::new(elem))
+    }
 }
 
 impl Display for SemanticType {
