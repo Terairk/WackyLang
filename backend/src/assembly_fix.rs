@@ -7,6 +7,9 @@
 // any special purpose
 
 use crate::{
+    assembly_ast::AsmInstruction::*,
+    assembly_ast::Operand::*,
+    assembly_ast::Register::*,
     assembly_ast::{
         AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType,
         Operand, Register,
@@ -38,6 +41,9 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
                     fix_idiv(&mut new_func_body, val);
                 }
                 AsmInstruction::Cmp { typ, op1, op2 } => fix_cmp(&mut new_func_body, typ, op1, op2),
+                AsmInstruction::Lea { src, dst } => {
+                    fix_lea(&mut new_func_body, src, dst);
+                }
                 _ => new_func_body.push(instr),
             }
         }
@@ -198,6 +204,24 @@ fn fix_cmp(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, op1: Operand, op2: 
             },
         ],
         _ => vec![AsmInstruction::Cmp { typ, op1, op2 }],
+    };
+    asm.extend(new_instrs);
+}
+
+fn fix_lea(asm: &mut Vec<AsmInstruction>, src: Operand, dst: Operand) {
+    let new_instrs = match (src.clone(), dst.clone()) {
+        (_, Operand::Stack(_)) => vec![
+            AsmInstruction::Lea {
+                src,
+                dst: Operand::Reg(Register::R9),
+            },
+            AsmInstruction::Mov {
+                typ: AssemblyType::Quadword,
+                src: Operand::Reg(Register::R9),
+                dst,
+            },
+        ],
+        _ => vec![AsmInstruction::Lea { src, dst }],
     };
     asm.extend(new_instrs);
 }

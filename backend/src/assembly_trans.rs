@@ -16,8 +16,7 @@ use middle::wackir::{
     WackReadType, WackTempIdent, WackValue,
 };
 use std::collections::{BTreeMap, HashMap};
-use syntax::types::SemanticType;
-use util::gen_flags::{GenFlags, insert_flag_gbl};
+use util::gen_flags::{insert_flag_gbl, GenFlags};
 /* ================== PUBLIC API ================== */
 
 #[inline]
@@ -254,10 +253,22 @@ impl AsmGen {
                 inbuiltPrintChar.to_owned()
             }
             WackPrintType::StringOrCharArray => {
-                asm.push(AsmInstruction::Lea {
-                    src: operand,
-                    dst: Operand::Reg(DI),
-                });
+                // println!("operand is: {operand:?}");
+                match operand {
+                    Operand::Data(_, _) => {
+                        asm.push(AsmInstruction::Lea {
+                            src: operand,
+                            dst: Operand::Reg(DI),
+                        });
+                    }
+                    _ => {
+                        asm.push(AsmInstruction::Mov {
+                            typ: AssemblyType::Quadword,
+                            src: operand,
+                            dst: Operand::Reg(DI),
+                        });
+                    }
+                }
                 insert_flag_gbl(GenFlags::PRINT_STR);
                 inbuiltPrintString.to_owned()
             }
@@ -325,11 +336,17 @@ impl AsmGen {
                 let src_typ = self.get_asm_type(&src);
                 let src_operand = self.lower_value(src, asm);
                 let dst_operand = self.lower_value(WackValue::Var(dst), asm);
-                asm.push(Asm::Mov {
-                    typ: src_typ,
-                    src: src_operand,
-                    dst: dst_operand,
-                });
+                match src_operand {
+                    Operand::Data(_, _) => asm.push(Asm::Lea {
+                        src: src_operand,
+                        dst: dst_operand,
+                    }),
+                    _ => asm.push(Asm::Mov {
+                        typ: src_typ,
+                        src: src_operand,
+                        dst: dst_operand,
+                    }),
+                }
             }
             Label(id) => asm.push(Asm::Label(id.into())),
             FunCall {
@@ -365,7 +382,7 @@ impl AsmGen {
                 let operand = self.lower_value(dst, asm);
                 asm.push(AsmInstruction::Mov {
                     typ: asm_typ,
-                    src: operand,
+                    src: operand.clone(),
                     dst: Operand::Reg(DI),
                 });
                 match ty {
@@ -378,6 +395,11 @@ impl AsmGen {
                         asm.push(AsmInstruction::Call(inbuiltReadChar.to_owned(), false));
                     }
                 }
+                asm.push(AsmInstruction::Mov {
+                    typ: asm_typ,
+                    src: Operand::Reg(AX),
+                    dst: operand,
+                });
             }
             WackInstr::FreeUnchecked(value) => {
                 let operand = self.lower_value(value, asm);
