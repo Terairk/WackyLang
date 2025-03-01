@@ -2,6 +2,7 @@ use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
 use chumsky::{Parser, extra};
 use std::fs;
+use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use backend::assembly_fix::fix_program;
@@ -210,20 +211,29 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
 
     // Writes to file
 
-    // Extract just the file name and remove .wacc extension
-    let file_name = Path::new(&path)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("output")
-        .strip_suffix(".wacc")
-        .unwrap_or("output");
-    let output_file_path = format!("test_artifacts/{file_name}.s");
+    // Convert `path` to a relative path starting from `test_cases/valid`
+    let valid_tests_dir = Path::new("../test_cases/valid");
+    let test_artifacts_dir = Path::new("test_artifacts");
+
+
+    // Ensure `path` is within `valid_tests`
+    let relative_path = path.strip_prefix(valid_tests_dir).unwrap_or(path);
+
+    // Construct the output path in `test_artifacts` with a `.s` extension
+    let output_file_path = test_artifacts_dir.join(relative_path).with_extension("s");
+    let output_file_path_str = output_file_path.to_str().expect("always exist");
+
+    // Ensure the parent directory exists
+    if let Some(parent) = output_file_path.parent() {
+        create_dir_all(parent).map_err(|e| format!("Failed to create directory {}: {e}", parent.display()))?;
+    }
+
     match fs::write(&output_file_path, formatted_assembly) {
         Ok(()) => {
-            println!("Full: Successfully wrote to file {output_file_path}");
+            // println!("Full: Successfully wrote to file {}", output_file_path_str);
         }
         Err(e) => {
-            let err_msg = format!("Failed to write to file {output_file_path}: {e}");
+            let err_msg = format!("Failed to write to file {output_file_path_str}: {e}");
             eprintln!("{}", err_msg);
             return Err(err_msg);
         }
@@ -231,17 +241,15 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
 
 
     // If both syntax and semantic analysis succeed, return success
-    Ok(format!("Test passed: {}", path.display()))
+    Ok(format!("Test compiled: {}", path.display()))
 }
 
 /// Extract expected output from the test file.
 fn extract_expected_output(source: &str) -> Vec<String> {
     let mut expected_output = Vec::new();
     let mut in_output_section = false;
-
     for line in source.lines() {
         let trimmed = line.trim();
-
         if trimmed.starts_with("# Output:") {
             in_output_section = true;
             continue; // Skip the "# Output:" header
@@ -249,10 +257,10 @@ fn extract_expected_output(source: &str) -> Vec<String> {
 
         if in_output_section {
             // Stop if we hit an empty line or another comment section
-            if trimmed.is_empty() || trimmed.starts_with("#") {
+            // println!("Trimmed in output: {trimmed}");
+            if trimmed == "#" || trimmed.is_empty() {
                 break;
             }
-
             // Remove leading `#` and trim spaces
             expected_output.push(trimmed.trim_start_matches('#').trim().to_string());
         }
@@ -278,16 +286,20 @@ pub fn compare_test_result(path: &Path) -> Result<String, String> {
         return Ok(NO_OUTPUT_STR.to_owned());
     }
 
-    let file_name = path.file_stem()
-        .and_then(|name| name.to_str())
-        .unwrap_or("output");
+    // Convert `path` to a relative path starting from `test_cases/valid`
+    let valid_tests_dir = Path::new("../test_cases/valid");
+    let test_artifacts_dir = Path::new("test_artifacts");
 
-    let asm_path = format!("test_artifacts/{file_name}.s");
-    let bin_path = format!("test_artifacts/{file_name}");
+    // Ensure `path` is within `valid_tests`
+    let relative_path = path.strip_prefix(valid_tests_dir).unwrap_or(path);
+
+
+    let asm_path = test_artifacts_dir.join(relative_path).with_extension("s");
+    let bin_path = test_artifacts_dir.join(relative_path);
     
     // Step 1: Compile Assembly to Executable
     let compile_status = Command::new("gcc")
-        .args(["-o", &bin_path, &asm_path, "-no-pie"])
+        .args(["-o", &bin_path.to_str().unwrap(), &asm_path.to_str().unwrap(), "-no-pie", "-lc"])
         .status()
         .map_err(|e| format!("GCC error: {e}"))?;
 
@@ -308,12 +320,19 @@ pub fn compare_test_result(path: &Path) -> Result<String, String> {
     let expected_output_str = expected_output.join("\n");
 
     // Step 3: Compare output
-    if actual_output == expected_output_str {
+    let test_result = if actual_output == expected_output_str {
         Ok("Test passed!".to_string())
     } else {
         Err(format!(
-            "Test failed!\nExpected:\n{}\n\nGot:\n{}",
+            "non matching output - expected: \n{}\nbut got: \n{}",
             expected_output_str, actual_output
         ))
+    };
+
+    // Step 4: Cleanup (delete binary file)
+    if let Err(e) = fs::remove_file(&bin_path) {
+        eprintln!("Failed to delete binary {}: {}", bin_path.display(), e);
     }
+
+    test_result
 }

@@ -390,7 +390,6 @@ impl AsmGen {
                 asm.push(AsmInstruction::Call(inbuiltFreePair.to_owned(), false));
             }
             WackInstr::Alloc { size, dst_ptr } => {
-                println!("alloc size {}", size);
                 let operand = self.lower_value(WackValue::Var(dst_ptr), asm);
                 // Moving size to RDI for malloc function
                 asm.push(AsmInstruction::Mov {
@@ -411,7 +410,6 @@ impl AsmGen {
                 let operand = self.lower_value(src, asm);
                 let value = WackValue::Var(dst);
                 let operand2 = self.lower_value(value, asm);
-                println!("{:?}", operand2);
                 let new_dst = match operand2 {
                     Operand::Pseudo(str) => Operand::PseudoMem(str, offset as i32),
                     _ => unreachable!("copy to offset should be called only to memory"),
