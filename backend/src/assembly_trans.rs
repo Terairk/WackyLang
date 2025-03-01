@@ -13,10 +13,10 @@ use crate::{
     gen_predefined::ERR_DIVZERO,
 };
 use middle::wackir::{
-    BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackProgram, WackTempIdent, WackValue,
+    BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackPrintType, WackProgram,
+    WackReadType, WackTempIdent, WackValue,
 };
 use std::collections::BTreeMap;
-use syntax::types::SemanticType;
 use util::gen_flags::{insert_flag_gbl, GenFlags};
 /* ================== PUBLIC API ================== */
 
@@ -169,10 +169,10 @@ impl AsmGen {
     /// TODO: Fix bug with printing null pointer
     /// Lowering value doesn't differentiate between null pointer and 0
     /// So, we should add special value to Operand
-    fn lower_print(&mut self, src: WackValue, ty: SemanticType, asm: &mut Vec<AsmInstruction>) {
+    fn lower_print(&mut self, src: WackValue, ty: WackPrintType, asm: &mut Vec<AsmInstruction>) {
         let operand = self.lower_value(src, asm);
         let func_name = match ty {
-            SemanticType::Int => {
+            WackPrintType::Int => {
                 asm.push(AsmInstruction::Mov {
                     typ: Longword,
                     src: operand,
@@ -181,7 +181,7 @@ impl AsmGen {
                 insert_flag_gbl(GenFlags::PRINT_INT);
                 inbuiltPrintInt.to_owned()
             }
-            SemanticType::Bool => {
+            WackPrintType::Bool => {
                 asm.push(AsmInstruction::Mov {
                     typ: AssemblyType::Byte,
                     src: operand,
@@ -190,7 +190,7 @@ impl AsmGen {
                 insert_flag_gbl(GenFlags::PRINT_BOOLEAN);
                 inbuiltPrintBool.to_owned()
             }
-            SemanticType::Char => {
+            WackPrintType::Char => {
                 asm.push(AsmInstruction::Mov {
                     typ: AssemblyType::Byte,
                     src: operand,
@@ -199,7 +199,7 @@ impl AsmGen {
                 insert_flag_gbl(GenFlags::PRINT_CHR);
                 inbuiltPrintChar.to_owned()
             }
-            SemanticType::String => {
+            WackPrintType::StringOrCharArray => {
                 asm.push(AsmInstruction::Lea {
                     src: operand,
                     dst: Operand::Reg(DI),
@@ -207,20 +207,21 @@ impl AsmGen {
                 insert_flag_gbl(GenFlags::PRINT_STR);
                 inbuiltPrintString.to_owned()
             }
-            SemanticType::Array(_) | SemanticType::Pair(_, _) | SemanticType::ErasedPair => {
+            WackPrintType::OtherArray | WackPrintType::Pair => {
                 asm.push(AsmInstruction::Lea {
                     src: operand,
                     dst: Operand::Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::PRINT_PTR);
                 inbuiltPrintPtr.to_owned()
+
+                //TODO: does this print `nil` for null pointers??
             }
-            SemanticType::AnyType => panic!("AnyType in print"),
-            SemanticType::Error(_) => panic!("Error type in print"),
         };
         asm.push(AsmInstruction::Call(func_name, false));
     }
 
+    #[allow(clippy::too_many_lines)]
     fn lower_instruction(&mut self, instr: WackInstr, asm: &mut Vec<AsmInstruction>) {
         use AsmInstruction as Asm;
         use AssemblyType::{Longword, Quadword};
@@ -303,15 +304,14 @@ impl AsmGen {
                     dst: Operand::Reg(DI),
                 });
                 match ty {
-                    SemanticType::Int => {
+                    WackReadType::Int => {
                         insert_flag_gbl(GenFlags::READ_INT);
                         asm.push(AsmInstruction::Call(inbuiltReadInt.to_owned(), false));
                     }
-                    SemanticType::Char => {
+                    WackReadType::Char => {
                         insert_flag_gbl(GenFlags::READ_CHR);
                         asm.push(AsmInstruction::Call(inbuiltReadChar.to_owned(), false));
                     }
-                    _ => unreachable!(), // anything else should be caught in frontend
                 }
             }
             WackInstr::FreeUnchecked(value) => {
