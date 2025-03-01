@@ -620,7 +620,7 @@ pub(crate) mod ast_lowering_ctx {
             // memory to store that length-value as well.
             let array_len_bytes = BaseType::ARRAY_LEN_BYTES;
             let array_len = elems.len();
-            let array_elem_bytes = elem_ty.try_size_of_bits().unwrap();
+            let array_elem_bytes = elem_ty.try_size_of().unwrap();
             let alloc_size_bytes = array_len_bytes + array_len * array_elem_bytes;
 
             //  allocate enough memory on the heap to store all elements and the size of the array
@@ -691,8 +691,8 @@ pub(crate) mod ast_lowering_ctx {
             //   `alloc_size_bytes = fst_bytes + snd_bytes`
             // the pair is stored on the heap as two directly-adjacent regions of memory
             // which represent either the first or second elements, respectively.
-            let fst_bytes = fst_elem_type.try_size_of_bits().unwrap();
-            let snd_bytes = snd_elem_type.try_size_of_bits().unwrap();
+            let fst_bytes = fst_elem_type.try_size_of().unwrap();
+            let snd_bytes = snd_elem_type.try_size_of().unwrap();
             let alloc_size_bytes = fst_bytes + snd_bytes;
 
             //  allocate enough memory on the heap to store both elements and of the pair
@@ -768,7 +768,7 @@ pub(crate) mod ast_lowering_ctx {
             let wack_elems_ty = unsafe { raw_pair_ty.into_pair_elem_types() };
             let (elem_ty, offset) = match (is_fst, wack_elems_ty) {
                 (true, (fst, _)) => (fst, 0), // the first element has zero-offset from start of pair
-                (false, (_, snd)) => (snd.clone(), snd.try_size_of_bits().unwrap()), // the second element follows directly after the first
+                (false, (_, snd)) => (snd.clone(), snd.try_size_of().unwrap()), // the second element follows directly after the first
             }; // TODO: think about padding and alignment: this may not be the definitive layout
 
             // it should never be the case that these types disagree
@@ -836,7 +836,7 @@ pub(crate) mod ast_lowering_ctx {
                 let array_elem_ty = unsafe { raw_array_ty.into_array_elem_type() };
 
                 // obtain scale from the inner element type
-                let scale = array_elem_ty.try_size_of_bits().unwrap();
+                let scale = array_elem_ty.try_size_of().unwrap();
 
                 // obtain pointer to element
                 elem_ptr_ty = WackPointerType::of(array_elem_ty.clone());
