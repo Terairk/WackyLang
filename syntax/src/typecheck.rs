@@ -73,6 +73,35 @@ impl SN<RValue<RenamedName, SemanticType>> {
             RValue::Call { return_type, .. } => return_type,
         }
     }
+
+    #[inline]
+    pub fn try_coerce_into(
+        self,
+        to: SemanticType,
+        resolver: &TypeResolver,
+    ) -> Result<Self, (Self, SemanticType)> {
+        // grab resolved type, and make sure this is a legal coersion
+        let resolved_type = self.get_type(resolver);
+        if !resolved_type.can_coerce_into(&to) {
+            return Err((self, resolved_type));
+        }
+
+        Ok(self.map_inner(|inner| match inner {
+            RValue::Expr(expr, _t) => RValue::Expr(expr, to),
+            RValue::ArrayLiter(arr_lit, _t) => RValue::ArrayLiter(arr_lit, to),
+            RValue::NewPair(fst, snd, _t) => RValue::NewPair(fst, snd, to),
+            RValue::PairElem(pair, _t) => RValue::PairElem(pair, to),
+            RValue::Call {
+                func_name,
+                args,
+                return_type: _return_type,
+            } => RValue::Call {
+                func_name,
+                args,
+                return_type: to,
+            },
+        }))
+    }
 }
 
 impl SN<PairElem<RenamedName, SemanticType>> {
@@ -104,7 +133,6 @@ impl SN<ArrayElem<RenamedName, SemanticType>> {
                 Some(SemanticType::AnyType) => Some(SemanticType::AnyType),
                 _ => None,
             }
-            
         }
         resolved_type
     }
@@ -368,8 +396,7 @@ impl Folder for TypeResolver {
                 expected_type.clone(),
             ));
         }
-        self.symid_table
-            .insert(name.inner().clone(), expected_type);
+        self.symid_table.insert(name.inner().clone(), expected_type);
         Stat::VarDefinition {
             r#type,
             name: self.fold_name_sn(name),

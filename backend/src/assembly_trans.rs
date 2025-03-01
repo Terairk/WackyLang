@@ -280,10 +280,10 @@ impl AsmGen {
             } => self.lower_binary(&op, src1, src2, dst, asm),
             Jump(target) => asm.push(Asm::Jmp(target.into())),
             JumpIfZero { condition, target } => {
-                // TODO: experiment with AssemblyType::Byte and Longword
+                let typ = self.get_asm_type(&condition);
                 let condition = self.lower_value(condition, asm);
                 asm.push(Asm::Cmp {
-                    typ: AssemblyType::Longword,
+                    typ: typ,
                     op1: Operand::Imm(0),
                     op2: condition,
                 });
@@ -294,9 +294,10 @@ impl AsmGen {
                 });
             }
             JumpIfNotZero { condition, target } => {
+                let typ = self.get_asm_type(&condition);
                 let condition = self.lower_value(condition, asm);
                 asm.push(Asm::Cmp {
-                    typ: AssemblyType::Longword,
+                    typ: typ,
                     op1: Operand::Imm(0),
                     op2: condition,
                 });
@@ -307,10 +308,11 @@ impl AsmGen {
                 });
             }
             Copy { src, dst } => {
+                let src_typ = self.get_asm_type(&src);
                 let src_operand = self.lower_value(src, asm);
                 let dst_operand = self.lower_value(dst, asm);
                 asm.push(Asm::Mov {
-                    typ: AssemblyType::Longword,
+                    typ: src_typ,
                     src: src_operand,
                     dst: dst_operand,
                 });
@@ -332,16 +334,22 @@ impl AsmGen {
                 insert_flag_gbl(GenFlags::EXIT);
                 let operand = self.lower_value(value, asm);
                 asm.push(AsmInstruction::Mov {
-                    typ: Longword,
+                    typ: AssemblyType::Longword,
                     src: operand,
                     dst: Operand::Reg(DI),
                 });
                 asm.push(AsmInstruction::Call(inbuiltExit.to_owned(), false));
             }
             WackInstr::Read { dst, ty } => {
+                // TODO: double check this works, this might be wrong
+                let asm_typ = match ty {
+                    SemanticType::Int => Longword,
+                    SemanticType::Char => Byte,
+                    _ => unreachable!(),
+                };
                 let operand = self.lower_value(dst, asm);
                 asm.push(AsmInstruction::Mov {
-                    typ: Longword,
+                    typ: asm_typ,
                     src: operand,
                     dst: Operand::Reg(DI),
                 });
@@ -378,7 +386,7 @@ impl AsmGen {
                 asm.push(AsmInstruction::Call(inbuiltFreePair.to_owned(), false));
             }
             WackInstr::Alloc { size, dst_ptr } => {
-                println!("alloc size {}", size);
+                // println!("alloc size {}", size);
                 let operand = self.lower_value(dst_ptr, asm);
                 // Moving size to RDI for malloc function
                 asm.push(AsmInstruction::Mov {
@@ -396,26 +404,33 @@ impl AsmGen {
                 });
             }
             WackInstr::CopyToOffset { src, dst, offset } => {
+                let typ = self.get_asm_type(&src);
                 let operand = self.lower_value(src, asm);
-                let value = WackValue::Var(dst);
-                let operand2 = self.lower_value(value, asm);
-                println!("{:?}", operand2);
-                let new_dst = match operand2 {
-                    Operand::Pseudo(str) => Operand::PseudoMem(str, offset as i32),
-                    _ => unreachable!("copy to offset should be called only to memory"),
-                };
+                let new_dst = Operand::PseudoMem(dst.into(), offset as i32);
                 asm.push(AsmInstruction::Mov {
-                    typ: Longword,
+                    typ: typ,
                     src: operand,
                     dst: new_dst,
                 });
             }
             WackInstr::Load { src_ptr, dst } => {
+                // TODO: double check this
+                let dst_type = self.get_asm_type(&dst);
                 let operand_src_ptr = self.lower_value(src_ptr, asm);
                 let operand_dst = self.lower_value(dst, asm);
+                // asm.push(AsmInstruction::Mov {
+                //     typ: Longword,
+                //     src: operand_src_ptr,
+                //     dst: operand_dst,
+                // });
                 asm.push(AsmInstruction::Mov {
-                    typ: Longword,
+                    typ: Quadword,
                     src: operand_src_ptr,
+                    dst: Operand::Reg(AX),
+                });
+                asm.push(AsmInstruction::Mov {
+                    typ: dst_type,
+                    src: Operand::Memory(AX, 0),
                     dst: operand_dst,
                 });
             }
@@ -423,7 +438,7 @@ impl AsmGen {
                 let operand = self.lower_value(ptr, asm);
                 // Compare pointer with 0 to check if it's null
                 asm.push(AsmInstruction::Cmp {
-                    typ: Longword,
+                    typ: Quadword,
                     op1: operand,
                     op2: Operand::Imm(0),
                 });
@@ -477,7 +492,7 @@ impl AsmGen {
                 let value = WackValue::Var(dst_elem_ptr);
                 let dst_ptr_operand = self.lower_value(value, asm);
                 asm.push(AsmInstruction::Mov {
-                    typ: Longword,
+                    typ: Quadword,
                     src: src_array_operand,
                     dst: Operand::Reg(Register::R9),
                 });
@@ -609,9 +624,10 @@ impl AsmGen {
         }
 
         // handle return value
+        let dst_typ = self.get_asm_type(&dst);
         let assembly_dst = self.lower_value(dst, asm);
         asm.push(Asm::Mov {
-            typ: AssemblyType::Longword,
+            typ: dst_typ,
             src: Reg(AX),
             dst: assembly_dst,
         });
@@ -623,38 +639,39 @@ impl AsmGen {
         use Operand::Reg;
         use Register::{AX, BP, SP};
 
+        let typ = self.get_asm_type(&value);
         let operand = self.lower_value(value, asm_instructions);
         // TODO: most of these arms aren't correct apart from Imm
         // in particular, these dont take into account types
         // also this can be refactored
         match operand {
             Operand::Imm(_) => asm_instructions.push(Asm::Mov {
-                typ: Longword,
+                typ,
                 src: operand,
                 dst: Reg(AX),
             }),
             Operand::Reg(_) => asm_instructions.push(Asm::Mov {
-                typ: Quadword,
+                typ,
                 src: operand,
                 dst: Reg(AX),
             }),
             Operand::Pseudo(_) => asm_instructions.push(Asm::Mov {
-                typ: Quadword,
+                typ,
                 src: operand,
                 dst: Reg(AX),
             }),
             Operand::Memory(_, _) => asm_instructions.push(Asm::Mov {
-                typ: Quadword,
+                typ,
                 src: operand,
                 dst: Reg(AX),
             }),
             Operand::Data(_, _) => asm_instructions.push(Asm::Mov {
-                typ: Quadword,
+                typ,
                 src: operand,
                 dst: Reg(AX),
             }),
             Operand::PseudoMem(_, _) => asm_instructions.push(Asm::Mov {
-                typ: Quadword,
+                typ,
                 src: operand,
                 dst: Reg(AX),
             }),
@@ -681,23 +698,22 @@ impl AsmGen {
     ) {
         use AsmInstruction as Asm;
         // TODO: check if this is what I need to do
+        let src_typ = self.get_asm_type(&src);
+        let dst_typ = self.get_asm_type(&dst);
         let src_operand = self.lower_value(src, asm);
         let dst_operand = self.lower_value(dst, asm);
 
-        // Need to figure out how to get src_type and dst_type
-        // for now treat everything as an Int cus its easier for me
-        // TODO: change this to actually get the correct type
         let op = op.clone();
         #[allow(clippy::single_match_else)]
         match op {
             UnaryOp::Not => {
                 asm.push(Asm::Cmp {
-                    typ: AssemblyType::Longword,
+                    typ: src_typ,
                     op1: Operand::Imm(0),
                     op2: src_operand,
                 });
                 asm.push(Asm::Mov {
-                    typ: AssemblyType::Longword,
+                    typ: dst_typ,
                     src: Operand::Imm(0),
                     dst: dst_operand.clone(),
                 });
@@ -708,13 +724,13 @@ impl AsmGen {
             }
             _ => {
                 asm.push(Asm::Mov {
-                    typ: AssemblyType::Longword,
+                    typ: src_typ,
                     src: src_operand,
                     dst: dst_operand.clone(),
                 });
                 asm.push(Asm::Unary {
                     operator: op.into(),
-                    typ: AssemblyType::Longword,
+                    typ: src_typ,
                     operand: dst_operand,
                 });
             }
@@ -732,6 +748,8 @@ impl AsmGen {
         use AsmInstruction as Asm;
         use BinaryOp::*;
 
+        let src_typ = self.get_asm_type(&src1);
+        let dst_typ = self.get_asm_type(&dst);
         let src1_operand = self.lower_value(src1, asm);
         let src2_operand = self.lower_value(src2, asm);
         let dst_operand = self.lower_value(dst, asm);
@@ -743,6 +761,8 @@ impl AsmGen {
                 insert_flag_gbl(GenFlags::DIV_BY_ZERO);
                 // We need to sign extend EAX into EAX:EDX
                 // Handle div by zero here
+                // While not necessary, could add a typ check
+                assert_eq!(src_typ, Longword);
 
                 let new_instrs = vec![
                     Asm::Cmp {
@@ -779,6 +799,7 @@ impl AsmGen {
             }
             Mul | Add | Sub => {
                 // Handle other binary operations in the same way
+                assert_eq!(src_typ, Longword);
                 asm.push(Asm::Mov {
                     typ: AssemblyType::Longword,
                     src: src1_operand,
@@ -797,12 +818,12 @@ impl AsmGen {
             Gt | Gte | Lt | Lte | Eq | Neq => {
                 let new_instrs = vec![
                     Asm::Cmp {
-                        typ: AssemblyType::Longword,
+                        typ: src_typ,
                         op1: src1_operand,
                         op2: src2_operand,
                     },
                     Asm::Mov {
-                        typ: AssemblyType::Longword,
+                        typ: dst_typ,
                         src: Operand::Imm(0),
                         dst: dst_operand.clone(),
                     },
