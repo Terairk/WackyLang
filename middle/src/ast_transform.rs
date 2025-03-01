@@ -25,7 +25,10 @@ type TypedPairElem = PairElem<RenamedName, SemanticType>;
 // I can probably take it in by reference but I'd prefer not to clone
 #[must_use]
 #[inline]
-pub fn lower_program(program: TypedAST, type_resolver: TypeResolver) -> (WackProgram, usize) {
+pub fn lower_program(
+    program: TypedAST,
+    type_resolver: TypeResolver,
+) -> (WackProgram, usize, HashMap<WackTempIdent, WackType>) {
     let mut ctx = AstLoweringCtx::new_from(type_resolver);
     let mut main_body = Vec::new();
     ctx.lower_stat_block(program.body, &mut main_body);
@@ -41,7 +44,7 @@ pub fn lower_program(program: TypedAST, type_resolver: TypeResolver) -> (WackPro
         main_body,
     };
 
-    (wack_program, ctx.ident_counter())
+    (wack_program, ctx.ident_counter(), ctx.symbol_table)
 }
 
 /* ================== INTERNAL API ================== */

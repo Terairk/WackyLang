@@ -10,18 +10,23 @@ use crate::predefined::{
     inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln, inbuiltReadChar,
     inbuiltReadInt,
 };
+use middle::types::{BitWidth, WackType};
 use middle::wackir::{
     BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackPrintType, WackProgram,
     WackReadType, WackTempIdent, WackValue,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use util::gen_flags::{insert_flag_gbl, GenFlags};
 /* ================== PUBLIC API ================== */
 
 #[inline]
 #[must_use]
-pub fn wacky_to_assembly(program: WackProgram, counter: usize) -> (AsmProgram, AsmGen) {
-    let mut asm_gen = AsmGen::new(counter);
+pub fn wacky_to_assembly(
+    program: WackProgram,
+    counter: usize,
+    symbol_table: HashMap<WackTempIdent, WackType>,
+) -> (AsmProgram, AsmGen) {
+    let mut asm_gen = AsmGen::new(counter, symbol_table);
     let mut asm_functions: Vec<AsmFunction> = Vec::new();
     asm_functions.push(asm_gen.lower_main_asm(program.main_body));
     for wack_function in program.functions {
@@ -37,6 +42,7 @@ pub struct AsmGen {
     pub counter: usize,
     pub str_counter: usize,
     pub str_literals: BTreeMap<String, String>,
+    pub symbol_table: HashMap<WackTempIdent, AssemblyType>,
     // and a table to store these literals with their lengths
     // we need to mangle them as well
     // also maybe keep track of RIP relative addressing
@@ -48,12 +54,48 @@ pub struct AsmGen {
     // So we automatically know if we should use PLT or not
 }
 
+fn convert_type(ty: &WackType) -> AssemblyType {
+    use AssemblyType::{Byte, Longword, Quadword};
+
+    match ty {
+        WackType::Int { width } => match width {
+            BitWidth::W8 => Byte,
+            BitWidth::W16 => {
+                unimplemented!("The assembly typesystem does not support 16-bit width integers yet")
+            }
+            BitWidth::W32 => Longword,
+            BitWidth::W64 => Quadword,
+        },
+        WackType::Label | WackType::Pointer(_) => Quadword, // labels are pointers to code
+        WackType::Array(_) => unimplemented!(
+            "The Wack::Array <-> AssemblyType::ByteArray conversion is not implemented yet"
+        ),
+        WackType::Pair(_, _) => {
+            unimplemented!("The AssemblyType system does not support raw pair-types yet")
+        }
+    }
+}
+
+const fn get_type_from_literal(lit: &WackLiteral) -> AssemblyType {
+    match *lit {
+        WackLiteral::Int(_) => Longword,
+        WackLiteral::Bool(_) | WackLiteral::Char(_) => Byte,
+        WackLiteral::StringLit(_) => AssemblyType::Quadword,
+        WackLiteral::NullPair => AssemblyType::Quadword,
+    }
+}
+
 impl AsmGen {
-    fn new(counter: usize) -> Self {
+    fn new(counter: usize, symbol_table: HashMap<WackTempIdent, WackType>) -> Self {
+        let symbol_table = symbol_table
+            .into_iter()
+            .map(|(k, v)| (k, convert_type(&v)))
+            .collect();
         Self {
             counter,
             str_counter: 0,
             str_literals: BTreeMap::new(),
+            symbol_table,
         }
     }
 
@@ -66,6 +108,17 @@ impl AsmGen {
         self.str_counter += 1;
         self.str_literals.insert(s.to_owned(), label.clone());
         label
+    }
+
+    fn get_asm_type(&self, value: &WackValue) -> AssemblyType {
+        use WackValue::{Literal, Var};
+        match value {
+            Literal(lit) => get_type_from_literal(lit),
+            Var(ident) => *self
+                .symbol_table
+                .get(ident)
+                .expect("Variable not in symbol table"),
+        }
     }
 
     fn lower_main_asm(&mut self, instrs: Vec<WackInstr>) -> AsmFunction {
@@ -126,9 +179,10 @@ impl AsmGen {
         let arg_regs = [DI, SI, DX, CX, R8, R9];
         for (param, reg) in params.iter().zip(arg_regs.iter()) {
             let wack_value = WackValue::Var(param.clone());
+            let typ = self.get_asm_type(&wack_value);
             let param_name = self.lower_value(wack_value, &mut asm);
             asm.push(AsmInstruction::Mov {
-                typ: Longword,
+                typ,
                 src: Operand::Reg(*reg),
                 dst: param_name,
             });
@@ -140,11 +194,12 @@ impl AsmGen {
             "Move remaining parameters from stack into our stack frame".to_owned(),
         ));
         let mut stack_index = 0;
-        for param in params.iter().skip(arg_regs.len()).rev() {
+        for param in params.iter().skip(arg_regs.len()) {
             let wack_value = WackValue::Var(param.clone());
+            let typ = self.get_asm_type(&wack_value);
             let param_name = self.lower_value(wack_value, &mut asm);
             asm.push(AsmInstruction::Mov {
-                typ: AssemblyType::Longword,
+                typ,
                 src: Operand::Stack(16 + stack_index),
                 dst: param_name,
             });
@@ -248,6 +303,7 @@ impl AsmGen {
                 asm.push(Asm::JmpCC {
                     condition: CondCode::E,
                     label: target.into(),
+                    is_func: false,
                 });
             }
             JumpIfNotZero { condition, target } => {
@@ -260,6 +316,7 @@ impl AsmGen {
                 asm.push(Asm::JmpCC {
                     condition: CondCode::NE,
                     label: target.into(),
+                    is_func: false,
                 });
             }
             Copy { src, dst } => {
@@ -387,6 +444,7 @@ impl AsmGen {
                 asm.push(AsmInstruction::JmpCC {
                     condition: CondCode::E,
                     label: inbuiltNullAccess.to_owned(),
+                    is_func: true,
                 });
             }
             WackInstr::AddPtr {
@@ -480,7 +538,7 @@ impl AsmGen {
         asm: &mut Vec<AsmInstruction>,
     ) {
         use AsmInstruction as Asm;
-        use Operand::{Imm, Reg};
+        use Operand::Reg;
         use Register::{AX, CX, DI, DX, R8, R9, SI};
         let arg_regs = [DI, SI, DX, CX, R8, R9];
 
@@ -529,23 +587,24 @@ impl AsmGen {
             asm.push(Asm::Comment(
                 "Pushing arguments to stack in reverse order".to_owned(),
             ));
-            for tacky_arg in stack_args {
+            for tacky_arg in stack_args.iter().rev() {
+                let typ = self.get_asm_type(tacky_arg);
                 let assembly_arg: Operand = self.lower_value(tacky_arg.clone(), asm);
-                let new_instrs: Vec<AsmInstruction> = match assembly_arg {
-                    Imm(_) | Reg(_) => vec![Asm::Push(assembly_arg)],
-                    _ => vec![
-                        // Use register AX here as temporary storage
-                        // Note this is the only register that can be used here
-                        // We can't use callee saved registers here
-                        Asm::Mov {
-                            typ: AssemblyType::Longword,
-                            src: assembly_arg,
-                            dst: Operand::Reg(AX),
-                        },
-                        Asm::Push(Reg(AX)),
-                    ],
-                };
-                asm.extend(new_instrs);
+                if let Operand::Reg(_) = assembly_arg {
+                    asm.push(Asm::Push(assembly_arg));
+                } else if let Operand::Imm(_) = assembly_arg {
+                    asm.push(Asm::Push(assembly_arg));
+                } else if typ == AssemblyType::Quadword {
+                    asm.push(Asm::Push(assembly_arg));
+                } else {
+                    // This solves the issue of pushing -4(%rbp) to the stack
+                    asm.push(Asm::Mov {
+                        typ: Longword,
+                        src: assembly_arg,
+                        dst: Reg(AX),
+                    });
+                    asm.push(Asm::Push(Reg(AX)));
+                }
             }
         }
 
@@ -705,6 +764,7 @@ impl AsmGen {
                     Asm::JmpCC {
                         condition: CondCode::E,
                         label: inbuiltDivZero.to_owned(),
+                        is_func: true,
                     },
                     Asm::Mov {
                         typ: AssemblyType::Longword,

@@ -142,6 +142,7 @@ static malloc: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         JmpCC {
             condition: E,
             label: inbuiltOOM.to_owned(),
+            is_func: true,
         },
         Mov {
             typ: Quadword,
@@ -206,6 +207,7 @@ static freepair: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         JmpCC {
             condition: E,
             label: inbuiltNullAccess.to_owned(),
+            is_func: true,
         },
         Call(cFree.to_owned(), true), // true indicates external PLT call
         Mov {
@@ -427,6 +429,7 @@ static printb: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         JmpCC {
             condition: NE,
             label: "printb0".to_owned(),
+            is_func: false,
         },
         Lea {
             src: Data(printb_str0.to_owned(), 0),
@@ -568,10 +571,10 @@ static arrLoad1: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     global: false,
     instructions: vec![
         Push(Reg(BX)),
-        Cmp {
+        Test {
             typ: Longword,
             op1: Reg(R10),
-            op2: Imm(0),
+            op2: Reg(R10),
         },
         Cmov {
             condition: L,
@@ -582,6 +585,7 @@ static arrLoad1: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         JmpCC {
             condition: L,
             label: inbuiltOutOfBounds.to_owned(),
+            is_func: true,
         },
         Mov {
             typ: Longword,
@@ -602,6 +606,7 @@ static arrLoad1: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         JmpCC {
             condition: GE,
             label: inbuiltOutOfBounds.to_owned(),
+            is_func: true,
         },
         Mov {
             typ: Byte,
@@ -624,10 +629,10 @@ static arrLoad4: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     global: false,
     instructions: vec![
         Push(Reg(BX)),
-        Cmp {
+        Test {
             typ: Longword,
             op1: Reg(R10),
-            op2: Imm(0),
+            op2: Reg(R10),
         },
         Cmov {
             condition: L,
@@ -638,6 +643,7 @@ static arrLoad4: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         JmpCC {
             condition: L,
             label: inbuiltOutOfBounds.to_owned(),
+            is_func: true,
         },
         Mov {
             typ: Longword,
@@ -658,6 +664,7 @@ static arrLoad4: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         JmpCC {
             condition: GE,
             label: inbuiltOutOfBounds.to_owned(),
+            is_func: true,
         },
         Mov {
             typ: Longword,
@@ -680,10 +687,10 @@ static arrLoad8: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     global: false,
     instructions: vec![
         Push(Reg(BX)),
-        Cmp {
+        Test {
             typ: Longword,
             op1: Reg(R10),
-            op2: Imm(0),
+            op2: Reg(R10),
         },
         Cmov {
             condition: L,
@@ -694,6 +701,7 @@ static arrLoad8: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         JmpCC {
             condition: L,
             label: inbuiltOutOfBounds.to_owned(),
+            is_func: true,
         },
         Mov {
             typ: Longword,
@@ -714,6 +722,7 @@ static arrLoad8: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         JmpCC {
             condition: GE,
             label: inbuiltOutOfBounds.to_owned(),
+            is_func: true,
         },
         Mov {
             typ: Quadword,
@@ -767,7 +776,7 @@ static errOutOfBounds: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     ],
     directives: vec![Directive(
         errOutOfBounds_str0,
-        "fatal error: array index %d out of bounds\n",
+        "fatal error: array index %d out of bounds",
     )],
 });
 
