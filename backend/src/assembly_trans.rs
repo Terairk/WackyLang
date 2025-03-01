@@ -470,13 +470,13 @@ impl AsmGen {
                 //     dst: operand_dst,
                 // });
                 asm.push(AsmInstruction::Mov {
-                    typ: Quadword,
+                    typ: dst_type,
                     src: operand_src_ptr,
-                    dst: Operand::Reg(AX),
+                    dst: Operand::Reg(Register::SI),
                 });
                 asm.push(AsmInstruction::Mov {
                     typ: dst_type,
-                    src: Operand::Memory(AX, 0),
+                    src: Operand::Memory(Register::SI, 0),
                     dst: operand_dst,
                 });
             }
@@ -549,15 +549,15 @@ impl AsmGen {
                     dst: Operand::Reg(Register::R10),
                 });
                 let (asm_type, inbuilt_instr) = match scale {
-                    1 => {
+                    8 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS1);
                         (Byte, inbuiltArrLoad1)
                     }
-                    4 => {
+                    32 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS4);
                         (Longword, inbuiltArrLoad4)
                     }
-                    8 => {
+                    64 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS8);
                         (Quadword, inbuiltArrLoad8)
                     }

@@ -556,7 +556,6 @@ impl Folder for TypeResolver {
             RValue::ArrayLiter(exprs, _) => {
                 let resolved_exprs = exprs.fold_with(|expr| self.fold_expr(expr));
                 if resolved_exprs.is_empty() {
-                    println!("bobsyouncle!!!");
                     return RValue::ArrayLiter(
                         resolved_exprs,
                         SemanticType::Array(Box::new(SemanticType::AnyType)),
