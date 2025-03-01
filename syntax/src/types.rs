@@ -310,6 +310,12 @@ impl SemanticType {
     pub fn array(elem: Self) -> Self {
         Self::Array(Box::new(elem))
     }
+
+    #[inline]
+    #[must_use]
+    pub fn pair(fst: Self, snd: Self) -> Self {
+        Self::Pair(Box::new(fst), Box::new(snd))
+    }
 }
 
 impl Display for SemanticType {

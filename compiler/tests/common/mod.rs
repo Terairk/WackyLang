@@ -5,7 +5,7 @@ use backend::predefined::generate_predefined;
 use backend::replace_pseudo::replace_pseudo_in_program;
 use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
-use chumsky::{Parser, extra};
+use chumsky::{extra, Parser};
 use middle::ast_transform::lower_program;
 use std::fs;
 use std::fs::create_dir_all;
@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use syntax::parser::program_parser;
 use syntax::rename::rename;
 use syntax::source::{SourcedSpan, StrSourceId};
-use syntax::token::{Token, lexer};
+use syntax::token::{lexer, Token};
 use syntax::typecheck::typecheck;
 use syntax::{ast, build_semantic_error_report, build_syntactic_report};
 use util::gen_flags::reset_flags_gbl;
@@ -339,6 +339,7 @@ pub fn compare_test_result(path: &Path) -> Result<String, String> {
 
     // Step 2: Run the compiled program and capture output
     let output = Command::new(&bin_path)
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()

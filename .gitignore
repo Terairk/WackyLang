@@ -3,3 +3,4 @@ compile
 .*
 *.wacc
 *.s
+*.core

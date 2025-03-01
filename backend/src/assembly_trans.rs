@@ -21,7 +21,7 @@ use middle::wackir::{
     WackReadType, WackTempIdent, WackValue,
 };
 use std::collections::{BTreeMap, HashMap};
-use util::gen_flags::{GenFlags, insert_flag_gbl};
+use util::gen_flags::{insert_flag_gbl, GenFlags};
 /* ================== PUBLIC API ================== */
 
 #[inline]
@@ -78,6 +78,9 @@ fn convert_type(ty: &WackType) -> AssemblyType {
         WackType::Pair(_, _) => {
             unimplemented!("The AssemblyType system does not support raw pair-types yet")
         }
+        WackType::Uninhabited => {
+            unimplemented!("The AssemblyType system does not support raw uninhabited types yet")
+        }
     }
 }
 
@@ -124,6 +127,13 @@ impl AsmGen {
                 .get(ident)
                 .expect("Variable not in symbol table"),
         }
+    }
+
+    fn get_asm_type_for_ident(&self, ident: &WackTempIdent) -> AssemblyType {
+        return *self
+            .symbol_table
+            .get(ident)
+            .expect("Variable not in symbol table");
     }
 
     fn lower_main_asm(&mut self, instrs: Vec<WackInstr>) -> AsmFunction {
@@ -343,7 +353,7 @@ impl AsmGen {
                 });
             }
             Copy { src, dst } => {
-                let src_typ = self.get_asm_type(&src);
+                let dst_typ = self.get_asm_type_for_ident(&dst);
                 let src_operand = self.lower_value(src, asm);
                 let dst_operand = self.lower_value(WackValue::Var(dst), asm);
                 match src_operand {
@@ -469,13 +479,13 @@ impl AsmGen {
                 //     dst: operand_dst,
                 // });
                 asm.push(AsmInstruction::Mov {
-                    typ: Quadword,
+                    typ: dst_type,
                     src: operand_src_ptr,
-                    dst: Operand::Reg(AX),
+                    dst: Operand::Reg(Register::SI),
                 });
                 asm.push(AsmInstruction::Mov {
                     typ: dst_type,
-                    src: Operand::Memory(AX, 0),
+                    src: Operand::Memory(Register::SI, 0),
                     dst: operand_dst,
                 });
             }
@@ -548,15 +558,15 @@ impl AsmGen {
                     dst: Operand::Reg(Register::R10),
                 });
                 let (asm_type, inbuilt_instr) = match scale {
-                    1 => {
+                    8 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS1);
                         (Byte, inbuiltArrLoad1)
                     }
-                    4 => {
+                    32 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS4);
                         (Longword, inbuiltArrLoad4)
                     }
-                    8 => {
+                    64 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS8);
                         (Quadword, inbuiltArrLoad8)
                     }
