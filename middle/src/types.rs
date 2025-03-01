@@ -95,11 +95,11 @@ impl WackType {
     }
 
     #[inline]
-    pub fn try_size_of(&self) -> Result<usize, Box<str>> {
+    pub fn try_size_of_bits(&self) -> Result<usize, Box<str>> {
         match self {
             Self::Pointer(_) => Ok(Self::PTR_BYTES), // pointers are the same size regardless
             Self::Int { width } => Ok(width.into_bit_width() as usize),
-            Self::Pair(fst, snd) => Ok(fst.try_size_of()? + snd.try_size_of()?),
+            Self::Pair(fst, snd) => Ok(fst.try_size_of_bits()? + snd.try_size_of_bits()?),
             Self::Array(_) => {
                 Err("Cannot know the size of arrays without knowing its length".into())
             }
