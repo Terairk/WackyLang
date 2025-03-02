@@ -1,3 +1,4 @@
+use crate::assembly_ast::AssemblyType::{Byte, Longword};
 use crate::assembly_ast::Register::*;
 use crate::assembly_ast::Operand::*;
 use crate::assembly_ast::AsmInstruction::{

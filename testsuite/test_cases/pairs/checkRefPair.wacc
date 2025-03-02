@@ -17,8 +17,6 @@
 begin
   pair(int, char) p = newpair(10, 'a') ;
   pair(int, char) q = p;
-  println p ;
-  println q ;
   println p == q ;
   int x = fst p ;
   int y = fst q ;
