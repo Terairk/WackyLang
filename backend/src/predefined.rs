@@ -621,8 +621,7 @@ static arrLoad1: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             label: inbuiltOutOfBounds.to_owned(),
             is_func: true,
         },
-        Mov {
-            typ: Byte,
+        Lea {
             src: Indexed {
                 offset: 0,
                 base: R9,
@@ -685,8 +684,8 @@ static arrLoad4: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             label: inbuiltOutOfBounds.to_owned(),
             is_func: true,
         },
-        Mov {
-            typ: Longword,
+        Lea {
+            // typ: Longword,
             src: Indexed {
                 offset: 0,
                 base: R9,
@@ -749,8 +748,7 @@ static arrLoad8: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             label: inbuiltOutOfBounds.to_owned(),
             is_func: true,
         },
-        Mov {
-            typ: Quadword,
+        Lea {
             src: Indexed {
                 offset: 0,
                 base: R9,

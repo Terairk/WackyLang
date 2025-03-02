@@ -458,8 +458,8 @@ pub(crate) mod ast_lowering_ctx {
                     //         - arrays, strings, pairs, etc., are actually pointers hence fit within integer registers
                     //       therefore dereferencing is sufficient to obtain the underlying value
                     let dst_value = self.make_temporary(elem_ty.clone());
-                    instructions.push(WackInstr::Copy {
-                        src: WackValue::Var(array_elem_src_ptr),
+                    instructions.push(WackInstr::Load {
+                        src_ptr: WackValue::Var(array_elem_src_ptr),
                         dst: dst_value.clone(),
                     });
 
@@ -628,7 +628,7 @@ pub(crate) mod ast_lowering_ctx {
             // memory to store that length-value as well.
             let array_len_bytes = BaseType::ARRAY_LEN_BYTES;
             let array_len = elems.len();
-            let array_elem_bytes = elem_ty.try_size_of().unwrap() / 8;
+            let array_elem_bytes = elem_ty.try_size_of().unwrap();
             let alloc_size_bytes = array_len_bytes + array_len * array_elem_bytes;
 
             //  allocate enough memory on the heap to store all elements and the size of the array
