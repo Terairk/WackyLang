@@ -181,7 +181,7 @@ fn fix_binary(
 
 fn fix_move(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand, dst: Operand) {
     let new_instrs = match (src.clone(), dst.clone()) {
-        (Memory(_, _), Stack(_)) => vec![
+        (Memory(_, _), Stack(_)) | (Stack(_), Memory(_, _)) => vec![
             Mov {
                 typ,
                 src,
