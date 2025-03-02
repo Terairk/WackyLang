@@ -178,8 +178,6 @@ pub enum AsmUnaryOperator {
     Not,
     Shr,
     Len,
-    Ord,
-    Chr,
 }
 
 #[derive(Debug, Clone)]
@@ -253,8 +251,7 @@ impl From<UnaryOp> for AsmUnaryOperator {
             UnaryOp::Negate => Self::Neg,
             UnaryOp::Not => Self::Not,
             UnaryOp::Len => Self::Len,
-            UnaryOp::Ord => Self::Ord,
-            UnaryOp::Chr => Self::Chr,
+            _ => panic!("Invalid ASM unary operator"),
         }
     }
 }

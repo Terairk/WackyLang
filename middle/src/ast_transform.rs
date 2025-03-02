@@ -457,6 +457,10 @@ pub(crate) mod ast_lowering_ctx {
                         src_ptr: WackValue::Var(array_elem_src_ptr),
                         dst: dst_value.clone(),
                     });
+                    // instructions.push(WackInstr::Copy {
+                    //     src: WackValue::Var(array_elem_src_ptr),
+                    //     dst: dst_value.clone(),
+                    // }); // TODO: this is current working version
 
                     // returned the obtained value
                     (WackValue::Var(dst_value), elem_ty)
@@ -633,7 +637,7 @@ pub(crate) mod ast_lowering_ctx {
             // push length of array to start of allocated memory region
             instructions.push(WackInstr::CopyToOffset {
                 src: WackValue::Literal(WackLiteral::Int(array_len_bytes as i32)),
-                dst: array_dst_ptr.clone(),
+                dst_ptr: array_dst_ptr.clone(),
                 offset: 0,
             });
 
@@ -653,7 +657,7 @@ pub(crate) mod ast_lowering_ctx {
                 let offset = array_len_bytes + i * array_elem_bytes;
                 instructions.push(WackInstr::CopyToOffset {
                     src: elem_value,
-                    dst: array_dst_ptr.clone(),
+                    dst_ptr: array_dst_ptr.clone(),
                     offset,
                 });
             }
@@ -733,13 +737,13 @@ pub(crate) mod ast_lowering_ctx {
             let mut offset = 0; // the first element has zero-offset from start of pair
             instructions.push(WackInstr::CopyToOffset {
                 src: fst_value,
-                dst: pair_dst_ptr.clone(),
+                dst_ptr: pair_dst_ptr.clone(),
                 offset,
             });
             offset += fst_bytes; // the second element follows directly after the first
             instructions.push(WackInstr::CopyToOffset {
                 src: snd_value,
-                dst: pair_dst_ptr.clone(),
+                dst_ptr: pair_dst_ptr.clone(),
                 offset,
             });
 
@@ -924,6 +928,19 @@ pub(crate) mod ast_lowering_ctx {
             instr: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackType) {
             // lower the inner expression
+
+            if let UnaryOper::Minus = unary_op {
+                let (src, src_ty) = self.lower_expr(expr, instr);
+                let dst_ty = WackType::from_semantic_type(sem_type);
+                let dst_name = self.make_temporary(dst_ty.clone());
+                instr.push(WackInstr::Binary {
+                    op: BinaryOp::Sub,
+                    src1: WackValue::Literal(WackLiteral::Int(0)),
+                    src2: src,
+                    dst: dst_name.clone(),
+                });
+                return (dst_name, dst_ty);
+            }
             let (src, src_ty) = self.lower_expr(expr, instr);
             // TODO: do something with this type
 
