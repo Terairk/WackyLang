@@ -424,5 +424,5 @@ impl AssemblyFormatter {
 fn escape_string(s: &str) -> String {
     // println!("Escaping string: {s}");
     // replace " with \"
-    s.replace("\"", "\\\"")
+    s.replace("\"", "\\\"").replace("\n", "\\n")
 }
