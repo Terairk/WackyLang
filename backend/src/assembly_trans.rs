@@ -486,19 +486,14 @@ impl AsmGen {
                 let dst_type = self.get_asm_type(&dst);
                 let operand_src_ptr = self.lower_value(src_ptr, asm);
                 let operand_dst = self.lower_value(dst, asm);
-                // asm.push(AsmInstruction::Mov {
-                //     typ: Longword,
-                //     src: operand_src_ptr,
-                //     dst: operand_dst,
-                // });
                 asm.push(AsmInstruction::Mov {
                     typ: Quadword,
                     src: operand_src_ptr,
-                    dst: Operand::Reg(Register::SI),
+                    dst: Operand::Reg(AX),
                 });
                 asm.push(AsmInstruction::Mov {
-                    typ: dst_type,
-                    src: Operand::Memory(Register::SI, 0),
+                    typ: Quadword,
+                    src: Operand::Memory(AX, 0),
                     dst: operand_dst,
                 });
             }
@@ -570,6 +565,7 @@ impl AsmGen {
                     src: index_operand,
                     dst: Operand::Reg(Register::R10),
                 });
+                // println!("scale: {scale:?}");
                 let (asm_type, inbuilt_instr) = match scale {
                     1 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS1);
@@ -587,7 +583,7 @@ impl AsmGen {
                 };
                 asm.push(AsmInstruction::Call(inbuilt_instr.to_owned(), false));
                 asm.push(AsmInstruction::Mov {
-                    typ: asm_type,
+                    typ: Quadword,
                     src: Operand::Reg(Register::R9),
                     dst: dst_ptr_operand,
                 });
