@@ -457,12 +457,12 @@ impl AsmGen {
                     dst: operand,
                 });
             }
-            WackInstr::CopyToOffset { src, dst, offset } => {
+            WackInstr::CopyToOffset { src, dst_ptr, offset } => {
                 let typ = self.get_asm_type(&src);
                 let operand = self.lower_value(src, asm);
                 let get_base_dst_instr = AsmInstruction::Mov {
                     typ: Quadword,
-                    src: self.lower_value(WackValue::Var(dst), asm),
+                    src: self.lower_value(dst_ptr, asm),
                     dst: Reg(AX),
                 };
                 asm.push(get_base_dst_instr);

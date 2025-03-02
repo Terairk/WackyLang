@@ -632,7 +632,7 @@ pub(crate) mod ast_lowering_ctx {
 
             instructions.push(WackInstr::CopyToOffset {
                 src: WackValue::Literal(WackLiteral::Int(array_len_bytes as i32)),
-                dst: array_dst_ptr.clone(),
+                dst_ptr: WackValue::Var(array_dst_ptr.clone()),
                 offset: 0,
             });
             // one-by-one, evaluate each element of the array and then
