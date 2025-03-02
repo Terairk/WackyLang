@@ -551,11 +551,9 @@ impl AsmGen {
                 let src_array_operand = self.lower_value(src_array_ptr, asm);
                 let value = WackValue::Var(dst_elem_ptr);
                 let dst_ptr_operand = self.lower_value(value, asm);
-                asm.push(AsmInstruction::Mov {
-                    typ: Quadword,
-                    src: src_array_operand,
-                    dst: Operand::Reg(Register::R9),
-                });
+                asm.push(Asm::Mov { typ: Quadword, src: Operand::Imm(4), dst: Operand::Reg(Register::R9) });
+                asm.push(AsmInstruction::Binary { operator: AsmBinaryOperator::Add, typ: Quadword, op1: src_array_operand, op2: Operand::Reg(Register::R9) });
+                insert_flag_gbl(GenFlags::OVERFLOW);
                 let index_operand = self.lower_value(index, asm);
                 asm.push(AsmInstruction::Mov {
                     typ: Longword,
@@ -563,15 +561,15 @@ impl AsmGen {
                     dst: Operand::Reg(Register::R10),
                 });
                 let (asm_type, inbuilt_instr) = match scale {
-                    8 => {
+                    1 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS1);
                         (Byte, inbuiltArrLoad1)
                     }
-                    32 => {
+                    4 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS4);
                         (Longword, inbuiltArrLoad4)
                     }
-                    64 => {
+                    8 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS8);
                         (Quadword, inbuiltArrLoad8)
                     }
