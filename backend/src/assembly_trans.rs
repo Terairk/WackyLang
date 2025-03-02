@@ -1,18 +1,14 @@
 use crate::assembly_ast::{
-    AsmInstruction::*,
-    AssemblyType::*,
-    Operand::*,
-    CondCode::*,
-    Register::*,
-};
-use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
 };
+use crate::assembly_ast::{
+    AsmInstruction::*, AssemblyType::*, CondCode::*, Operand::*, Register::*,
+};
 use crate::predefined::{
-    INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO, INBUILT_EXIT,
-    INBUILT_FREE, INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS, INBUILT_PRINT_BOOL,
-    INBUILT_PRINT_CHAR, INBUILT_PRINT_INT, INBUILT_PRINT_PTR, INBUILT_PRINT_STRING, INBUILT_PRINTLN,
-    INBUILT_READ_CHAR, INBUILT_READ_INT,
+    INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO,
+    INBUILT_EXIT, INBUILT_FREE, INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS,
+    INBUILT_PRINT_BOOL, INBUILT_PRINT_CHAR, INBUILT_PRINT_INT, INBUILT_PRINT_PTR,
+    INBUILT_PRINT_STRING, INBUILT_PRINTLN, INBUILT_READ_CHAR, INBUILT_READ_INT,
 };
 use middle::types::{BitWidth, WackType};
 use middle::wackir::{
@@ -22,6 +18,11 @@ use middle::wackir::{
 use std::collections::{BTreeMap, HashMap};
 use util::gen_flags::{GenFlags, insert_flag_gbl};
 /* ================== PUBLIC API ================== */
+
+// The stack size for parameters is 8 bytes
+const PARAM_STACK_SIZE: i32 = 8;
+// Parameters are stored at 16(%rbp) and onwards
+const STACK_START_PARAM: i32 = 16;
 
 #[inline]
 #[must_use]
@@ -71,9 +72,9 @@ fn convert_type(ty: &WackType) -> AssemblyType {
             BitWidth::W64 => Quadword,
         },
         WackType::Pointer(_) => Quadword, // labels are pointers to code
-        WackType::Array(_) => unimplemented!(
-            "The Wack::Array <-> ByteArray conversion is not implemented yet"
-        ),
+        WackType::Array(_) => {
+            unimplemented!("The Wack::Array <-> ByteArray conversion is not implemented yet")
+        }
         WackType::Pair(_, _) => {
             unimplemented!("The AssemblyType system does not support raw pair-types yet")
         }
@@ -137,10 +138,10 @@ impl AsmGen {
     }
 
     fn lower_main_asm(&mut self, instrs: Vec<WackInstr>) -> AsmFunction {
-        use {Mov, Pop, Push, Ret};
         use Quadword;
         use Reg;
         use {BP, SP};
+        use {Mov, Pop, Push, Ret};
         let mut asm_instructions = Vec::new();
         asm_instructions.push(Push(Reg(BP)));
         asm_instructions.push(Mov {
@@ -216,12 +217,14 @@ impl AsmGen {
             let wack_value = WackValue::Var(param.clone());
             let typ = self.get_asm_type(&wack_value);
             let param_name = self.lower_value(wack_value, &mut asm);
+            // Params are stored at 16(%rbp) and onwards
             asm.push(Mov {
                 typ,
-                src: Stack(16 + stack_index),
+                src: Memory(BP, STACK_START_PARAM + stack_index),
                 dst: param_name,
             });
-            stack_index += 8;
+            // Move to next parameter which are 8 bytes apart
+            stack_index += PARAM_STACK_SIZE;
         }
 
         for instr in wack_function.body {
@@ -619,7 +622,7 @@ impl AsmGen {
         // register_args is a slice of WackValues up to 6 values
         // stack_args is an Option of a slice of WackValues
         let stack_padding = if stack_args.iter().len() % 2 != 0 {
-            8
+            PARAM_STACK_SIZE
         } else {
             0
         };
@@ -687,7 +690,8 @@ impl AsmGen {
 
         // adjust stack pointer
         #[allow(clippy::cast_possible_truncation)]
-        let bytes_to_remove: i32 = 8 * stack_args.map_or(0, |args| args.len()) as i32;
+        let bytes_to_remove: i32 =
+            PARAM_STACK_SIZE * stack_args.map_or(0, |args| args.len()) as i32;
         if bytes_to_remove != 0 {
             asm.push(DeallocateStack(bytes_to_remove));
         }
@@ -704,7 +708,6 @@ impl AsmGen {
     }
 
     fn lower_return(&mut self, value: WackValue, asm_instructions: &mut Vec<AsmInstruction>) {
-
         let typ = self.get_asm_type(&value);
         let operand = self.lower_value(value, asm_instructions);
         // TODO: most of these arms aren't correct apart from Imm
@@ -736,13 +739,9 @@ impl AsmGen {
                 src: operand,
                 dst: Reg(AX),
             }),
-            PseudoMem(_, _) => asm_instructions.push(Mov {
-                typ,
-                src: operand,
-                dst: Reg(AX),
-            }),
-            Indexed { .. } => unimplemented!(),
-            Stack(_) => unimplemented!(),
+            Indexed { .. } => {
+                unimplemented!("for now we don't make indexed at this lowering stage")
+            }
         }
 
         asm_instructions.push(Mov {
