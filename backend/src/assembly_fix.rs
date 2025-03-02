@@ -190,7 +190,7 @@ fn fix_move(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand, dst:
             Mov {
                 typ,
                 src: Reg(R10),
-                dst
+                dst,
             },
         ],
         (Memory(_, _), Stack(_)) | (Stack(_), Memory(_, _)) => vec![
@@ -199,10 +199,10 @@ fn fix_move(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand, dst:
                 src,
                 dst: Reg(R10),
             },
-            Mov { 
-                typ, 
+            Mov {
+                typ,
                 src: Reg(R10),
-                dst
+                dst,
             },
         ],
         (Operand::Stack(_), Operand::Stack(_)) => vec![
@@ -328,7 +328,7 @@ fn fix_cmp(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, op1: Operand, op2: 
 
 fn fix_lea(asm: &mut Vec<AsmInstruction>, src: Operand, dst: Operand) {
     let new_instrs = match (src.clone(), dst.clone()) {
-        (_, Operand::Stack(_)) => vec![
+        (_, Operand::Stack(_)) | (_, Operand::Memory(_, _)) => vec![
             AsmInstruction::Lea {
                 src,
                 dst: Operand::Reg(Register::R9),

@@ -469,18 +469,28 @@ impl AsmGen {
             } => {
                 let typ = self.get_asm_type(&src);
                 let operand = self.lower_value(src, asm);
+                let operand2 = self.lower_value(dst_ptr, asm);
+                // println!("operand1: {operand:?}");
+                // println!("operand2: {operand2:?}");
                 let get_base_dst_instr = AsmInstruction::Mov {
                     typ: Quadword,
-                    src: self.lower_value(dst_ptr, asm),
+                    src: operand2,
                     dst: Reg(AX),
                 };
                 asm.push(get_base_dst_instr);
                 let new_dst = Operand::Memory(AX, offset.try_into().expect("weird offset"));
-                asm.push(AsmInstruction::Mov {
-                    typ: typ,
-                    src: operand,
-                    dst: new_dst,
-                });
+                if let Operand::Data(_, _) = operand {
+                    asm.push(AsmInstruction::Lea {
+                        src: operand,
+                        dst: new_dst,
+                    });
+                } else {
+                    asm.push(AsmInstruction::Mov {
+                        typ: typ,
+                        src: operand,
+                        dst: new_dst,
+                    });
+                }
             }
             WackInstr::Load { src_ptr, dst } => {
                 // TODO: double check this
