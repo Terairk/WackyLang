@@ -651,7 +651,7 @@ pub(crate) mod ast_lowering_ctx {
                 let offset = array_len_bytes + i * array_elem_bytes;
                 instructions.push(WackInstr::CopyToOffset {
                     src: elem_value,
-                    dst: array_dst_ptr.clone(),
+                    dst_ptr: WackValue::Var(array_dst_ptr.clone()),
                     offset,
                 });
             }
@@ -731,13 +731,13 @@ pub(crate) mod ast_lowering_ctx {
             let mut offset = 0; // the first element has zero-offset from start of pair
             instructions.push(WackInstr::CopyToOffset {
                 src: fst_value,
-                dst: pair_dst_ptr.clone(),
+                dst_ptr: WackValue::Var(pair_dst_ptr.clone()),
                 offset,
             });
             offset += fst_bytes; // the second element follows directly after the first
             instructions.push(WackInstr::CopyToOffset {
                 src: snd_value,
-                dst: pair_dst_ptr.clone(),
+                dst_ptr: WackValue::Var(pair_dst_ptr.clone()),
                 offset,
             });
 
@@ -773,7 +773,7 @@ pub(crate) mod ast_lowering_ctx {
             let wack_elems_ty = unsafe { raw_pair_ty.into_pair_elem_types() };
             let (elem_ty, offset) = match (is_fst, wack_elems_ty) {
                 (true, (fst, _)) => (fst, 0), // the first element has zero-offset from start of pair
-                (false, (_, snd)) => (snd.clone(), snd.try_size_of().unwrap()), // the second element follows directly after the first
+                (false, (fst, snd)) => (snd.clone(), fst.try_size_of().unwrap()), // the second element follows directly after the first
             }; // TODO: think about padding and alignment: this may not be the definitive layout
 
             // it should never be the case that these types disagree

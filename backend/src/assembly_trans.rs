@@ -17,7 +17,7 @@ use middle::wackir::{
     WackReadType, WackTempIdent, WackValue,
 };
 use std::collections::{BTreeMap, HashMap};
-use util::gen_flags::{GenFlags, insert_flag_gbl};
+use util::gen_flags::{insert_flag_gbl, GenFlags};
 /* ================== PUBLIC API ================== */
 
 #[inline]
@@ -123,6 +123,13 @@ impl AsmGen {
                 .get(ident)
                 .expect("Variable not in symbol table"),
         }
+    }
+
+    fn get_asm_type_for_ident(&self, ident: &WackTempIdent) -> AssemblyType {
+        return *self
+            .symbol_table
+            .get(ident)
+            .expect("Variable not in symbol table");
     }
 
     fn lower_main_asm(&mut self, instrs: Vec<WackInstr>) -> AsmFunction {
@@ -282,7 +289,8 @@ impl AsmGen {
                 inbuiltPrintString.to_owned()
             }
             WackPrintType::OtherArray | WackPrintType::Pair => {
-                asm.push(AsmInstruction::Lea {
+                asm.push(AsmInstruction::Mov {
+                    typ: AssemblyType::Quadword,
                     src: operand,
                     dst: Operand::Reg(DI),
                 });
@@ -342,7 +350,7 @@ impl AsmGen {
                 });
             }
             Copy { src, dst } => {
-                let src_typ = self.get_asm_type(&src);
+                let dst_typ = self.get_asm_type_for_ident(&dst);
                 let src_operand = self.lower_value(src, asm);
                 let dst_operand = self.lower_value(WackValue::Var(dst), asm);
                 match src_operand {
@@ -351,7 +359,7 @@ impl AsmGen {
                         dst: dst_operand,
                     }),
                     _ => asm.push(Asm::Mov {
-                        typ: src_typ,
+                        typ: dst_typ,
                         src: src_operand,
                         dst: dst_operand,
                     }),
@@ -477,7 +485,7 @@ impl AsmGen {
                 //     dst: operand_dst,
                 // });
                 asm.push(AsmInstruction::Mov {
-                    typ: dst_type,
+                    typ: Quadword,
                     src: operand_src_ptr,
                     dst: Operand::Reg(Register::SI),
                 });
@@ -583,59 +591,6 @@ impl AsmGen {
               // WackInstr::GetAddress { .. } => {}
               // WackInstr::Store { .. } => {}
               // WackInstr::CopyFromOffset { .. } => {} ?
-            // WackInstr::AllocArray {
-            //     elem_size,
-            //     length,
-            //     elems,
-            //     dst_ptr,
-            // } => {
-            //     let dst_ptr = WackValue::Var(dst_ptr);
-            //     let typ = match elem_size {
-            //         1 => Byte,
-            //         4 => Longword,
-            //         8 => Quadword,
-            //         _ => unreachable!("unexpected elem_size in array allocation"),
-            //     };
-            //     let dst_ptr_operand = self.lower_value(dst_ptr, asm);
-            //     // Moving size to RDI for malloc function
-            //     asm.push(AsmInstruction::Mov {
-            //         typ: Longword,
-            //         src: Operand::Imm((elem_size * length) as i32),
-            //         dst: Operand::Reg(DI),
-            //     });
-            //     insert_flag_gbl(GenFlags::MALLOC);
-            //     asm.push(AsmInstruction::Call(inbuiltMalloc.to_owned(), false));
-            //     // Moving pointer received to dst_ptr
-            //     asm.push(AsmInstruction::Mov {
-            //         typ: Quadword,
-            //         src: Operand::Reg(AX),
-            //         dst: Operand::Reg(R11),
-            //     });
-            //     asm.push(AsmInstruction::Binary {
-            //         operator: AsmBinaryOperator::Add,
-            //         typ: Quadword,
-            //         op1: Imm(4),
-            //         op2: Reg(R11),
-            //     });
-            //     asm.push(AsmInstruction::Mov {
-            //         typ: Longword,
-            //         src: Imm(length as i32),
-            //         dst: Memory(R11, -4),
-            //     });
-            //     for (index, elem) in elems.iter().enumerate() {
-            //         let operand = self.lower_value(elem.clone(), asm);
-            //         asm.push(AsmInstruction::Mov {
-            //             typ,
-            //             src: operand,
-            //             dst: Memory(R11, -4 + (index as i32) * (elem_size as i32)),
-            //         });
-            //     }
-            //     asm.push(AsmInstruction::Mov {
-            //         typ: Quadword,
-            //         src: Reg(R11),
-            //         dst: dst_ptr_operand,
-            //     });
-            // }
         }
     }
 
