@@ -14,6 +14,7 @@ _arrLoad4:
 	cmovge %r10, %rsi # this must be a 64-bit move so that it doesn't truncate if the move fails
 	jge _errOutOfBounds
 	movl (%r9,%r10,4), %r9d
+	# leal (%r9,%r10,4), %r9d
 	popq %rbx
 	ret
 

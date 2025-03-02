@@ -580,7 +580,7 @@ static arrLoad1: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Binary {
             operator: Add,
             typ: Quadword,
-            op1: Imm(1),
+            op1: Imm(4),
             op2: Reg(R9),
         },
         Push(Reg(BX)),
@@ -708,7 +708,7 @@ static arrLoad8: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Binary {
             operator: Add,
             typ: Quadword,
-            op1: Imm(8),
+            op1: Imm(4),
             op2: Reg(R9),
         },
         Push(Reg(BX)),
