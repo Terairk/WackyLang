@@ -227,8 +227,6 @@ impl AssemblyFormatter {
             AssemblyType::Byte => "b",
             AssemblyType::Longword => "l",
             AssemblyType::Quadword => "q",
-            AssemblyType::ByteArray { .. } => "by", // Default fallback for byte arrays - maybe not
-                                                    // necessary
         }
     }
 
@@ -284,14 +282,6 @@ impl AssemblyFormatter {
             // Printing out pseudoregisters is only for debugging,
             // these should not occur in regular assembly
             Operand::Pseudo(name) => name.clone(),
-            Operand::PseudoMem(name, offset) => {
-                // Similar convention as for Data.
-                if *offset == 0 {
-                    format!("{}(%rip)", name)
-                } else {
-                    format!("{}+(%%{})", offset, name)
-                }
-            }
         }
     }
 
@@ -300,10 +290,6 @@ impl AssemblyFormatter {
             AssemblyType::Byte => Self::format_byte_reg(reg).to_owned(),
             AssemblyType::Longword => Self::format_long_reg(reg).to_owned(),
             AssemblyType::Quadword => Self::format_quad_reg(reg).to_owned(),
-            AssemblyType::ByteArray { .. } => {
-                // Default to quadword for byte arrays.
-                Self::format_quad_reg(reg).to_owned()
-            }
         }
     }
 
@@ -371,9 +357,6 @@ impl AssemblyFormatter {
             AsmBinaryOperator::Mult => "imul", // AT&T multiplication
             AsmBinaryOperator::And => "and",
             AsmBinaryOperator::Or => "or",
-            AsmBinaryOperator::Xor => "xor",
-            AsmBinaryOperator::Shl => "sal", // shift left (sal is used in AT&T)
-            AsmBinaryOperator::ShrTwoOp => "shr",
         }
     }
 
@@ -383,7 +366,6 @@ impl AssemblyFormatter {
         match *op {
             AsmUnaryOperator::Neg => "neg",
             AsmUnaryOperator::Not => "not",
-            AsmUnaryOperator::Shr => "shr",
         }
     }
 

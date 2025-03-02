@@ -1,18 +1,14 @@
 use crate::assembly_ast::{
-    AsmInstruction::*,
-    AssemblyType::*,
-    Operand::*,
-    CondCode::*,
-    Register::*,
-};
-use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
 };
+use crate::assembly_ast::{
+    AsmInstruction::*, AssemblyType::*, CondCode::*, Operand::*, Register::*,
+};
 use crate::predefined::{
-    INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO, INBUILT_EXIT,
-    INBUILT_FREE, INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS, INBUILT_PRINT_BOOL,
-    INBUILT_PRINT_CHAR, INBUILT_PRINT_INT, INBUILT_PRINT_PTR, INBUILT_PRINT_STRING, INBUILT_PRINTLN,
-    INBUILT_READ_CHAR, INBUILT_READ_INT,
+    INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO,
+    INBUILT_EXIT, INBUILT_FREE, INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS,
+    INBUILT_PRINT_BOOL, INBUILT_PRINT_CHAR, INBUILT_PRINT_INT, INBUILT_PRINT_PTR,
+    INBUILT_PRINT_STRING, INBUILT_PRINTLN, INBUILT_READ_CHAR, INBUILT_READ_INT,
 };
 use middle::types::{BitWidth, WackType};
 use middle::wackir::{
@@ -71,9 +67,9 @@ fn convert_type(ty: &WackType) -> AssemblyType {
             BitWidth::W64 => Quadword,
         },
         WackType::Pointer(_) => Quadword, // labels are pointers to code
-        WackType::Array(_) => unimplemented!(
-            "The Wack::Array <-> ByteArray conversion is not implemented yet"
-        ),
+        WackType::Array(_) => {
+            unimplemented!("The Wack::Array <-> ByteArray conversion is not implemented yet")
+        }
         WackType::Pair(_, _) => {
             unimplemented!("The AssemblyType system does not support raw pair-types yet")
         }
@@ -137,10 +133,10 @@ impl AsmGen {
     }
 
     fn lower_main_asm(&mut self, instrs: Vec<WackInstr>) -> AsmFunction {
-        use {Mov, Pop, Push, Ret};
         use Quadword;
         use Reg;
         use {BP, SP};
+        use {Mov, Pop, Push, Ret};
         let mut asm_instructions = Vec::new();
         asm_instructions.push(Push(Reg(BP)));
         asm_instructions.push(Mov {
@@ -704,7 +700,6 @@ impl AsmGen {
     }
 
     fn lower_return(&mut self, value: WackValue, asm_instructions: &mut Vec<AsmInstruction>) {
-
         let typ = self.get_asm_type(&value);
         let operand = self.lower_value(value, asm_instructions);
         // TODO: most of these arms aren't correct apart from Imm
@@ -736,13 +731,10 @@ impl AsmGen {
                 src: operand,
                 dst: Reg(AX),
             }),
-            PseudoMem(_, _) => asm_instructions.push(Mov {
-                typ,
-                src: operand,
-                dst: Reg(AX),
-            }),
-            Indexed { .. } => unimplemented!(),
-            Stack(_) => unimplemented!(),
+            Indexed { .. } => {
+                unimplemented!("for now we don't make indexed at this lowering stage")
+            }
+            Stack(_) => unimplemented!("for now stack is not handled at this lowering stage"),
         }
 
         asm_instructions.push(Mov {

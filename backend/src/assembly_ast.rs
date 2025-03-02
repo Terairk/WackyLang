@@ -112,9 +112,10 @@ pub enum AsmInstruction {
     },
     Label(String),
     Comment(String),
-    // Temporary thing below
+    // These are high level instructions that serve a purpose
+    // of not incurring runtime checks for overflows
+    // Alternative would be adding a flag to Binary
     AllocateStack(i32),
-    // Temporary thing below
     DeallocateStack(i32),
     Push(Operand),
     Pop(Operand),
@@ -125,12 +126,11 @@ pub enum AsmInstruction {
 
 #[derive(Debug, Clone)]
 pub enum Operand {
-    Imm(i32), // TODO: immediate values should be represented as unsigned integers
+    Imm(i32),
     Reg(Register),
     Pseudo(String),
-    Memory(Register, i32),  // I think is used for array/pair access
-    Data(String, i32),      // i think used for RIP relative
-    PseudoMem(String, i32), // I do not remember
+    Memory(Register, i32), // I think is used for array/pair access
+    Data(String, i32),     // i think used for RIP relative
     Indexed {
         base: Register,
         index: Register,
@@ -157,9 +157,6 @@ pub enum AsmBinaryOperator {
     Mult,
     And,
     Or,
-    Xor,
-    Shl,
-    ShrTwoOp,
 }
 
 // I'm unsure if Assembly Unary Operators
@@ -176,7 +173,6 @@ pub enum AsmBinaryOperator {
 pub enum AsmUnaryOperator {
     Neg,
     Not,
-    Shr,
 }
 
 #[derive(Debug, Clone)]
@@ -217,7 +213,6 @@ pub enum AssemblyType {
     Byte,     // 1 byte
     Longword, // 4 bytes
     Quadword, // 8 bytes
-    ByteArray { size: i32, alignment: i32 },
 }
 
 /* ================ PRETTY PRINTER ============== */

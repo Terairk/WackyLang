@@ -50,11 +50,10 @@ pub fn replace_pseudo_in_program(program: &mut AsmProgram, symbol_table: &Symbol
 
         // Prepend an AllocateStack instruction to reserve the required stack space.
         // Note this doesn't take into account parameters just yet
-        // TODO: fix magic number here
 
         // rounds up to nearest multiple of 16 (negative version)
         last_offset = round_down_16(last_offset);
-        // 2 here since we have push rbp and mov rbp, rsp
+        // index 2 here since we have push rbp and mov rbp, rsp
         if last_offset != 0 {
             func.instructions
                 .insert(2, AsmInstruction::AllocateStack(-last_offset));
@@ -96,24 +95,6 @@ fn replace_pseudo_operand(
             *last_offset = offset;
             // may have unexpected side effects if it underflows
             *op = Operand::Stack(offset);
-        }
-    }
-    if let Operand::PseudoMem(ref ident, off) = *op {
-        // If already assigned, use existing mapping
-        if let Some(&offset) = mapping.get(ident) {
-            *op = Operand::Stack(offset + off);
-        } else {
-            // Assign new stack offset
-            let asm_type = symbol_table.get(ident).unwrap();
-            let alignment = get_alignment(*asm_type);
-            *next_stack_offset -= alignment;
-
-            *next_stack_offset = round_down(*next_stack_offset, alignment);
-
-            let offset = *next_stack_offset;
-            mapping.insert(ident.clone(), offset);
-            *last_offset = offset;
-            *op = Operand::Stack(offset + off);
         }
     }
 }
@@ -162,12 +143,11 @@ const fn round_down(x: i32, multiple: i32) -> i32 {
     x & !(multiple - 1)
 }
 
-fn get_alignment(typ: AssemblyType) -> i32 {
+const fn get_alignment(typ: AssemblyType) -> i32 {
     use AssemblyType::*;
     match typ {
         Byte => 1,
         Longword => 4,
         Quadword => 8,
-        _ => 8,
     }
 }
