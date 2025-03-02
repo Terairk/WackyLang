@@ -1,10 +1,12 @@
-use crate::assembly_ast::Register::*;
-use crate::assembly_ast::Operand::*;
-use crate::assembly_ast::AsmInstruction::{Binary, Call, Cmov, Cmp, Comment, JmpCC, Mov, MovZeroExtend, SetCC, Test};
+use crate::assembly_ast::AsmInstruction::{
+    Binary, Call, Cmov, Cmp, Comment, JmpCC, Mov, MovZeroExtend, SetCC, Test,
+};
 use crate::assembly_ast::AssemblyType::{Byte, Longword, Quadword};
 use crate::assembly_ast::CondCode::{E, NE};
 use crate::assembly_ast::Operand::*;
+use crate::assembly_ast::Operand::*;
 use crate::assembly_ast::Operand::{Imm, Reg};
+use crate::assembly_ast::Register::*;
 use crate::assembly_ast::Register::*;
 use crate::assembly_ast::Register::{AX, DI, SI};
 use crate::assembly_ast::{
@@ -635,12 +637,20 @@ impl AsmGen {
         // pass args in registers
         for (reg_index, tacky_arg) in register_args.iter().enumerate() {
             let r = arg_regs[reg_index];
+            let typ = self.get_asm_type(tacky_arg);
             let assembly_arg = self.lower_value(tacky_arg.clone(), asm);
-            asm.push(Asm::Mov {
-                typ: AssemblyType::Longword,
-                src: assembly_arg,
-                dst: Operand::Reg(r),
-            });
+            if let Operand::Data(_, _) = assembly_arg {
+                asm.push(Asm::Lea {
+                    src: assembly_arg,
+                    dst: Reg(r),
+                });
+            } else {
+                asm.push(Asm::Mov {
+                    typ: typ,
+                    src: assembly_arg,
+                    dst: Operand::Reg(r),
+                });
+            }
         }
 
         // pass rest of args on stack
