@@ -63,7 +63,8 @@ impl AssemblyFormatter {
             lines.push(format!("# length of {label}"));
             lines.push(format!("    .int {}", value.len()));
             lines.push(format!(".L_{label}:"));
-            let value = escape_string(&value);
+            // escape string here as the string might have special characters
+            let value = escape_string(value);
             lines.push(format!("    .asciz \"{value}\""));
         }
         lines.push(".text".to_owned());
@@ -90,14 +91,18 @@ impl AssemblyFormatter {
     // Format a single instruction by matching on the AST enum.
     #[inline]
     pub fn format_instruction(inst: &AsmInstruction) -> String {
+        use crate::assembly_ast::AsmInstruction::{
+            AllocateStack, Binary, Call, Cdq, Cmov, Cmp, Comment, DeallocateStack, Idiv, Jmp,
+            JmpCC, Label, Lea, Mov, MovZeroExtend, Pop, Push, Ret, SetCC, Test, Unary,
+        };
         match inst {
-            AsmInstruction::Mov { typ, src, dst } => {
+            Mov { typ, src, dst } => {
                 let suffix = Self::assembly_type_suffix(typ);
                 let src_str = Self::format_operand(src, typ);
                 let dst_str = Self::format_operand(dst, typ);
                 format!("mov{} {}, {}", suffix, src_str, dst_str)
             }
-            AsmInstruction::Cmov {
+            Cmov {
                 condition,
                 typ,
                 src,
@@ -108,7 +113,7 @@ impl AssemblyFormatter {
                 let dst_str = Self::format_operand(dst, typ);
                 format!("cmov{} {}, {}", condition, src_str, dst_str)
             }
-            AsmInstruction::MovZeroExtend {
+            MovZeroExtend {
                 src_type,
                 dst_type,
                 src,
@@ -121,12 +126,12 @@ impl AssemblyFormatter {
                 let dst_str = Self::format_operand(dst, dst_type);
                 format!("movz{}{} {}, {}", src_suffix, suffix, src_str, dst_str)
             }
-            AsmInstruction::Lea { src, dst } => {
+            Lea { src, dst } => {
                 let src_str = Self::format_operand(src, &AssemblyType::Quadword);
                 let dst_str = Self::format_operand(dst, &AssemblyType::Quadword);
                 format!("leaq {}, {}", src_str, dst_str)
             }
-            AsmInstruction::Unary {
+            Unary {
                 operator,
                 typ,
                 operand,
@@ -136,7 +141,7 @@ impl AssemblyFormatter {
                 let op = Self::format_unary_operator(operator);
                 format!("{op}{suffix} {operand_str}")
             }
-            AsmInstruction::Binary {
+            Binary {
                 operator,
                 typ,
                 op1,
@@ -152,26 +157,26 @@ impl AssemblyFormatter {
 
                 format!("{op}{suffix} {op1_str}, {op2_str}")
             }
-            AsmInstruction::Cmp { typ, op1, op2 } => {
+            Cmp { typ, op1, op2 } => {
                 let suffix = Self::assembly_type_suffix(typ);
                 let op1_str = Self::format_operand(op1, typ);
                 let op2_str = Self::format_operand(op2, typ);
                 format!("cmp{} {}, {}", suffix, op1_str, op2_str)
             }
-            AsmInstruction::Test { typ, op1, op2 } => {
+            Test { typ, op1, op2 } => {
                 let suffix = Self::assembly_type_suffix(typ);
                 let op1_str = Self::format_operand(op1, typ);
                 let op2_str = Self::format_operand(op2, typ);
                 format!("test{} {}, {}", suffix, op1_str, op2_str)
             }
-            AsmInstruction::Idiv(op) => {
+            Idiv(op) => {
                 // idivl because we only work with ints in WACC
                 let op_str = Self::format_operand(op, &AssemblyType::Longword);
                 format!("idivl {op_str}")
             }
-            AsmInstruction::Cdq => "cdq".to_owned(),
-            AsmInstruction::Jmp(label) => format!("jmp .L_{label}"),
-            AsmInstruction::JmpCC {
+            Cdq => "cdq".to_owned(),
+            Jmp(label) => format!("jmp .L_{label}"),
+            JmpCC {
                 condition,
                 label,
                 is_func,
@@ -182,40 +187,39 @@ impl AssemblyFormatter {
                 }
                 format!("j{cond} .L_{label}")
             }
-            AsmInstruction::JmpOverflow(func_handler) => format!("jo {func_handler}"),
-            AsmInstruction::SetCC { condition, operand } => {
+            SetCC { condition, operand } => {
                 let cond = Self::format_cond_code(condition);
                 let op_str = Self::format_operand(operand, &AssemblyType::Byte);
                 format!("set{} {}", cond, op_str)
             }
-            AsmInstruction::Label(name) => format!(".L_{name}:"),
-            AsmInstruction::AllocateStack(bytes) => {
+            Label(name) => format!(".L_{name}:"),
+            AllocateStack(bytes) => {
                 // In AT&T syntax, stack allocation is often performed by subtracting from %rsp.
                 format!("subq ${bytes}, %rsp")
             }
-            AsmInstruction::Push(op) => {
+            Push(op) => {
                 let op_str = Self::format_operand(op, &AssemblyType::Quadword);
                 format!("push {op_str}")
             }
-            AsmInstruction::Pop(op) => {
+            Pop(op) => {
                 let op_str = Self::format_operand(op, &AssemblyType::Quadword);
                 format!("pop {op_str}")
             }
             // Note these are our own calls so these don't need to be with @PLT
             // all @PLT external calls are already pre-generated
-            AsmInstruction::Call(name, external) => {
+            Call(name, external) => {
                 if *external {
                     format!("call {name}@PLT")
                 } else {
                     format!("call {name}")
                 }
             }
-            AsmInstruction::Ret => "ret".to_owned(),
-            AsmInstruction::DeallocateStack(bytes) => {
+            Ret => "ret".to_owned(),
+            DeallocateStack(bytes) => {
                 // In AT&T syntax, stack deallocation is often performed by adding to %rsp.
                 format!("addq ${bytes}, %rsp")
             }
-            AsmInstruction::Comment(comment) => format!("# {comment}"),
+            Comment(comment) => format!("# {comment}"),
         }
     }
 
@@ -223,20 +227,22 @@ impl AssemblyFormatter {
     // (e.g. "b" for byte, "l" for longword, "q" for quadword)
     #[inline]
     pub fn assembly_type_suffix(typ: &AssemblyType) -> &'static str {
+        use AssemblyType::{Byte, Longword, Quadword};
         match typ {
-            AssemblyType::Byte => "b",
-            AssemblyType::Longword => "l",
-            AssemblyType::Quadword => "q",
+            Byte => "b",
+            Longword => "l",
+            Quadword => "q",
         }
     }
 
     /// Format an operand into its AT&T assembly representation.
     #[inline]
     pub fn format_operand(op: &Operand, typ: &AssemblyType) -> String {
+        use Operand::{Data, Imm, Indexed, Memory, Pseudo, Reg};
         match op {
-            Operand::Imm(val) => format!("${}", val),
-            Operand::Reg(reg) => Self::format_register(reg, typ),
-            Operand::Memory(reg, offset) => {
+            Imm(val) => format!("${}", val),
+            Reg(reg) => Self::format_register(reg, typ),
+            Memory(reg, offset) => {
                 // Format as: offset(%reg) (with no offset if the value is 0)
                 let reg_str = Self::format_register(reg, &AssemblyType::Quadword);
                 if *offset == 0 {
@@ -245,7 +251,7 @@ impl AssemblyFormatter {
                     format!("{}({})", offset, reg_str)
                 }
             }
-            Operand::Data(label, offset) => {
+            Data(label, offset) => {
                 // RIP-relative addressing for data.
                 // TODO: needs an assembly symbol table to resolve if its local
                 // label or a regular label etc but figure this out later
@@ -255,7 +261,7 @@ impl AssemblyFormatter {
                     format!(".L_{}+{}(%rip)", label, offset)
                 }
             }
-            Operand::Indexed {
+            Indexed {
                 offset,
                 base,
                 index,
@@ -277,108 +283,115 @@ impl AssemblyFormatter {
 
             // Printing out pseudoregisters is only for debugging,
             // these should not occur in regular assembly
-            Operand::Pseudo(name) => name.clone(),
+            Pseudo(name) => name.clone(),
         }
     }
 
     pub fn format_register(reg: &Register, typ: &AssemblyType) -> String {
+        use AssemblyType::{Byte, Longword, Quadword};
         match typ {
-            AssemblyType::Byte => Self::format_byte_reg(reg).to_owned(),
-            AssemblyType::Longword => Self::format_long_reg(reg).to_owned(),
-            AssemblyType::Quadword => Self::format_quad_reg(reg).to_owned(),
+            Byte => Self::format_byte_reg(reg).to_owned(),
+            Longword => Self::format_long_reg(reg).to_owned(),
+            Quadword => Self::format_quad_reg(reg).to_owned(),
         }
     }
 
     /// Format a register – adds a "%" prefix and maps our enum to the 64-bit register names.
     fn format_quad_reg(reg: &Register) -> &'static str {
+        use Register::{AX, BP, BX, CX, DI, DX, R8, R9, R10, R11, SI, SP};
         match *reg {
-            Register::AX => "%rax",
-            Register::BX => "%rbx",
-            Register::CX => "%rcx",
-            Register::DX => "%rdx",
-            Register::DI => "%rdi",
-            Register::SI => "%rsi",
-            Register::R8 => "%r8",
-            Register::R9 => "%r9",
-            Register::R10 => "%r10",
-            Register::R11 => "%r11",
-            Register::SP => "%rsp",
-            Register::BP => "%rbp",
+            AX => "%rax",
+            BX => "%rbx",
+            CX => "%rcx",
+            DX => "%rdx",
+            DI => "%rdi",
+            SI => "%rsi",
+            R8 => "%r8",
+            R9 => "%r9",
+            R10 => "%r10",
+            R11 => "%r11",
+            SP => "%rsp",
+            BP => "%rbp",
         }
     }
 
     // 32 bit registers
     fn format_long_reg(reg: &Register) -> &'static str {
+        use Register::{AX, BP, BX, CX, DI, DX, R8, R9, R10, R11, SI, SP};
         match *reg {
-            Register::AX => "%eax",
-            Register::BX => "%ebx",
-            Register::CX => "%ecx",
-            Register::DX => "%edx",
-            Register::DI => "%edi",
-            Register::SI => "%esi",
-            Register::R8 => "%r8d",
-            Register::R9 => "%r9d",
-            Register::R10 => "%r10d",
-            Register::R11 => "%r11d",
-            Register::SP => panic!("Stack pointer cannot be 32-bit"),
-            Register::BP => panic!("Base pointer cannot be 32-bit"),
+            AX => "%eax",
+            BX => "%ebx",
+            CX => "%ecx",
+            DX => "%edx",
+            DI => "%edi",
+            SI => "%esi",
+            R8 => "%r8d",
+            R9 => "%r9d",
+            R10 => "%r10d",
+            R11 => "%r11d",
+            SP => panic!("Stack pointer cannot be 32-bit"),
+            BP => panic!("Base pointer cannot be 32-bit"),
         }
     }
 
     #[inline]
     // 8 bit registers
     fn format_byte_reg(reg: &Register) -> &'static str {
+        use Register::{AX, BP, BX, CX, DI, DX, R8, R9, R10, R11, SI, SP};
         match *reg {
-            Register::AX => "%al",
-            Register::BX => "%bl",
-            Register::CX => "%cl",
-            Register::DX => "%dl",
-            Register::DI => "%dil",
-            Register::SI => "%sil",
-            Register::R8 => "%r8b",
-            Register::R9 => "%r9b",
-            Register::R10 => "%r10b",
-            Register::R11 => "%r11b",
-            Register::SP => panic!("Stack pointer cannot be 8-bit"),
-            Register::BP => panic!("Base pointer cannot be 8-bit"),
+            AX => "%al",
+            BX => "%bl",
+            CX => "%cl",
+            DX => "%dl",
+            DI => "%dil",
+            SI => "%sil",
+            R8 => "%r8b",
+            R9 => "%r9b",
+            R10 => "%r10b",
+            R11 => "%r11b",
+            SP => panic!("Stack pointer cannot be 8-bit"),
+            BP => panic!("Base pointer cannot be 8-bit"),
         }
     }
 
     /// Format the binary operator as the proper mnemonic.
     #[inline]
     pub const fn format_binary_operator(op: &AsmBinaryOperator) -> &'static str {
+        use crate::assembly_ast::AsmBinaryOperator::{Add, And, Mult, Or, Sub};
         match *op {
-            AsmBinaryOperator::Add => "add",
-            AsmBinaryOperator::Sub => "sub",
-            AsmBinaryOperator::Mult => "imul", // AT&T multiplication
-            AsmBinaryOperator::And => "and",
-            AsmBinaryOperator::Or => "or",
+            Add => "add",
+            Sub => "sub",
+            Mult => "imul", // AT&T multiplication
+            And => "and",
+            Or => "or",
         }
     }
 
     /// Format the unary operator as the proper mnemonic.
     #[inline]
     pub const fn format_unary_operator(op: &AsmUnaryOperator) -> &'static str {
+        use AsmUnaryOperator::Not;
         match *op {
-            AsmUnaryOperator::Neg => "neg",
-            AsmUnaryOperator::Not => "not",
+            Not => "not",
         }
     }
 
     /// Map your condition codes to the AT&T conditional suffix.
     #[inline]
     pub const fn format_cond_code(cc: &CondCode) -> &'static str {
+        use CondCode::{A, AE, B, BE, E, G, GE, L, LE, NE, OF};
         match *cc {
-            CondCode::E => "e",
-            CondCode::NE => "ne",
-            CondCode::G => "g",
-            CondCode::GE => "ge",
-            CondCode::L => "l",
-            CondCode::LE => "le",
-            CondCode::A => "a",
-            CondCode::AE => "ae",
-            CondCode::B => "b",
-            CondCode::BE => "be",
+            E => "e",
+            NE => "ne",
+            G => "g",
+            GE => "ge",
+            L => "l",
+            LE => "le",
+            A => "a",
+            AE => "ae",
+            B => "b",
+            BE => "be",
+            OF => "o",
         }
     }
 

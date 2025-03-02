@@ -105,7 +105,6 @@ pub enum AsmInstruction {
         label: String,
         is_func: bool, // Field to guide code emission to know if its local or not
     },
-    JmpOverflow(String), // Distinguish this from JmpCC due to jumping to other functions
     SetCC {
         condition: CondCode,
         operand: Operand,
@@ -157,34 +156,26 @@ pub enum AsmBinaryOperator {
     Or,
 }
 
-// I'm unsure if Assembly Unary Operators
-// should have Len, Ord, Chr
-// but I need some way of guiding the code gen
-// Length could be put somewhere else like a simple
-// memory lookup, but id have to change the structure of
-// it being a unary operator
-// To do that, I'd have to change from Len in syntax AST to a
-// different construct in Wacky IR
-// Ord is also technically a redundant operation (rn at least)
-// Only Chr needs special handling due to runtime
+// sadly we don't use any other AsmUnaryOperator's
+// -smth is translated as 0 - smth else so it turns into binary
 #[derive(Debug, Clone)]
 pub enum AsmUnaryOperator {
-    Neg,
     Not,
 }
 
 #[derive(Debug, Clone)]
 pub enum CondCode {
-    E,
-    NE,
-    G,
-    GE,
-    L,
-    LE,
-    A,
-    AE,
-    B,
-    BE,
+    E,  // Equal
+    NE, // Not equal
+    G,  // Greater
+    GE, // Greater or equal
+    L,  // Less
+    LE, // Less or equal
+    A,  // Above
+    AE, // Above or equal
+    B,  // Below
+    BE, // Below or equal
+    OF, // Overflow
 }
 
 // Other registers are callee saved
@@ -240,7 +231,6 @@ impl From<UnaryOp> for AsmUnaryOperator {
     #[inline]
     fn from(op: UnaryOp) -> Self {
         match op {
-            UnaryOp::Negate => Self::Neg,
             UnaryOp::Not => Self::Not,
             _ => panic!("Invalid ASM unary operator"),
         }

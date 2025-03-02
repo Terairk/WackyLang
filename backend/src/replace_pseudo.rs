@@ -81,7 +81,7 @@ fn replace_pseudo_operand(
     last_offset: &mut i32,
     symbol_table: &SymbolTable,
 ) {
-    if let Operand::Pseudo(ref ident) = *op {
+    if let Pseudo(ref ident) = *op {
         // If already assigned, use existing mapping
         if let Some(&offset) = mapping.get(ident) {
             // *op = Operand::Stack(offset);

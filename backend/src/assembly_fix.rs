@@ -6,17 +6,19 @@
 // We'll use R10D as a scratch register because it usually doesn't serve
 // any special purpose
 
+use crate::assembly_ast::CondCode;
+use crate::assembly_ast::Operand::{Data, Memory, Reg};
 use crate::{
     assembly_ast::{
-        AsmBinaryOperator, AsmFunction, AsmInstruction::*, AsmProgram, AsmUnaryOperator,
-        AssemblyType, Operand::*, Register::*, *,
+        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmInstruction::*, AsmProgram,
+        AssemblyType, Operand, Operand::Imm, Register::*,
     },
     predefined::INBUILT_OVERFLOW,
 };
 
+///
 /// Fix the assembly instructions in the program to ensure they are valid x86-64 instructions.
 /// Some instructions have special requirements such as needing a register as 2nd operand
-/// such as lea or IDIV which has special requirements
 #[must_use]
 #[inline]
 pub fn fix_program(program: AsmProgram) -> AsmProgram {
@@ -52,17 +54,11 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
                 Lea { src, dst } => {
                     fix_lea(&mut new_func_body, src, dst);
                 }
-                Unary {
-                    operator,
-                    typ,
-                    operand,
-                } => fix_unary(&mut new_func_body, operator, typ, operand),
                 // All other instructions are left unchanged as they dont have special requirements
                 _ => new_func_body.push(instr),
             }
         }
 
-        // TODO: maybe we can use bon crate
         new_functions.push(AsmFunction {
             name: func.name,
             global: func.global,
@@ -73,34 +69,6 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
 
     AsmProgram {
         asm_functions: new_functions,
-    }
-}
-
-fn fix_unary(
-    new_func_body: &mut Vec<AsmInstruction>,
-    operator: AsmUnaryOperator,
-    typ: AssemblyType,
-    operand: Operand,
-) {
-    match operator {
-        AsmUnaryOperator::Neg => {
-            let new_instrs = vec![
-                Unary {
-                    operator: AsmUnaryOperator::Neg,
-                    typ,
-                    operand,
-                },
-                JmpOverflow(INBUILT_OVERFLOW.to_owned()),
-            ];
-            new_func_body.extend(new_instrs);
-        }
-        _ => {
-            new_func_body.push(Unary {
-                operator,
-                typ,
-                operand,
-            });
-        }
     }
 }
 
@@ -179,7 +147,11 @@ fn fix_binary(
             op2,
         }),
     }
-    asm.push(JmpOverflow(INBUILT_OVERFLOW.to_owned()));
+    asm.push(JmpCC {
+        condition: CondCode::OF,
+        label: INBUILT_OVERFLOW.to_owned(),
+        is_func: true,
+    });
 }
 
 fn fix_move(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand, dst: Operand) {
@@ -211,7 +183,7 @@ fn fix_add_sub(
     let new_instrs = match (op1.clone(), op2.clone()) {
         (Memory(_, _), Memory(_, _)) => vec![
             Mov {
-                typ: typ.clone(),
+                typ,
                 src: op1,
                 dst: Reg(R10),
             },
@@ -236,13 +208,13 @@ fn fix_mult(typ: AssemblyType, op1: Operand, op2: Operand, asm: &mut Vec<AsmInst
     let new_instrs = match (op1.clone(), op2.clone()) {
         (_, Memory(_, _)) => vec![
             Mov {
-                typ: typ.clone(),
+                typ,
                 src: op2.clone(),
                 dst: Reg(R11),
             },
             Binary {
                 operator: AsmBinaryOperator::Mult,
-                typ: typ.clone(),
+                typ,
                 op1,
                 op2: Reg(R11),
             },
@@ -280,7 +252,7 @@ fn fix_cmp(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, op1: Operand, op2: 
     let new_instrs = match (op1.clone(), op2.clone()) {
         (Memory(_, _), Memory(_, _)) => vec![
             Mov {
-                typ: typ.clone(),
+                typ,
                 src: op1,
                 dst: Reg(R10),
             },
@@ -292,7 +264,7 @@ fn fix_cmp(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, op1: Operand, op2: 
         ],
         (_, Imm(_)) => vec![
             Mov {
-                typ: typ.clone(),
+                typ,
                 src: op2,
                 dst: Reg(R11),
             },

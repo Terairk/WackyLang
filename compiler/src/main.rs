@@ -7,7 +7,7 @@ use backend::predefined::generate_predefined;
 use backend::replace_pseudo::replace_pseudo_in_program;
 use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
-use chumsky::{extra, Parser};
+use chumsky::{Parser, extra};
 use clap::Parser as ClapParser;
 use middle::ast_transform::lower_program;
 use std::path::PathBuf;
@@ -16,7 +16,7 @@ use syntax::ast;
 use syntax::parser::program_parser;
 use syntax::rename::rename;
 use syntax::source::{SourcedSpan, StrSourceId};
-use syntax::token::{lexer, Token};
+use syntax::token::{Token, lexer};
 use syntax::typecheck::typecheck;
 use syntax::{build_semantic_error_report, build_syntactic_report};
 
@@ -82,19 +82,6 @@ struct Args {
     codegen: bool,
 }
 
-// #[allow(dead_code)]
-// const TEST_PROGRAM: &str =
-//     include_str!("../../test_cases/valid/function/simple_functions/asciiTable.wacc");
-// #[allow(dead_code)]
-// const SEMANTIC_ERR_PROGRAM: &str =
-//     include_str!("../../test_cases/invalid/semanticErr/multiple/ifAndWhileErrs.wacc");
-
-#[allow(dead_code)]
-// const CARROT_ONE: &str = include_str!("../../test_cases/valid/basic/exit/exit-1.wacc");
-// const CARROT_ONE_ASM: &str = include_str!("../../test_cases/exit-1.txt");
-// const CARROT_TWO: &str = include_str!("../../test_cases/valid/IO/read/read.wacc");
-// const CARROT_TWO_ASM: &str = include_str!("../../test_cases/read.txt");
-
 static SEMANTIC_ERR_CODE: u8 = 200;
 static SYNTAX_ERR_CODE: u8 = 100;
 
@@ -122,44 +109,6 @@ fn main() -> ExitCode {
         }
     };
 
-    // let file_name = std::path::Path::new(&file_path)
-    //     .file_name()
-    //     .and_then(|name| name.to_str())
-    //     .unwrap_or("output")
-    //     .strip_suffix(".wacc")
-    //     .unwrap_or("output");
-    //
-    // let output_file_path = format!("{file_name}.s");
-    //
-    // // TEMPORARY CARROT MARK
-    // if source == CARROT_ONE {
-    //     match std::fs::write(&output_file_path, CARROT_ONE_ASM) {
-    //         Ok(_) => {
-    //             println!("Successfully wrote to file {output_file_path}");
-    //         }
-    //         Err(e) => {
-    //             eprintln!("Failed to write to file {output_file_path}: {e}");
-    //             return ExitCode::FAILURE;
-    //         }
-    //     }
-    //     return ExitCode::SUCCESS;
-    // }
-    //
-    // if source == CARROT_TWO {
-    //     match std::fs::write(&output_file_path, CARROT_TWO_ASM) {
-    //         Ok(_) => {
-    //             println!("Successfully wrote to file {output_file_path}");
-    //         }
-    //         Err(e) => {
-    //             eprintln!("Failed to write to file {output_file_path}: {e}");
-    //             return ExitCode::FAILURE;
-    //         }
-    //     }
-    //     return ExitCode::SUCCESS;
-    // }
-
-    // let source = TEST_PROGRAM;
-    // let file_path = "test_cases/invalid/syntaxErr/basic/beginNoend.wacc";
     let source_id = StrSourceId::from_str(&file_path);
     let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
 
@@ -254,18 +203,6 @@ fn main() -> ExitCode {
     if renamed_errors_not_empty {
         return ExitCode::from(SEMANTIC_ERR_CODE);
     }
-
-    // // TEMPORARY CARROT MARK
-    // let output_file_path = format!("{file_path}.s");
-    // match std::fs::write(&output_file_path, CARROT_ONE_ASM) {
-    //     Ok(_) => {
-    //         println!("Successfully wrote to file {output_file_path}");
-    //     }
-    //     Err(e) => {
-    //         eprintln!("Failed to write to file {output_file_path}: {e}");
-    //         return ExitCode::FAILURE;
-    //     }
-    // }
 
     // -------------------------------------------------------------------------
     //                          Wacky IR Pass
