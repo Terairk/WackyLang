@@ -646,7 +646,7 @@ pub(crate) mod ast_lowering_ctx {
                 let offset = array_len_bytes + i * array_elem_bytes;
                 instructions.push(WackInstr::CopyToOffset {
                     src: elem_value,
-                    dst: array_dst_ptr.clone(),
+                    dst_ptr: WackValue::Var(array_dst_ptr.clone()),
                     offset,
                 });
             }
@@ -726,13 +726,13 @@ pub(crate) mod ast_lowering_ctx {
             let mut offset = 0; // the first element has zero-offset from start of pair
             instructions.push(WackInstr::CopyToOffset {
                 src: fst_value,
-                dst: pair_dst_ptr.clone(),
+                dst_ptr: WackValue::Var(pair_dst_ptr.clone()),
                 offset,
             });
             offset += fst_bytes; // the second element follows directly after the first
             instructions.push(WackInstr::CopyToOffset {
                 src: snd_value,
-                dst: pair_dst_ptr.clone(),
+                dst_ptr: WackValue::Var(pair_dst_ptr.clone()),
                 offset,
             });
 

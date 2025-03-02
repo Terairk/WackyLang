@@ -455,10 +455,16 @@ impl AsmGen {
                     dst: operand,
                 });
             }
-            WackInstr::CopyToOffset { src, dst, offset } => {
+            WackInstr::CopyToOffset { src, dst_ptr, offset } => {
                 let typ = self.get_asm_type(&src);
                 let operand = self.lower_value(src, asm);
-                let new_dst = Operand::PseudoMem(dst.into(), offset as i32);
+                let get_base_dst_instr = AsmInstruction::Mov {
+                    typ: Quadword,
+                    src: self.lower_value(dst_ptr, asm),
+                    dst: Operand::Reg(AX),
+                };
+                asm.push(get_base_dst_instr);
+                let new_dst = Operand::Memory(AX, offset.try_into().expect("weird offset"));
                 asm.push(AsmInstruction::Mov {
                     typ: typ,
                     src: operand,

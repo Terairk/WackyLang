@@ -194,16 +194,12 @@ pub enum WackInstr {
     },
 
     /// Copies the bytes of scalar value represented by [`src`], to the memory location (plus offset)
-    /// of the object represented by variable [`dst`].
-    ///
-    /// TODO: >its unclear which of these are pointers, and which are values...
-    ///       >its ALSO unclear how exactly the size-information (which is based on types) is meant
-    ///        to propagate to ASM generation?? how are we looking up the size of [`src`]
+    /// of the object represented by the value [`dst_ptr`].
     ///
     /// It can be seen as an automated version of C's `memcpy`.
     CopyToOffset {
         src: WackValue,
-        dst: WackTempIdent, // you can only store into an identifier
+        dst_ptr: WackValue, // you can only store into an identifier
         offset: usize,
     },
 
@@ -896,10 +892,10 @@ impl fmt::Debug for WackInstr {
                 "AddPtr {{ src_ptr: {:?}, index: {:?}, scale: {:?}, offset: {:?}, dst_ptr: {:?} }}",
                 src_ptr, index, scale, offset, dst_ptr
             ),
-            Self::CopyToOffset { src, dst, offset } => write!(
+            Self::CopyToOffset { src, dst_ptr, offset } => write!(
                 f,
-                "CopyToOffset {{ src: {:?}, dst: {:?}, offset: {:?} }}",
-                src, dst, offset
+                "CopyToOffset {{ src: {:?}, dst_ptr: {:?}, offset: {:?} }}",
+                src, dst_ptr, offset
             ),
             // Self::CopyFromOffset { src, offset, dst } => write!(
             //     f,
