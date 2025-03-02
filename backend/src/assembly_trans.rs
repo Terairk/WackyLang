@@ -19,6 +19,11 @@ use std::collections::{BTreeMap, HashMap};
 use util::gen_flags::{GenFlags, insert_flag_gbl};
 /* ================== PUBLIC API ================== */
 
+// The stack size for parameters is 8 bytes
+const PARAM_STACK_SIZE: i32 = 8;
+// Parameters are stored at 16(%rbp) and onwards
+const STACK_START_PARAM: i32 = 16;
+
 #[inline]
 #[must_use]
 pub fn wacky_to_assembly(
@@ -212,12 +217,14 @@ impl AsmGen {
             let wack_value = WackValue::Var(param.clone());
             let typ = self.get_asm_type(&wack_value);
             let param_name = self.lower_value(wack_value, &mut asm);
+            // Params are stored at 16(%rbp) and onwards
             asm.push(Mov {
                 typ,
-                src: Stack(16 + stack_index),
+                src: Memory(BP, STACK_START_PARAM + stack_index),
                 dst: param_name,
             });
-            stack_index += 8;
+            // Move to next parameter which are 8 bytes apart
+            stack_index += PARAM_STACK_SIZE;
         }
 
         for instr in wack_function.body {
@@ -615,7 +622,7 @@ impl AsmGen {
         // register_args is a slice of WackValues up to 6 values
         // stack_args is an Option of a slice of WackValues
         let stack_padding = if stack_args.iter().len() % 2 != 0 {
-            8
+            PARAM_STACK_SIZE
         } else {
             0
         };
@@ -683,7 +690,8 @@ impl AsmGen {
 
         // adjust stack pointer
         #[allow(clippy::cast_possible_truncation)]
-        let bytes_to_remove: i32 = 8 * stack_args.map_or(0, |args| args.len()) as i32;
+        let bytes_to_remove: i32 =
+            PARAM_STACK_SIZE * stack_args.map_or(0, |args| args.len()) as i32;
         if bytes_to_remove != 0 {
             asm.push(DeallocateStack(bytes_to_remove));
         }
@@ -734,7 +742,6 @@ impl AsmGen {
             Indexed { .. } => {
                 unimplemented!("for now we don't make indexed at this lowering stage")
             }
-            Stack(_) => unimplemented!("for now stack is not handled at this lowering stage"),
         }
 
         asm_instructions.push(Mov {

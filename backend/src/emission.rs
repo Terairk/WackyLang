@@ -274,10 +274,6 @@ impl AssemblyFormatter {
                 }
                 format!("{offset_str}({reg1}, {reg2}, {scale})")
             }
-            Operand::Stack(offset) => {
-                // Using %rbp as the base pointer for a stack reference.
-                format!("{}(%rbp)", offset)
-            }
 
             // Printing out pseudoregisters is only for debugging,
             // these should not occur in regular assembly

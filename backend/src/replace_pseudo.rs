@@ -18,6 +18,12 @@ use middle::wackir::WackTempIdent;
 use crate::assembly_ast::{AsmInstruction, AsmProgram, AssemblyType, Operand};
 type SymbolTableWack = HashMap<WackTempIdent, AssemblyType>;
 type SymbolTable = HashMap<String, AssemblyType>;
+use crate::assembly_ast::AsmInstruction::{
+    AllocateStack, Binary, Cmov, Cmp, Comment, Idiv, Lea, Mov, MovZeroExtend, Push, SetCC, Test,
+    Unary,
+};
+use crate::assembly_ast::Operand::{Memory, Pseudo};
+use crate::assembly_ast::Register::BP;
 
 /* ================== PUBLIC API ================== */
 #[inline]
@@ -55,13 +61,10 @@ pub fn replace_pseudo_in_program(program: &mut AsmProgram, symbol_table: &Symbol
         last_offset = round_down_16(last_offset);
         // index 2 here since we have push rbp and mov rbp, rsp
         if last_offset != 0 {
-            func.instructions
-                .insert(2, AsmInstruction::AllocateStack(-last_offset));
+            func.instructions.insert(2, AllocateStack(-last_offset));
             func.instructions.insert(
                 2,
-                AsmInstruction::Comment(
-                    "This allocate ensures stack is 16-byte aligned".to_owned(),
-                ),
+                Comment("This allocate ensures stack is 16-byte aligned".to_owned()),
             );
         }
     }
@@ -69,6 +72,8 @@ pub fn replace_pseudo_in_program(program: &mut AsmProgram, symbol_table: &Symbol
 
 /* ================== INTERNALS ================== */
 
+/// Helper function to replace a pseudo operand with a stack operand
+/// This also considers stack alignment based on size
 fn replace_pseudo_operand(
     op: &mut Operand,
     mapping: &mut HashMap<String, i32>,
@@ -79,26 +84,28 @@ fn replace_pseudo_operand(
     if let Operand::Pseudo(ref ident) = *op {
         // If already assigned, use existing mapping
         if let Some(&offset) = mapping.get(ident) {
-            *op = Operand::Stack(offset);
+            // *op = Operand::Stack(offset);
+            *op = Memory(BP, offset);
         } else {
             // Assign new stack offset
             // Correct alignment to match System V ABI;
             let asm_type = symbol_table.get(ident).unwrap();
             let alignment = get_alignment(*asm_type);
-            // println!("next_stack_offset: {next_stack_offset}, alignment = {alignment}");
             *next_stack_offset -= alignment;
             *next_stack_offset = round_down(*next_stack_offset, alignment);
-            // println!("next_stack_offset: {next_stack_offset}");
 
             let offset = *next_stack_offset;
             mapping.insert(ident.clone(), offset);
             *last_offset = offset;
             // may have unexpected side effects if it underflows
-            *op = Operand::Stack(offset);
+            // *op = Operand::Stack(offset);
+            *op = Memory(BP, offset);
         }
     }
 }
 
+/// Helper function to replace pseudo operands in an instruction
+/// This handles any functions that have operands
 fn replace_pseudo_in_instruction(
     instr: &mut AsmInstruction,
     mapping: &mut HashMap<String, i32>,
@@ -106,7 +113,6 @@ fn replace_pseudo_in_instruction(
     last_offset: &mut i32,
     symbol_table: &SymbolTable,
 ) {
-    use AsmInstruction::*;
     match instr {
         Mov { src, dst, .. }
         | Cmov { src, dst, .. }

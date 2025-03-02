@@ -8,17 +8,15 @@
 
 use crate::{
     assembly_ast::{
-        AsmBinaryOperator, AsmFunction,
-        AsmProgram,
-        AsmUnaryOperator, AssemblyType,
-        Register::*,
-        AsmInstruction::*,
-        Operand::*,
-        *,
+        AsmBinaryOperator, AsmFunction, AsmInstruction::*, AsmProgram, AsmUnaryOperator,
+        AssemblyType, Operand::*, Register::*, *,
     },
     predefined::INBUILT_OVERFLOW,
 };
 
+/// Fix the assembly instructions in the program to ensure they are valid x86-64 instructions.
+/// Some instructions have special requirements such as needing a register as 2nd operand
+/// such as lea or IDIV which has special requirements
 #[must_use]
 #[inline]
 pub fn fix_program(program: AsmProgram) -> AsmProgram {
@@ -59,6 +57,7 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
                     typ,
                     operand,
                 } => fix_unary(&mut new_func_body, operator, typ, operand),
+                // All other instructions are left unchanged as they dont have special requirements
                 _ => new_func_body.push(instr),
             }
         }
@@ -114,7 +113,9 @@ fn fix_zero_extend(
 ) {
     if src_type == AssemblyType::Byte {
         let new_instrs = match (src.clone(), dst.clone()) {
-            (Imm(_), Stack(_)) => vec![
+            // Zero extend can't have Immediate as source
+            // so we move it into a register first
+            (Imm(_), Memory(_, _)) => vec![
                 Mov {
                     typ: src_type,
                     src,
@@ -132,7 +133,7 @@ fn fix_zero_extend(
                     dst,
                 },
             ],
-            (_, Stack(_)) => vec![
+            (_, Memory(_, _)) => vec![
                 MovZeroExtend {
                     src_type,
                     dst_type,
@@ -183,31 +184,7 @@ fn fix_binary(
 
 fn fix_move(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand, dst: Operand) {
     let new_instrs = match (src.clone(), dst.clone()) {
-        (Data(_, _), Memory(_, _)) => vec![
-            Mov {
-                typ,
-                src,
-                dst: Reg(R10),
-            },
-            Mov {
-                typ,
-                src: Reg(R10),
-                dst,
-            },
-        ],
-        (Memory(_, _), Stack(_)) | (Stack(_), Memory(_, _)) => vec![
-            Mov {
-                typ,
-                src,
-                dst: Reg(R10),
-            },
-            Mov {
-                typ,
-                src: Reg(R10),
-                dst,
-            },
-        ],
-        (Stack(_), Stack(_)) => vec![
+        (Memory(_, _) | Data(_, _), Memory(_, _)) => vec![
             Mov {
                 typ,
                 src,
@@ -232,7 +209,7 @@ fn fix_add_sub(
     asm: &mut Vec<AsmInstruction>,
 ) {
     let new_instrs = match (op1.clone(), op2.clone()) {
-        (Stack(_), Stack(_)) => vec![
+        (Memory(_, _), Memory(_, _)) => vec![
             Mov {
                 typ: typ.clone(),
                 src: op1,
@@ -257,7 +234,7 @@ fn fix_add_sub(
 
 fn fix_mult(typ: AssemblyType, op1: Operand, op2: Operand, asm: &mut Vec<AsmInstruction>) {
     let new_instrs = match (op1.clone(), op2.clone()) {
-        (_, Stack(_)) => vec![
+        (_, Memory(_, _)) => vec![
             Mov {
                 typ: typ.clone(),
                 src: op2.clone(),
@@ -285,6 +262,8 @@ fn fix_mult(typ: AssemblyType, op1: Operand, op2: Operand, asm: &mut Vec<AsmInst
     asm.extend(new_instrs);
 }
 
+// Can't perform IDiv with immediate value so move into a
+// register first
 fn fix_idiv(asm: &mut Vec<AsmInstruction>, val: i32) {
     let new_instrs = vec![
         Mov {
@@ -299,7 +278,7 @@ fn fix_idiv(asm: &mut Vec<AsmInstruction>, val: i32) {
 
 fn fix_cmp(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, op1: Operand, op2: Operand) {
     let new_instrs = match (op1.clone(), op2.clone()) {
-        (Stack(_), Stack(_)) => vec![
+        (Memory(_, _), Memory(_, _)) => vec![
             Mov {
                 typ: typ.clone(),
                 src: op1,
@@ -330,11 +309,9 @@ fn fix_cmp(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, op1: Operand, op2: 
 
 fn fix_lea(asm: &mut Vec<AsmInstruction>, src: Operand, dst: Operand) {
     let new_instrs = match (src.clone(), dst.clone()) {
-        (_, Stack(_)) | (_, Memory(_, _)) => vec![
-            Lea {
-                src,
-                dst: Reg(R9),
-            },
+        // Lea can't have memory as destination, must be register
+        (_, Memory(_, _)) => vec![
+            Lea { src, dst: Reg(R9) },
             Mov {
                 typ: AssemblyType::Quadword,
                 src: Reg(R9),
@@ -363,13 +340,13 @@ mod tests {
             instructions: vec![
                 Mov {
                     typ: AssemblyType::Longword,
-                    src: Stack(-4),
-                    dst: Stack(-8),
+                    src: Memory(BP, -4),
+                    dst: Memory(BP, -8),
                 },
                 Mov {
                     typ: AssemblyType::Longword,
                     src: Imm(5),
-                    dst: Stack(-4),
+                    dst: Memory(BP, -4),
                 },
             ],
             directives: vec![],
@@ -387,11 +364,11 @@ mod tests {
 
         // Index 1 and 2 should correspond to rewriting of mov from Stack(-4) to Stack(-8)
         let func = &fixed_program.asm_functions[0];
-        println!("{:?}", func.instructions);
         if let Mov { src, dst, .. } = &func.instructions[0] {
             // first rewritten instruction: mov -4(%rbp) to %r10
+            println!("1st instruction, src: {:?}, dst: {:?}", src, dst);
             match (src, dst) {
-                (Stack(s1), Reg(R10)) => {
+                (Memory(BP, s1), Reg(R10)) => {
                     assert_eq!(*s1, -4);
                 }
                 _ => panic!("First rewritten mov is incorrect."),
@@ -402,8 +379,10 @@ mod tests {
 
         if let Mov { src, dst, .. } = &func.instructions[1] {
             // second rewritten instruction: mov %r10 to -8(%rbp)
+
+            println!("2nd instruction, src: {:?}, dst: {:?}", src, dst);
             match (src, dst) {
-                (Reg(R10), Stack(s2)) => {
+                (Reg(R10), Memory(BP, s2)) => {
                     assert_eq!(*s2, -8);
                 }
                 _ => panic!("Second rewritten mov is incorrect."),
@@ -414,8 +393,9 @@ mod tests {
 
         // The third instruction should be the valid mov that was unchanged.
         if let Mov { src, dst, .. } = &func.instructions[2] {
+            println!("3rd instruction {:?}, {:?}", src, dst);
             match (src, dst) {
-                (Imm(val), Stack(s)) => {
+                (Imm(val), Memory(BP, s)) => {
                     assert_eq!(*val, 5);
                     assert_eq!(*s, -4);
                 }

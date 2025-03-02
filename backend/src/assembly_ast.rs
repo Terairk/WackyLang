@@ -137,8 +137,6 @@ pub enum Operand {
         scale: i32,
         offset: i32,
     },
-    // This is a temporary thing for now
-    Stack(i32),
 }
 
 // For now we only need these directives
