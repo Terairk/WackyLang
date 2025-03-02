@@ -1,8 +1,6 @@
 use crate::assembly_ast::Register::*;
 use crate::assembly_ast::Operand::*;
-use crate::assembly_ast::AsmInstruction::{
-    Call, Cmov, Cmp, Comment, JmpCC, Mov, MovZeroExtend, SetCC, Test,
-};
+use crate::assembly_ast::AsmInstruction::{Binary, Call, Cmov, Cmp, Comment, JmpCC, Mov, MovZeroExtend, SetCC, Test};
 use crate::assembly_ast::AssemblyType::{Byte, Longword, Quadword};
 use crate::assembly_ast::CondCode::{E, NE};
 use crate::assembly_ast::Operand::*;

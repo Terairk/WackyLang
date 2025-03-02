@@ -76,6 +76,7 @@ pub(crate) mod ast_lowering_ctx {
     use syntax::rename::RenamedName;
     use syntax::typecheck::TypeResolver;
     use syntax::types::{BaseType, SemanticType};
+    use util::gen_flags::{insert_flag_gbl, GenFlags};
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub struct With<T, C> {
@@ -637,11 +638,12 @@ pub(crate) mod ast_lowering_ctx {
                 size: alloc_size_bytes,
                 dst_ptr: array_dst_ptr.clone(),
             });
-
+            let new_array_dst_ptr = self.make_temporary(WackType::Pointer(array_ptr_ty.clone()));
+            instructions.push(WackInstr::add_ptr_offset(WackValue::Var(array_dst_ptr.clone()), 4, new_array_dst_ptr.clone()));
             instructions.push(WackInstr::CopyToOffset {
-                src: WackValue::Literal(WackLiteral::Int(array_len_bytes as i32)),
-                dst_ptr: WackValue::Var(array_dst_ptr.clone()),
-                offset: 0,
+                src: WackValue::Literal(WackLiteral::Int(array_len as i32)),
+                dst_ptr: WackValue::Var(new_array_dst_ptr.clone()),
+                offset: -4,
             });
             // one-by-one, evaluate each element of the array and then
             // store it to the corresponding slot in the array
@@ -656,16 +658,16 @@ pub(crate) mod ast_lowering_ctx {
                 // assert_eq!(elem_ty, elem_value_ty);
 
                 // compute offset into array, and copy element to that location
-                let offset = array_len_bytes + i * array_elem_bytes;
+                let offset = (i * array_elem_bytes) as i32;
                 instructions.push(WackInstr::CopyToOffset {
                     src: elem_value,
-                    dst_ptr: WackValue::Var(array_dst_ptr.clone()),
+                    dst_ptr: WackValue::Var(new_array_dst_ptr.clone()),
                     offset,
                 });
             }
 
             // return variable holding pointer to allocated array
-            (array_dst_ptr, array_ptr_ty)
+            (new_array_dst_ptr, array_ptr_ty)
         }
 
         fn assert_eq_with_pairtype_erasure(unerased: WackType, possibly_erased: WackType) {
@@ -742,7 +744,7 @@ pub(crate) mod ast_lowering_ctx {
                 dst_ptr: WackValue::Var(pair_dst_ptr.clone()),
                 offset,
             });
-            offset += fst_bytes; // the second element follows directly after the first
+            offset += fst_bytes as i32; // the second element follows directly after the first
             instructions.push(WackInstr::CopyToOffset {
                 src: snd_value,
                 dst_ptr: WackValue::Var(pair_dst_ptr.clone()),
@@ -802,7 +804,7 @@ pub(crate) mod ast_lowering_ctx {
             instructions.push(WackInstr::NullPtrGuard(pair_src_ptr.clone()));
             instructions.push(WackInstr::add_ptr_offset(
                 pair_src_ptr,
-                offset,
+                offset as i32,
                 pair_elem_dst_ptr.clone(),
             ));
 
@@ -948,8 +950,10 @@ pub(crate) mod ast_lowering_ctx {
                 let (src, src_ty) = self.lower_expr(expr, instr);
                 let dst_ty = WackType::from_semantic_type(sem_type);
                 let dst_name = self.make_temporary(dst_ty.clone());
+                let new_src = self.make_temporary(src_ty.clone());
+                instr.push(WackInstr::add_ptr_offset(src, -4, new_src.clone()));
                 instr.push(WackInstr::Load {
-                    src_ptr: src,
+                    src_ptr: WackValue::Var(new_src),
                     dst: dst_name.clone(),
                 });
                 // instr.push(WackInstr::Copy {

@@ -189,7 +189,7 @@ pub enum WackInstr {
         src_ptr: WackValue,
         index: WackValue,
         scale: usize,
-        offset: usize,
+        offset: i32,
         dst_ptr: WackTempIdent, // you can only store into an identifier
     },
 
@@ -200,7 +200,7 @@ pub enum WackInstr {
     CopyToOffset {
         src: WackValue,
         dst_ptr: WackValue, // you can only store into an identifier
-        offset: usize,
+        offset: i32,
     },
 
     // /// ??
@@ -293,12 +293,12 @@ impl WackInstr {
     const DEFAULT_ADD_PTR_SCALE: usize = 1;
 
     // The default offset for pointer arithmetic is zero, i.e. no offset
-    const DEFAULT_ADD_PTR_OFFSET: usize = 0;
+    const DEFAULT_ADD_PTR_OFFSET: i32 = 0;
 
     /// Creates a pointer-arithmetic instruction that simply adds a fixed offset.
     #[inline]
     #[must_use]
-    pub const fn add_ptr_offset(src_ptr: WackValue, offset: usize, dst_ptr: WackTempIdent) -> Self {
+    pub const fn add_ptr_offset(src_ptr: WackValue, offset: i32, dst_ptr: WackTempIdent) -> Self {
         Self::AddPtr {
             src_ptr,
             index: Self::DEFAULT_ADD_PTR_INDEX,

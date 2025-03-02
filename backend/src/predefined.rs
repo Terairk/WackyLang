@@ -577,12 +577,6 @@ static arrLoad1: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     name: inbuiltArrLoad1.to_owned(),
     global: false,
     instructions: vec![
-        Binary {
-            operator: Add,
-            typ: Quadword,
-            op1: Imm(1),
-            op2: Reg(R9),
-        },
         Push(Reg(BX)),
         Test {
             typ: Longword,
@@ -640,12 +634,6 @@ static arrLoad4: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     name: inbuiltArrLoad4.to_owned(),
     global: false,
     instructions: vec![
-        Binary {
-            operator: Add,
-            typ: Quadword,
-            op1: Imm(4),
-            op2: Reg(R9),
-        },
         Push(Reg(BX)),
         Test {
             typ: Longword,
@@ -704,12 +692,6 @@ static arrLoad8: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     name: inbuiltArrLoad8.to_owned(),
     global: false,
     instructions: vec![
-        Binary {
-            operator: Add,
-            typ: Quadword,
-            op1: Imm(8),
-            op2: Reg(R9),
-        },
         Push(Reg(BX)),
         Test {
             typ: Longword,
