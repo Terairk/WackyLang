@@ -304,7 +304,11 @@ pub(crate) mod ast_lowering_ctx {
                         .expect("We can only free typed pointers");
                     let instr = match wack_derefed_ty {
                         WackType::Pair(_, _) => WackInstr::FreeChecked(value),
-                        WackType::Array(_) => WackInstr::FreeUnchecked(value),
+                        WackType::Array(_) => {
+                            let tmp = self.make_temporary(wack_ptr_ty);
+                            instructions.push(WackInstr::AddPtr { src_ptr: value, index: WackValue::Literal(WackLiteral::Int(0)), scale: 1, offset: -4, dst_ptr: tmp.clone() });
+                            WackInstr::FreeUnchecked(WackValue::Var(tmp))
+                        },
                         _ => unreachable!(
                             "free value should be a pointer to pair or array, but found {:#?}",
                             wack_ptr_ty
