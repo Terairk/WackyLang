@@ -254,6 +254,15 @@ pub enum WackInstr {
         size: usize,
         dst_ptr: WackTempIdent, // you can only store into an identifier
     },
+    // /// Malloc a pointer for array in R9
+    // /// Move that pointer to R11
+    // ///
+    // AllocArray {
+    //     elem_size: usize,
+    //     length: usize,
+    //     elems: Vec<WackValue>,
+    //     dst_ptr: WackTempIdent,
+    // },
 
     /// This frees the memory associated with the pointer that the value holds, without
     /// checking if the pointer is `null` or not.

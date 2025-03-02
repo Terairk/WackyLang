@@ -90,11 +90,11 @@ fn fix_move(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand, dst:
             Mov {
                 typ,
                 src,
-                dst: Reg(R8),
+                dst: Reg(R10),
             },
             Mov { 
                 typ, 
-                src: Reg(R8), 
+                src: Reg(R10),
                 dst
             },
         ],

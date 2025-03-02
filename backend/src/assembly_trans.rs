@@ -1,5 +1,6 @@
 use crate::assembly_ast::AssemblyType::{Byte, Longword};
-use crate::assembly_ast::Register::{AX, DI};
+use crate::assembly_ast::Register::*;
+use crate::assembly_ast::Operand::*;
 use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
     Register,
@@ -451,7 +452,13 @@ impl AsmGen {
             WackInstr::CopyToOffset { src, dst, offset } => {
                 let typ = self.get_asm_type(&src);
                 let operand = self.lower_value(src, asm);
-                let new_dst = Operand::PseudoMem(dst.into(), offset as i32);
+                let get_base_dst_instr = AsmInstruction::Mov {
+                    typ: Quadword,
+                    src: self.lower_value(WackValue::Var(dst), asm),
+                    dst: Reg(AX),
+                };
+                asm.push(get_base_dst_instr);
+                let new_dst = Operand::Memory(AX, offset.try_into().expect("weird offset"));
                 asm.push(AsmInstruction::Mov {
                     typ: typ,
                     src: operand,
@@ -576,6 +583,59 @@ impl AsmGen {
               // WackInstr::GetAddress { .. } => {}
               // WackInstr::Store { .. } => {}
               // WackInstr::CopyFromOffset { .. } => {} ?
+            // WackInstr::AllocArray {
+            //     elem_size,
+            //     length,
+            //     elems,
+            //     dst_ptr,
+            // } => {
+            //     let dst_ptr = WackValue::Var(dst_ptr);
+            //     let typ = match elem_size {
+            //         1 => Byte,
+            //         4 => Longword,
+            //         8 => Quadword,
+            //         _ => unreachable!("unexpected elem_size in array allocation"),
+            //     };
+            //     let dst_ptr_operand = self.lower_value(dst_ptr, asm);
+            //     // Moving size to RDI for malloc function
+            //     asm.push(AsmInstruction::Mov {
+            //         typ: Longword,
+            //         src: Operand::Imm((elem_size * length) as i32),
+            //         dst: Operand::Reg(DI),
+            //     });
+            //     insert_flag_gbl(GenFlags::MALLOC);
+            //     asm.push(AsmInstruction::Call(inbuiltMalloc.to_owned(), false));
+            //     // Moving pointer received to dst_ptr
+            //     asm.push(AsmInstruction::Mov {
+            //         typ: Quadword,
+            //         src: Operand::Reg(AX),
+            //         dst: Operand::Reg(R11),
+            //     });
+            //     asm.push(AsmInstruction::Binary {
+            //         operator: AsmBinaryOperator::Add,
+            //         typ: Quadword,
+            //         op1: Imm(4),
+            //         op2: Reg(R11),
+            //     });
+            //     asm.push(AsmInstruction::Mov {
+            //         typ: Longword,
+            //         src: Imm(length as i32),
+            //         dst: Memory(R11, -4),
+            //     });
+            //     for (index, elem) in elems.iter().enumerate() {
+            //         let operand = self.lower_value(elem.clone(), asm);
+            //         asm.push(AsmInstruction::Mov {
+            //             typ,
+            //             src: operand,
+            //             dst: Memory(R11, -4 + (index as i32) * (elem_size as i32)),
+            //         });
+            //     }
+            //     asm.push(AsmInstruction::Mov {
+            //         typ: Quadword,
+            //         src: Reg(R11),
+            //         dst: dst_ptr_operand,
+            //     });
+            // }
         }
     }
 
