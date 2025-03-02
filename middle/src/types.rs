@@ -63,7 +63,7 @@ impl WackType {
             },
             // a string has the same type-representation as `char[]`
             SemanticType::String => {
-                Self::from_semantic_type(SemanticType::Array(Box::new(SemanticType::Char)))
+                Self::from_semantic_type(SemanticType::array(SemanticType::Char))
             }
             // an array type in WACC translates to a __pointer__ to an array in memory
             SemanticType::Array(elem_ty) => {
