@@ -943,6 +943,21 @@ pub(crate) mod ast_lowering_ctx {
                 });
                 return (dst_name, dst_ty);
             }
+
+            if let UnaryOper::Len = unary_op {
+                let (src, src_ty) = self.lower_expr(expr, instr);
+                let dst_ty = WackType::from_semantic_type(sem_type);
+                let dst_name = self.make_temporary(dst_ty.clone());
+                instr.push(WackInstr::Load {
+                    src_ptr: src,
+                    dst: dst_name.clone(),
+                });
+                // instr.push(WackInstr::Copy {
+                //     src: WackValue::Var(src),
+                //     dst: dst_name.clone(),
+                // });
+                return (dst_name, dst_ty);
+            }
             let (src, src_ty) = self.lower_expr(expr, instr);
             // TODO: do something with this type
 

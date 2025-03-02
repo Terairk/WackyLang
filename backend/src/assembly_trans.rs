@@ -5,7 +5,9 @@ use crate::assembly_ast::AsmInstruction::{
 };
 use crate::assembly_ast::AssemblyType::{Byte, Longword, Quadword};
 use crate::assembly_ast::CondCode::{E, NE};
+use crate::assembly_ast::Operand::*;
 use crate::assembly_ast::Operand::{Imm, Reg};
+use crate::assembly_ast::Register::*;
 use crate::assembly_ast::Register::{AX, DI, SI};
 use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
@@ -460,7 +462,11 @@ impl AsmGen {
                     dst: operand,
                 });
             }
-            WackInstr::CopyToOffset { src, dst_ptr, offset } => {
+            WackInstr::CopyToOffset {
+                src,
+                dst_ptr,
+                offset,
+            } => {
                 let typ = self.get_asm_type(&src);
                 let operand = self.lower_value(src, asm);
                 let get_base_dst_instr = AsmInstruction::Mov {
