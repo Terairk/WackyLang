@@ -104,11 +104,15 @@ fn replace_pseudo_operand(
             *op = Operand::Stack(offset + off);
         } else {
             // Assign new stack offset
+            let asm_type = symbol_table.get(ident).unwrap();
+            let alignment = get_alignment(*asm_type);
+            *next_stack_offset -= alignment;
+
+            *next_stack_offset = round_down(*next_stack_offset, alignment);
+
             let offset = *next_stack_offset;
             mapping.insert(ident.clone(), offset);
             *last_offset = offset;
-            // may have unexpected side effects if it underflows
-            *next_stack_offset -= 4;
             *op = Operand::Stack(offset + off);
         }
     }
