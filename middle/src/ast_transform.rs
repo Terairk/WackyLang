@@ -773,7 +773,12 @@ pub(crate) mod ast_lowering_ctx {
             let pair_ptr_ty = WackType::from_semantic_type(lvalue_ty);
 
             // the lvalue should evaluate to pointer of type pair
-            let (pair_src_ptr, _, _) = self.lower_lvalue(lvalue.into_inner(), instructions);
+            let (mut pair_src_ptr, _, derefed) = self.lower_lvalue(lvalue.into_inner(), instructions);
+            if derefed {
+                let tmp_ident = self.make_temporary(pair_ptr_ty.clone());
+                instructions.push(WackInstr::Load { src_ptr: WackValue::Var(pair_src_ptr), dst: tmp_ident.clone() });
+                pair_src_ptr = tmp_ident;
+            }
             let pair_src_ptr = WackValue::Var(pair_src_ptr);
             let raw_pair_ty = WackPointerType::try_from_wack_type(pair_ptr_ty)
                 .expect("Lowered value should be a pointer to raw pair-value")
