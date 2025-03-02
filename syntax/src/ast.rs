@@ -4,7 +4,7 @@ use crate::source::{SourcedNode, SourcedSpan};
 use crate::types::Type;
 use delegate::delegate;
 use internment::ArcIntern;
-use std::{fmt::Debug, ops::Deref};
+use std::fmt::Debug;
 use thiserror::Error;
 use util::nonempty::NonemptyArray;
 /* File contains the definition for the AST

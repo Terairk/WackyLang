@@ -63,7 +63,7 @@ impl SN<LValue<RenamedName, SemanticType>> {
 
     fn refine_lvalue_type(self, refinement_ty: SemanticType, resolver: &TypeResolver) -> Self {
         // make sure we are not coercing to `AnyType` as this looses type information
-        if (refinement_ty == SemanticType::AnyType) {
+        if refinement_ty == SemanticType::AnyType {
             return self;
         };
 
@@ -105,7 +105,7 @@ impl SN<RValue<RenamedName, SemanticType>> {
         }
 
         // make sure we are not coercing to `AnyType` as this looses type information
-        if (to == SemanticType::AnyType) {
+        if to == SemanticType::AnyType {
             return Ok(self);
         };
 
@@ -152,7 +152,7 @@ impl SN<PairElem<RenamedName, SemanticType>> {
         resolver: &TypeResolver,
     ) -> SN<PairElem<RenamedName, SemanticType>> {
         // make sure we are not coercing to `AnyType` as this looses type information
-        if (refinement_ty == SemanticType::AnyType) {
+        if refinement_ty == SemanticType::AnyType {
             return self;
         };
 
