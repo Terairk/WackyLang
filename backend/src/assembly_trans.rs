@@ -288,7 +288,8 @@ impl AsmGen {
                 inbuiltPrintString.to_owned()
             }
             WackPrintType::OtherArray | WackPrintType::Pair => {
-                asm.push(AsmInstruction::Lea {
+                asm.push(AsmInstruction::Mov {
+                    typ: AssemblyType::Quadword,
                     src: operand,
                     dst: Operand::Reg(DI),
                 });
