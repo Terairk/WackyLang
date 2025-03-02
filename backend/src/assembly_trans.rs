@@ -567,15 +567,15 @@ impl AsmGen {
                     dst: Operand::Reg(Register::R10),
                 });
                 let (asm_type, inbuilt_instr) = match scale {
-                    8 => {
+                    1 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS1);
                         (Byte, inbuiltArrLoad1)
                     }
-                    32 => {
+                    4 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS4);
                         (Longword, inbuiltArrLoad4)
                     }
-                    64 => {
+                    8 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS8);
                         (Quadword, inbuiltArrLoad8)
                     }
