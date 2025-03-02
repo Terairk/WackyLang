@@ -630,6 +630,13 @@ pub(crate) mod ast_lowering_ctx {
                 dst_ptr: array_dst_ptr.clone(),
             });
 
+            // push length of array to start of allocated memory region
+            instructions.push(WackInstr::CopyToOffset {
+                src: WackValue::Literal(WackLiteral::Int(array_len_bytes as i32)),
+                dst: array_dst_ptr.clone(),
+                offset: 0,
+            });
+
             // one-by-one, evaluate each element of the array and then
             // store it to the corresponding slot in the array
             for (i, elem) in elems.into_iter().enumerate() {
