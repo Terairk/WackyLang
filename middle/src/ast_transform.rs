@@ -639,7 +639,7 @@ pub(crate) mod ast_lowering_ctx {
             });
 
             instructions.push(WackInstr::CopyToOffset {
-                src: WackValue::Literal(WackLiteral::Int(array_len_bytes as i32)),
+                src: WackValue::Literal(WackLiteral::Int(array_len as i32)),
                 dst_ptr: WackValue::Var(array_dst_ptr.clone()),
                 offset: 0,
             });
