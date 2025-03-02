@@ -275,9 +275,6 @@ pub(crate) mod ast_lowering_ctx {
                     let read_type = WackReadType::from_semantic_type(sem_ty.clone())
                         .expect("This failing indicates frontend bug");
 
-
-                    // TODO !!!!! CORRECTNESS. DEREF?
-
                     // get destination, and make sure types match up
                     let (value, wack_ty, _) = self.lower_lvalue(lvalue.into_inner(), instructions);
                     // TODO: figure out a way to implement "weakening" check for lhs-rhs WACC types
