@@ -8,12 +8,13 @@ main:
     subq $32, %rsp
     movl $20, %edi
     call _malloc
-    movq %rax, -8(%rbp)
-    movl $4, -8(%rbp)
-    movl $43, -4(%rbp)
-    movl $2, 0(%rbp)
-    movl $18, 4(%rbp)
-    movl $1, 8(%rbp)
+    movq %rax, -8(%rbp)      # Store pointer in 'a'
+    movq %rax, %r10          # Temp register for initialization
+    movl $4, (%r10)          # Store length (4) at offset 0
+    movl $43, 4(%r10)       # a[0] = 43
+    movl $2, 8(%r10)         # a[1] = 2
+    movl $18, 12(%r10)       # a[2] = 18
+    movl $1, 16(%r10)        # a[3] = 1
     movq -8(%rbp), %r10
     movq %r10, -16(%rbp)
     movq -16(%rbp), %r9
