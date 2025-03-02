@@ -483,7 +483,7 @@ impl AsmGen {
                 //     dst: operand_dst,
                 // });
                 asm.push(AsmInstruction::Mov {
-                    typ: dst_type,
+                    typ: Quadword,
                     src: operand_src_ptr,
                     dst: Operand::Reg(Register::SI),
                 });
