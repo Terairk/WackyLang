@@ -3,6 +3,7 @@
 #![feature(stmt_expr_attributes)]
 #![feature(specialization)]
 
+pub mod dyn_traits;
 pub mod gen_flags;
 pub mod nonempty;
 pub mod rust_gadt_playground;
