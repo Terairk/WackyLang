@@ -3,7 +3,7 @@
 use crate::container::{ItemVec, MultiItem};
 use crate::ext::ParserExt as _;
 use crate::{alias, ast, ext::CharExt as _, private};
-use chumsky::combinator::{MapWith, ToSlice, TryMap};
+use chumsky::combinator::{MapWith, ToSlice};
 use chumsky::container::{Container, Seq};
 use chumsky::extra::ParserExtra;
 use chumsky::input::MapExtra;
@@ -215,11 +215,12 @@ impl fmt::Display for Token {
     }
 }
 
-// different radix for int literal parsing
+// constants associated with int-literal parsing
 const BINARY_RADIX: u32 = 2;
 const OCTAL_RADIX: u32 = 8;
 const DECIMAL_RADIX: u32 = 10;
 const HEXADECIMAL_RADIX: u32 = 16;
+const INT_LITERAL_PREFIXES: [&str; 6] = ["0b", "0B", "0o", "0O", "0x", "0X"];
 
 #[allow(clippy::items_after_statements)]
 fn int_liter<'src, I, E>() -> impl alias::Parser<'src, I, Token, E>
@@ -227,39 +228,35 @@ where
     I: StrInput<'src, Token = char, Slice = &'src str>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
 {
-    // all integer literals can optionally be positive/negative
-    let plus_or_minus = just('+').or(just('-')).or_not();
-
     // binary literals are prefixed with either `0b` or `0B`
-    let binary = plus_or_minus
-        .then(regex("(0b|0B)[01]+"))
+    let binary = regex(r"[+-]?(?:0b|0B)[01]+")
         .parse_i32(BINARY_RADIX)
         .labelled("<binary-int-liter>")
         .as_context();
 
     // octal literals are prefixed with either `0o` or `0O`
-    let octal = plus_or_minus
-        .then(regex("(0o|0O)[0-7]+"))
+    let octal = regex(r"[+-]?(?:0o|0O)[0-7]+")
         .parse_i32(OCTAL_RADIX)
         .labelled("<octal-int-liter>")
         .as_context();
 
     // copy the Regex pattern found in the WACC spec verbatim for decimal literals
-    let decimal = plus_or_minus
-        .then(regex("[0-9]+"))
+    let decimal = regex(r"[+-]?[0-9]+")
         .parse_i32(DECIMAL_RADIX)
         .labelled("<decimal-int-liter>")
         .as_context();
 
     // hexadecimal literals are prefixed with either `0x` or `0X`
-    let hexadecimal = plus_or_minus
-        .then(regex("(0x|0X)[0-9a-fA-F]+"))
+    let hexadecimal = regex(r"[+-]?(?:0x|0X)[0-9a-fA-F]+")
         .parse_i32(HEXADECIMAL_RADIX)
         .labelled("<hexadecimal-int-liter>")
         .as_context();
 
-    // An integer literal is one of these
-    choice((binary, octal, decimal, hexadecimal))
+    // An integer literal is one of these: note decimal does last due to no prefix
+    choice((hexadecimal, octal, binary, decimal))
+        // once we have parsed an integer-literal string, we can unwrap any errors
+        // in order to resume parser-control-flow to the usual
+        .try_map(|result, _| result)
         .map(Token::IntLiter)
         .labelled("<int-liter>")
         .as_context()
@@ -563,27 +560,53 @@ where
         self.map_with(|t, e| (t, e.span()))
     }
 
-    /// Parses a string slice to [`i32`] given some [`radix`] with [`i32::from_str_radix`] function.
+    /// Parses a string slice to [`i32`] (or an error variant upon failure) given some [`radix`]
+    /// with [`i32::from_str_radix`] function. The error is not emmitted to the parsing-system
+    /// in order to not trigger unnecessary control-flow alterations
     #[allow(clippy::type_complexity)]
     fn parse_i32(
         self,
         radix: u32,
-    ) -> TryMap<
+    ) -> MapWith<
         ToSlice<T, O>,
         &'src str,
-        impl Fn(&'src str, I::Span) -> Result<i32, E::Error> + Clone,
+        impl for<'b> Fn(&'src str, &mut MapExtra<'src, 'b, I, E>) -> Result<i32, E::Error> + Clone,
     >
     where
         I: StrInput<'src, Token = char, Slice = &'src str>,
         E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
     {
-        self.to_slice().try_map(move |s: &'src str, span| {
-            i32::from_str_radix(s, radix).map_err(|_| {
-                Rich::custom(
-                    span,
-                    format!("The integer literal '{s}' does not fit within 32 bytes"),
-                )
+        self.to_slice()
+            .map_with(move |s: &'src str, e: &mut MapExtra<_, _>| {
+                // check for plus or minus
+                let mut s_trimmed = s.trim_start_matches(['+', '-']);
+                let minus_sign = match (s == s_trimmed, s.chars().next()) {
+                    (true, _) | (_, Some('+')) => None,
+                    (_, Some('-')) => Some('-'),
+                    _ => unreachable!("This should never happen"),
+                };
+
+                // Trim any prefixes (should ideally only be one) of them
+                for prefix in INT_LITERAL_PREFIXES {
+                    let s_trimmed_new = s_trimmed.trim_start_matches(prefix);
+
+                    // if prefix trimmed successfully, break
+                    if s_trimmed_new != s_trimmed {
+                        s_trimmed = s_trimmed_new;
+                        break;
+                    }
+                }
+
+                // Create final string-to-be-parsed together with any minus sign. Parse into `i32`
+                // literal, or map any errors as appropriate.
+                let s_to_parse =
+                    minus_sign.map_or_else(|| s_trimmed.to_owned(), |c| format!("{c}{s_trimmed}"));
+                i32::from_str_radix(&s_to_parse, radix).map_err(|_| {
+                    Rich::custom(
+                        e.span(),
+                        format!("The integer literal '{s}' does not fit within 32 bytes"),
+                    )
+                })
             })
-        })
     }
 }

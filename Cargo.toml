@@ -55,6 +55,7 @@ frunk_utils = "0.2"
 frunk-enum-core = "0.3"
 # Parsing and error reporting
 ariadne = "0.5"
+parse_int = "0.6"
 chumsky = { git = "https://github.com/zesterer/chumsky", rev = "d12869a" } # currently latest chumsky commit
 
 
