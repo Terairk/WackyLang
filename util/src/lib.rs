@@ -1,6 +1,7 @@
 // enable Rust-unstable features for convenience
 #![feature(trait_alias)]
 #![feature(stmt_expr_attributes)]
+#![feature(type_alias_impl_trait)]
 #![feature(specialization)]
 
 pub mod dyn_traits;

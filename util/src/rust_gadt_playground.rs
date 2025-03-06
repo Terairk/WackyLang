@@ -229,7 +229,6 @@ impl<L: ?Sized, R: ?Sized> TyEqWitness<L, R> {
 
 impl<L: TyEq<Rhs = R> + ?Sized, R: ?Sized> Default for TyEqWitness<L, R> {
     #[inline]
-    #[must_use]
     fn default() -> Self {
         Self::new()
     }
@@ -244,8 +243,6 @@ pub const fn is_ty_eq<L: TyEq<Rhs = R> + ?Sized, R: ?Sized>() -> TyEqWitness<L, 
 /// This is an instance provider trait for [`TyEq`], it uses specialization to provide the correct
 /// implementation of [`TyEq`] with static-dispatch, based on a supplied [`TyEqWitness`] witness value.
 pub trait TyEqInstance<Rhs: ?Sized> {
-    type Implemented: ty_bool::Bool;
-
     fn into_ty_eq_with(self, ty_eq_witness: &TyEqWitness<Self, Rhs>) -> Rhs
     where
         Self: Sized,
@@ -269,8 +266,6 @@ pub trait TyEqInstance<Rhs: ?Sized> {
 }
 
 impl<L: ?Sized, R: ?Sized> TyEqInstance<R> for L {
-    default type Implemented = ty_bool::False;
-
     #[inline]
     default fn into_ty_eq_with(self, _ty_eq_witness: &TyEqWitness<L, R>) -> R
     where
@@ -317,10 +312,8 @@ impl<L: ?Sized, R: ?Sized> TyEqInstance<R> for L {
 }
 
 impl<L: TyEq<Rhs = R> + ?Sized, R: ?Sized> TyEqInstance<R> for L {
-    default type Implemented = ty_bool::False;
-
     #[inline]
-    default fn into_ty_eq_with(self, _ty_eq_witness: &TyEqWitness<L, R>) -> R
+    fn into_ty_eq_with(self, _ty_eq_witness: &TyEqWitness<L, R>) -> R
     where
         L: Sized,
         R: Sized,
@@ -329,7 +322,7 @@ impl<L: TyEq<Rhs = R> + ?Sized, R: ?Sized> TyEqInstance<R> for L {
     }
 
     #[inline]
-    default fn from_ty_eq_with(rhs: R, _ty_eq_witness: &TyEqWitness<L, R>) -> Self
+    fn from_ty_eq_with(rhs: R, _ty_eq_witness: &TyEqWitness<L, R>) -> Self
     where
         L: Sized,
         R: Sized,
@@ -338,25 +331,22 @@ impl<L: TyEq<Rhs = R> + ?Sized, R: ?Sized> TyEqInstance<R> for L {
     }
 
     #[inline]
-    default fn ty_eq_ref_with(&self, _ty_eq_witness: &TyEqWitness<L, R>) -> &R {
+    fn ty_eq_ref_with(&self, _ty_eq_witness: &TyEqWitness<L, R>) -> &R {
         self.ty_eq_ref()
     }
 
     #[inline]
-    default fn from_ty_eq_ref_with<'a>(rhs: &'a R, _ty_eq_witness: &TyEqWitness<L, R>) -> &'a Self {
+    fn from_ty_eq_ref_with<'a>(rhs: &'a R, _ty_eq_witness: &TyEqWitness<L, R>) -> &'a Self {
         Self::from_ty_eq_ref(rhs)
     }
 
     #[inline]
-    default fn ty_eq_mut_with(&mut self, _ty_eq_witness: &TyEqWitness<L, R>) -> &mut R {
+    fn ty_eq_mut_with(&mut self, _ty_eq_witness: &TyEqWitness<L, R>) -> &mut R {
         self.ty_eq_mut()
     }
 
     #[inline]
-    default fn from_ty_eq_mut_with<'a>(
-        rhs: &'a mut R,
-        _ty_eq_witness: &TyEqWitness<L, R>,
-    ) -> &'a mut Self {
+    fn from_ty_eq_mut_with<'a>(rhs: &'a mut R, _ty_eq_witness: &TyEqWitness<L, R>) -> &'a mut Self {
         Self::from_ty_eq_mut(rhs)
     }
 }

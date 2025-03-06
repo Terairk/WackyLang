@@ -269,6 +269,7 @@ impl<N, T> StatBlock<N, T> {
     //
     // All function bodies **MUST** be returning blocks.
     #[inline]
+    #[must_use]
     pub fn is_return_block(&self) -> bool {
         match &**self.last() {
             Stat::Return(_) | Stat::Exit(_) => true,
