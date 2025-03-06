@@ -1,0 +1,33 @@
+# this tests feature-parity of hexadecimal literals with decimal literals
+
+# Output:
+
+# Program:
+
+begin
+  # `0x` prefix
+  int x1 = 0xf8b ;
+  int x2 = +0x40a ;
+  int x3 = -0x30d3 ;
+
+  # `0X` prefix
+  int x4 = 0Xf8b ;
+  int x5 = +0X40a ;
+  int x6 = -0X30d3 ;
+
+  # integer expressions with whitespace
+  int x7 = ( 0Xf8b * -0x30d3 + +0X40a * 0X3c ) ;
+
+  # extreme condition with no-whitespace
+  int x8 = 0xf8b+0X40a *
+
+
+           0X3c
+           # indefinite amount of comments, newlines, and whitespace
+
+
+
+
+
+                 +0x40a
+end

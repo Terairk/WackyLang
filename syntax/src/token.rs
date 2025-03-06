@@ -4,7 +4,7 @@ use crate::container::{ItemVec, MultiItem};
 use crate::ext::ParserExt as _;
 use crate::{alias, ast, ext::CharExt as _, private};
 use chumsky::combinator::{MapWith, ToSlice};
-use chumsky::container::{Container, Seq};
+use chumsky::container::Container as _;
 use chumsky::extra::ParserExtra;
 use chumsky::input::MapExtra;
 use chumsky::{error::Rich, input::StrInput, prelude::*, text};

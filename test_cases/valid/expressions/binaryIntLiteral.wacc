@@ -19,15 +19,15 @@ begin
   int x7 = ( 0B0100 * -0b1110 + +0b1000 * 0B0011 ) ;
 
   # extreme condition with no-whitespace
-  int x8 = 3+2 *
+  int x8 = 0b00110100+0B00100 *
 
 
-           7
+           0B001110
            # indefinite amount of comments, newlines, and whitespace
 
 
 
 
 
-                 -8
+                 -0B111010000
 end

@@ -1,0 +1,33 @@
+# this tests feature-parity of octal literals with decimal literals
+
+# Output:
+
+# Program:
+
+begin
+  # `0o` prefix
+  int x1 = 0o123 ;
+  int x2 = +0o456 ;
+  int x3 = -0o723 ;
+
+  # `0O` prefix
+  int x4 = 0O123;
+  int x5 = +0O456 ;
+  int x6 = -0O723 ;
+
+  # integer expressions with whitespace
+  int x7 = ( 0O123 * -0o723 + +0O456 * 0O33 ) ;
+
+  # extreme condition with no-whitespace
+  int x8 = 0o123+0O456 *
+
+
+           0O33
+           # indefinite amount of comments, newlines, and whitespace
+
+
+
+
+
+                 -0o723
+end
