@@ -1,8 +1,10 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
+use crate::container::{ItemVec, MultiItem};
 use crate::ext::ParserExt as _;
 use crate::{alias, ast, ext::CharExt as _, private};
 use chumsky::combinator::MapWith;
+use chumsky::container::Container;
 use chumsky::extra::ParserExtra;
 use chumsky::input::MapExtra;
 use chumsky::{error::Rich, input::StrInput, prelude::*, text};
@@ -213,21 +215,13 @@ impl fmt::Display for Token {
     }
 }
 
-/// An intermediary token-type that encodes the corrections made to the grammar, to accommodate for
-/// the mistakes made by the longest-match lexing algorithm
-enum LongestMatchCorrectionToken<'src, I: Input<'src>> {
-    Token(Token),
-    NoWhitespacePlusMinusIntLiter(Vec<(Token, I::Span)>),
-}
-
 #[allow(
     clippy::missing_panics_doc,
     clippy::too_many_lines,
     clippy::single_call_fn
 )]
 #[inline]
-fn unflattened_token_lexer<'src, I, E>(
-) -> impl alias::Parser<'src, I, Vec<(LongestMatchCorrectionToken<'src, I>, I::Span)>, E>
+pub fn lexer<'src, I, E>() -> impl alias::Parser<'src, I, Vec<(Token, I::Span)>, E>
 where
     I: StrInput<'src, Token = char, Slice = &'src str>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
@@ -238,13 +232,22 @@ where
     // TODO: eventually replace with custom error type with variants and so on,
     // TODO: so it is easier to create type-safe custom errors that can be reported later on
 
+    // <comment>  ::=  ‘#’ (any-character-except-EOL)* (⟨EOL⟩ | ⟨EOF⟩)
+    let eol = just('\n').ignored();
+    let comment = group((
+        just('#').ignored(),
+        any().and_is(eol.not()).repeated(),
+        choice((eol, end())),
+    ))
+    .labelled("<comment>")
+    .as_context();
+    let comments = comment.padded().repeated();
+
     // WACC identifiers are C-style, so we can use the default `text::ident` parser
     let ident = text::ident()
-        .pipe((
-            ast::Ident::from_str,
-            Token::Ident,
-            LongestMatchCorrectionToken::Token,
-        ))
+        .pipe((ast::Ident::from_str, Token::Ident))
+        .span_tuple()
+        .map(MultiItem::Item)
         .labelled("<ident>")
         .as_context();
 
@@ -332,7 +335,8 @@ where
                 .map_with(|_, _| Token::CharLiter('6')),
             ),
         ))
-        .map(LongestMatchCorrectionToken::Token)
+        .span_tuple()
+        .map(MultiItem::Item)
         .labelled("<char-liter>")
         .as_context();
 
@@ -376,8 +380,9 @@ where
                     .map_with(|lit, _| ArcIntern::from(lit)),
             ),
         ))
-        .pipe((Token::StrLiter,))
-        .map(LongestMatchCorrectionToken::Token)
+        .map(Token::StrLiter)
+        .span_tuple()
+        .map(MultiItem::Item)
         .labelled("<str-liter>")
         .as_context();
 
@@ -387,7 +392,8 @@ where
         just('[').to(Token::Open(Delim::Bracket)),
         just(']').to(Token::Close(Delim::Bracket)),
     ))
-    .map(LongestMatchCorrectionToken::Token);
+    .span_tuple()
+    .map(MultiItem::Item);
 
     // all other symbols parser
     let plus = just('+').to(Token::Plus);
@@ -413,7 +419,8 @@ where
         just(';').to(Token::Semicolon),
         just(',').to(Token::Comma),
     ))
-    .map(LongestMatchCorrectionToken::Token);
+    .span_tuple()
+    .map(MultiItem::Item);
 
     let keywords = choice([
         text::keyword("begin").to(Token::Begin),
@@ -449,18 +456,20 @@ where
         text::keyword("true").to(Token::True),
         text::keyword("false").to(Token::False),
     ])
-    .map(LongestMatchCorrectionToken::Token);
+    .span_tuple()
+    .map(MultiItem::Item);
 
     // if integer literals are separated by plus/minus with no whitespace
     // then this should be parsed as a separate disambiguation token
     let spanned_int_liter = int_liter.clone().span_tuple();
-    let plus_or_minus = plus.or(minus).span_tuple();
+    let plus_or_minus = plus.clone().or(minus.clone()).span_tuple();
     let no_whitespace_plus_minus_int_liter = group((
         spanned_int_liter.clone(),
+        comments.ignored(), // any amount of whitespace/comments should be ignored at this position
         plus_or_minus.clone(),
         spanned_int_liter.clone(),
     ))
-    .map(|(lhs, op, rhs)| vec![lhs, op, rhs])
+    .map(|(lhs, (), op, rhs)| vec![lhs, op, rhs])
     .foldl(
         group((plus_or_minus, spanned_int_liter)).repeated(),
         |mut lhs, (op, rhs)| {
@@ -469,14 +478,14 @@ where
             lhs
         },
     )
-    .map(LongestMatchCorrectionToken::NoWhitespacePlusMinusIntLiter);
+    .map(MultiItem::Multi);
 
     let token = choice((
         // parse the exceptions to the "longest match" algorithm first
         no_whitespace_plus_minus_int_liter,
         // parse literals before other symbols, as they have precedence over any other occurrences
         // of symbols e.g. the literal +14343 should take precedence over the plus symbol '+'
-        int_liter.map(LongestMatchCorrectionToken::Token),
+        int_liter.span_tuple().map(MultiItem::Item),
         char_liter,
         str_liter,
         // parse symbols
@@ -487,59 +496,17 @@ where
         ident,
     ));
 
-    // <comment>  ::=  ‘#’ (any-character-except-EOL)* (⟨EOL⟩ | ⟨EOF⟩)
-    let eol = just('\n').ignored();
-    let comment = group((
-        just('#').ignored(),
-        any().and_is(eol.not()).repeated(),
-        choice((eol, end())),
-    ))
-    .labelled("<comment>")
-    .as_context();
-
     // tokens are padded by comments and whitespace
     token
-        .map_with(|t, e| (t, e.span()))
-        .padded_by(comment.padded().repeated())
+        .padded_by(comments)
         .padded()
         // If we encounter an error, skip and attempt to lex the next character as a token instead
         .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
-        .collect()
+        .collect::<ItemVec<_>>()
+        .map(ItemVec::into_inner)
         // We must consume the entire source at the end
         .then_ignore(end())
-}
-
-#[must_use]
-#[inline]
-pub fn lexer<'src, I, E>() -> impl alias::Parser<'src, I, Vec<(Token, I::Span)>, E>
-where
-    I: StrInput<'src, Token = char, Slice = &'src str>,
-    I::Span: Clone,
-    E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
-{
-    let lexer = unflattened_token_lexer::<'src, I, _>();
-
-    lexer.map(|tokens| {
-        // create new flattened vector
-        let mut vec = Vec::<(Token, I::Span)>::with_capacity(tokens.len());
-
-        // iterate through the tokens and either add them directly to the new
-        // vector, or flatten them first and then append them
-        for (t, s) in tokens {
-            match t {
-                LongestMatchCorrectionToken::Token(t) => {
-                    vec.push((t, s));
-                }
-                LongestMatchCorrectionToken::NoWhitespacePlusMinusIntLiter(mut t) => {
-                    vec.append(&mut t);
-                }
-            }
-        }
-
-        // we are done flattening, return the result
-        vec
-    })
 }
 
 /// An extension trait for [Parser] local to this file, for convenient dot-syntax utility methods
