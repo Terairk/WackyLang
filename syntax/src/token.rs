@@ -3,8 +3,8 @@
 use crate::container::{ItemVec, MultiItem};
 use crate::ext::ParserExt as _;
 use crate::{alias, ast, ext::CharExt as _, private};
-use chumsky::combinator::MapWith;
-use chumsky::container::Container;
+use chumsky::combinator::{MapWith, ToSlice, TryMap};
+use chumsky::container::{Container, Seq};
 use chumsky::extra::ParserExtra;
 use chumsky::input::MapExtra;
 use chumsky::{error::Rich, input::StrInput, prelude::*, text};
@@ -215,6 +215,56 @@ impl fmt::Display for Token {
     }
 }
 
+// different radix for int literal parsing
+const BINARY_RADIX: u32 = 2;
+const OCTAL_RADIX: u32 = 8;
+const DECIMAL_RADIX: u32 = 10;
+const HEXADECIMAL_RADIX: u32 = 16;
+
+#[allow(clippy::items_after_statements)]
+fn int_liter<'src, I, E>() -> impl alias::Parser<'src, I, Token, E>
+where
+    I: StrInput<'src, Token = char, Slice = &'src str>,
+    E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
+{
+    // all integer literals can optionally be positive/negative
+    let plus_or_minus = just('+').or(just('-')).or_not();
+
+    // binary literals are prefixed with either `0b` or `0B`
+    let binary = plus_or_minus
+        .then(regex("(0b|0B)[01]+"))
+        .parse_i32(BINARY_RADIX)
+        .labelled("<binary-int-liter>")
+        .as_context();
+
+    // octal literals are prefixed with either `0o` or `0O`
+    let octal = plus_or_minus
+        .then(regex("(0o|0O)[0-7]+"))
+        .parse_i32(OCTAL_RADIX)
+        .labelled("<octal-int-liter>")
+        .as_context();
+
+    // copy the Regex pattern found in the WACC spec verbatim for decimal literals
+    let decimal = plus_or_minus
+        .then(regex("[0-9]+"))
+        .parse_i32(DECIMAL_RADIX)
+        .labelled("<decimal-int-liter>")
+        .as_context();
+
+    // hexadecimal literals are prefixed with either `0x` or `0X`
+    let hexadecimal = plus_or_minus
+        .then(regex("(0x|0X)[0-9a-fA-F]+"))
+        .parse_i32(HEXADECIMAL_RADIX)
+        .labelled("<hexadecimal-int-liter>")
+        .as_context();
+
+    // An integer literal is one of these
+    choice((binary, octal, decimal, hexadecimal))
+        .map(Token::IntLiter)
+        .labelled("<int-liter>")
+        .as_context()
+}
+
 #[allow(
     clippy::missing_panics_doc,
     clippy::too_many_lines,
@@ -251,19 +301,8 @@ where
         .labelled("<ident>")
         .as_context();
 
-    // copy the Regex pattern found in the WACC spec verbatim
-    let int_liter = regex("[\\+-]?[0-9]+")
-        .try_map(|s: &str, span| {
-            s.parse::<i32>().map_err(|_| {
-                Rich::custom(
-                    span,
-                    format!("The integer literal '{s}' does not fit within 32 bytes"),
-                )
-            })
-        })
-        .map(Token::IntLiter)
-        .labelled("<int-liter>")
-        .as_context();
+    // All integer literals
+    let int_liter = int_liter();
 
     // character parser
     let well_formed_character = choice((
@@ -522,5 +561,29 @@ where
     #[inline]
     fn span_tuple(self) -> MapWith<Self, O, fn(O, &mut MapExtra<'src, '_, I, E>) -> (O, I::Span)> {
         self.map_with(|t, e| (t, e.span()))
+    }
+
+    /// Parses a string slice to [`i32`] given some [`radix`] with [`i32::from_str_radix`] function.
+    #[allow(clippy::type_complexity)]
+    fn parse_i32(
+        self,
+        radix: u32,
+    ) -> TryMap<
+        ToSlice<T, O>,
+        &'src str,
+        impl Fn(&'src str, I::Span) -> Result<i32, E::Error> + Clone,
+    >
+    where
+        I: StrInput<'src, Token = char, Slice = &'src str>,
+        E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
+    {
+        self.to_slice().try_map(move |s: &'src str, span| {
+            i32::from_str_radix(s, radix).map_err(|_| {
+                Rich::custom(
+                    span,
+                    format!("The integer literal '{s}' does not fit within 32 bytes"),
+                )
+            })
+        })
     }
 }
