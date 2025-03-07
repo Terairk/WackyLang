@@ -168,7 +168,8 @@ pub enum Liter {
 
 #[derive(Clone, Debug)]
 pub enum UnaryOper {
-    Not,
+    BNot,
+    LNot,
     Minus,
     Len,
     Ord,
@@ -188,28 +189,11 @@ pub enum BinaryOper {
     Gt,
     Eq,
     Neq,
-    And,
-    Or,
-}
-
-// Currently, these functions are for the parser to use
-// TODO: maybe this will change so edit this if this does
-
-impl BinaryOper {
-    /// The precedence of binary operators in WACC, where lower
-    /// is higher. Source: WACC-language spec, Table 4.
-    #[must_use]
-    #[inline]
-    pub const fn precedence(&self) -> u8 {
-        match *self {
-            Self::Mul | Self::Div | Self::Mod => 1,
-            Self::Add | Self::Sub => 2,
-            Self::Lte | Self::Lt | Self::Gte | Self::Gt => 3,
-            Self::Eq | Self::Neq => 4,
-            Self::And => 5,
-            Self::Or => 6,
-        }
-    }
+    BAnd,
+    BXor,
+    BOr,
+    LAnd,
+    LOr,
 }
 
 impl<N, T> Program<N, T> {

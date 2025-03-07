@@ -629,6 +629,7 @@ impl Folder for TypeResolver {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     #[inline]
     fn fold_expr(
         &mut self,
@@ -659,10 +660,12 @@ impl Folder for TypeResolver {
             Expr::Unary(op, expr, _) => {
                 let resolved_expr = self.fold_expr(expr);
                 let resolved_type = match *op.inner() {
-                    UnaryOper::Not => {
+                    UnaryOper::LNot => {
                         self.unary_expect(&resolved_expr, SemanticType::Bool, SemanticType::Bool)
                     }
-                    UnaryOper::Minus => {
+                    UnaryOper::Minus
+                    // for now, bitwise operations only work on integers
+                    | UnaryOper::BNot => {
                         self.unary_expect(&resolved_expr, SemanticType::Int, SemanticType::Int)
                     }
                     UnaryOper::Len => match resolved_expr.get_type(self) {
@@ -695,7 +698,12 @@ impl Folder for TypeResolver {
                     | BinaryOper::Div
                     | BinaryOper::Mod
                     | BinaryOper::Add
-                    | BinaryOper::Sub => self.binary_expect(
+                    | BinaryOper::Sub
+                    // for now, bitwise operations only work on integers
+                    | BinaryOper::BAnd
+                    | BinaryOper::BXor
+                    | BinaryOper::BOr
+                    => self.binary_expect(
                         resolved_lhs.clone(),
                         resolved_rhs.clone(),
                         SemanticType::Int,
@@ -704,15 +712,18 @@ impl Folder for TypeResolver {
 
                     // Comparison ops (Int, Int) -> Bool or (char, char) -> Bool
                     BinaryOper::Lte | BinaryOper::Lt | BinaryOper::Gte | BinaryOper::Gt => {
-                        if resolved_lhs.get_type(self) != SemanticType::Int {
-                            self.binary_expect(
+                        let resolved_lhs_type = resolved_lhs.get_type(self);
+                        match resolved_lhs_type {
+                            // if integer or character type, use it
+                            SemanticType::Int | SemanticType::Char => self.binary_expect(
                                 resolved_lhs.clone(),
                                 resolved_rhs.clone(),
-                                SemanticType::Char,
+                                resolved_lhs_type,
                                 SemanticType::Bool,
-                            )
-                        } else {
-                            self.binary_expect(
+                            ),
+
+                            // otherwise use integer as fallback for typechecking
+                            _ => self.binary_expect(
                                 resolved_lhs.clone(),
                                 resolved_rhs.clone(),
                                 SemanticType::Int,
@@ -738,7 +749,7 @@ impl Folder for TypeResolver {
                         }
                     }
                     // Logical ops (Bool, Bool) -> Bool
-                    BinaryOper::And | BinaryOper::Or => self.binary_expect(
+                    BinaryOper::LAnd | BinaryOper::LOr => self.binary_expect(
                         resolved_lhs.clone(),
                         resolved_rhs.clone(),
                         SemanticType::Bool,

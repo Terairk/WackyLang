@@ -259,11 +259,16 @@ pub(crate) mod ast_lowering_ctx {
                 }
                 TypedStat::Assignment { lvalue, rvalue } => {
                     // TODO: add more type-checking code to lowerer SemTy vs. WackTy
-                    let (lhs, _lhs_ty, derefed) = self.lower_lvalue(lvalue.into_inner(), instructions);
+                    let (lhs, _lhs_ty, derefed) =
+                        self.lower_lvalue(lvalue.into_inner(), instructions);
                     let (rhs, _rhs_ty) = self.lower_rvalue(rvalue.into_inner(), instructions);
                     let instr;
                     if derefed {
-                        instr = WackInstr::CopyToOffset { src: rhs, dst_ptr: WackValue::Var(lhs), offset: 0 };
+                        instr = WackInstr::CopyToOffset {
+                            src: rhs,
+                            dst_ptr: WackValue::Var(lhs),
+                            offset: 0,
+                        };
                     } else {
                         instr = WackInstr::Copy { src: rhs, dst: lhs };
                     }
@@ -305,9 +310,15 @@ pub(crate) mod ast_lowering_ctx {
                         WackType::Pair(_, _) => WackInstr::FreeChecked(value),
                         WackType::Array(_) => {
                             let tmp = self.make_temporary(wack_ptr_ty);
-                            instructions.push(WackInstr::AddPtr { src_ptr: value, index: WackValue::Literal(WackLiteral::Int(0)), scale: 1, offset: -4, dst_ptr: tmp.clone() });
+                            instructions.push(WackInstr::AddPtr {
+                                src_ptr: value,
+                                index: WackValue::Literal(WackLiteral::Int(0)),
+                                scale: 1,
+                                offset: -4,
+                                dst_ptr: tmp.clone(),
+                            });
                             WackInstr::FreeUnchecked(WackValue::Var(tmp))
-                        },
+                        }
                         _ => unreachable!(
                             "free value should be a pointer to pair or array, but found {:#?}",
                             wack_ptr_ty
@@ -642,7 +653,11 @@ pub(crate) mod ast_lowering_ctx {
                 dst_ptr: array_dst_ptr.clone(),
             });
             let new_array_dst_ptr = self.make_temporary(WackType::Pointer(array_ptr_ty.clone()));
-            instructions.push(WackInstr::add_ptr_offset(WackValue::Var(array_dst_ptr.clone()), 4, new_array_dst_ptr.clone()));
+            instructions.push(WackInstr::add_ptr_offset(
+                WackValue::Var(array_dst_ptr.clone()),
+                4,
+                new_array_dst_ptr.clone(),
+            ));
             instructions.push(WackInstr::CopyToOffset {
                 src: WackValue::Literal(WackLiteral::Int(array_len as i32)),
                 dst_ptr: WackValue::Var(new_array_dst_ptr.clone()),
@@ -777,10 +792,14 @@ pub(crate) mod ast_lowering_ctx {
             let pair_ptr_ty = WackType::from_semantic_type(lvalue_ty);
 
             // the lvalue should evaluate to pointer of type pair
-            let (mut pair_src_ptr, _, derefed) = self.lower_lvalue(lvalue.into_inner(), instructions);
+            let (mut pair_src_ptr, _, derefed) =
+                self.lower_lvalue(lvalue.into_inner(), instructions);
             if derefed {
                 let tmp_ident = self.make_temporary(pair_ptr_ty.clone());
-                instructions.push(WackInstr::Load { src_ptr: WackValue::Var(pair_src_ptr), dst: tmp_ident.clone() });
+                instructions.push(WackInstr::Load {
+                    src_ptr: WackValue::Var(pair_src_ptr),
+                    dst: tmp_ident.clone(),
+                });
                 pair_src_ptr = tmp_ident;
             }
             let pair_src_ptr = WackValue::Var(pair_src_ptr);
@@ -997,8 +1016,8 @@ pub(crate) mod ast_lowering_ctx {
             instr: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackType) {
             match binop {
-                BinaryOper::And => self.lower_and_expr(sem_ty, expr1, expr2, instr),
-                BinaryOper::Or => self.lower_or_expr(sem_ty, expr1, expr2, instr),
+                BinaryOper::LAnd => self.lower_and_expr(sem_ty, expr1, expr2, instr),
+                BinaryOper::LOr => self.lower_or_expr(sem_ty, expr1, expr2, instr),
                 _ => self.lower_normal_binary(sem_ty, expr1, binop, expr2, instr),
             }
         }

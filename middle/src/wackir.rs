@@ -259,7 +259,6 @@ pub enum WackInstr {
     //     elems: Vec<WackValue>,
     //     dst_ptr: WackTempIdent,
     // },
-
     /// This frees the memory associated with the pointer that the value holds, without
     /// checking if the pointer is `null` or not.
     /// If it is `null`, nothing is done and no runtime errors occur.
@@ -592,7 +591,8 @@ pub mod wack_char {
 // Len, Ord, Chr somewhere else
 #[derive(Clone, Debug)]
 pub enum UnaryOp {
-    Not,
+    BNot,
+    LNot,
     Negate,
     Len,
     Ord,
@@ -613,8 +613,11 @@ pub enum BinaryOp {
     Lte,
     Eq,
     Neq,
-    And,
-    Or,
+    BAnd,
+    BXor,
+    BOr,
+    LAnd,
+    LOr,
 }
 
 impl From<ast::BinaryOper> for BinaryOp {
@@ -632,8 +635,11 @@ impl From<ast::BinaryOper> for BinaryOp {
             ast::BinaryOper::Gt => Self::Gt,
             ast::BinaryOper::Eq => Self::Eq,
             ast::BinaryOper::Neq => Self::Neq,
-            ast::BinaryOper::And => Self::And,
-            ast::BinaryOper::Or => Self::Or,
+            ast::BinaryOper::BAnd => Self::BAnd,
+            ast::BinaryOper::BXor => Self::BXor,
+            ast::BinaryOper::BOr => Self::BOr,
+            ast::BinaryOper::LAnd => Self::LAnd,
+            ast::BinaryOper::LOr => Self::LOr,
         }
     }
 }
@@ -642,7 +648,8 @@ impl From<ast::UnaryOper> for UnaryOp {
     #[inline]
     fn from(unop: ast::UnaryOper) -> Self {
         match unop {
-            ast::UnaryOper::Not => Self::Not,
+            ast::UnaryOper::BNot => Self::BNot,
+            ast::UnaryOper::LNot => Self::LNot,
             ast::UnaryOper::Minus => Self::Negate,
             ast::UnaryOper::Len => Self::Len,
             ast::UnaryOper::Ord => Self::Ord,
@@ -901,7 +908,11 @@ impl fmt::Debug for WackInstr {
                 "AddPtr {{ src_ptr: {:?}, index: {:?}, scale: {:?}, offset: {:?}, dst_ptr: {:?} }}",
                 src_ptr, index, scale, offset, dst_ptr
             ),
-            Self::CopyToOffset { src, dst_ptr, offset } => write!(
+            Self::CopyToOffset {
+                src,
+                dst_ptr,
+                offset,
+            } => write!(
                 f,
                 "CopyToOffset {{ src: {:?}, dst_ptr: {:?}, offset: {:?} }}",
                 src, dst_ptr, offset

@@ -231,7 +231,7 @@ impl From<UnaryOp> for AsmUnaryOperator {
     #[inline]
     fn from(op: UnaryOp) -> Self {
         match op {
-            UnaryOp::Not => Self::Not,
+            UnaryOp::LNot => Self::Not,
             _ => panic!("Invalid ASM unary operator"),
         }
     }

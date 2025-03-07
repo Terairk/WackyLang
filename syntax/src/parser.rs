@@ -145,7 +145,8 @@ where
 
         // unary and binary operator parsers
         let unary_oper = choice((
-            just(Token::Bang).to(ast::UnaryOper::Not),
+            just(Token::Tilde).to(ast::UnaryOper::BNot),
+            just(Token::Bang).to(ast::UnaryOper::LNot),
             just(Token::Minus).to(ast::UnaryOper::Minus),
             just(Token::Len).to(ast::UnaryOper::Len),
             just(Token::Ord).to(ast::UnaryOper::Ord),
@@ -185,13 +186,28 @@ where
         .sn()
         .labelled("<binary-oper>")
         .as_context();
-        let land_oper = just(Token::And)
-            .to(ast::BinaryOper::And)
+        let band_oper = just(Token::Ampersand)
+            .to(ast::BinaryOper::BAnd)
             .sn()
             .labelled("<binary-oper>")
             .as_context();
-        let lor_oper = just(Token::Or)
-            .to(ast::BinaryOper::Or)
+        let bxor_oper = just(Token::Caret)
+            .to(ast::BinaryOper::BXor)
+            .sn()
+            .labelled("<binary-oper>")
+            .as_context();
+        let bor_oper = just(Token::Pipe)
+            .to(ast::BinaryOper::BOr)
+            .sn()
+            .labelled("<binary-oper>")
+            .as_context();
+        let land_oper = just(Token::AmpersandAmpersand)
+            .to(ast::BinaryOper::LAnd)
+            .sn()
+            .labelled("<binary-oper>")
+            .as_context();
+        let lor_oper = just(Token::PipePipe)
+            .to(ast::BinaryOper::LOr)
             .sn()
             .labelled("<binary-oper>")
             .as_context();
@@ -227,8 +243,14 @@ where
         // a PRATT parser for right-infix operator expressions
         #[allow(clippy::shadow_unrelated)]
         let expr = atom.pratt((
-            // logical AND (&&) has more precedence than logical OR (||), where AND has
-            // precedence just below that of equality comparisons
+            // bitwise AND (&) has more precedence than bitwise XOR (^),
+            // bitwise XOR (^) has more precedence than bitwise OR (|),
+            // bitwise OR (|) has more precedence than logical AND (&&),
+            // logical AND (&&) has more precedence than logical OR (||),
+            // where bitwise AND (&) has precedence just below that of equality comparisons
+            infix(right(5), band_oper, binary_create),
+            infix(left(4), bxor_oper, binary_create), // XOR is left associative, similar to arithmetic addition
+            infix(right(3), bor_oper, binary_create),
             infix(right(2), land_oper, binary_create),
             infix(right(1), lor_oper, binary_create),
         ));
