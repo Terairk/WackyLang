@@ -212,6 +212,17 @@ pub trait Folder {
                 self.fold_type(ty),
             ),
             Expr::Paren(expr, ty) => Expr::Paren(self.fold_expr(expr), self.fold_type(ty)),
+            Expr::IfThenElse {
+                if_cond,
+                then_val,
+                else_val,
+                ty,
+            } => Expr::IfThenElse {
+                if_cond: self.fold_expr(if_cond),
+                then_val: self.fold_expr(then_val),
+                else_val: self.fold_expr(else_val),
+                ty: self.fold_type(ty),
+            },
             Expr::Error(span) => Expr::Error(span),
         })
     }

@@ -152,9 +152,33 @@ pub enum Expr<N, T> {
     Unary(SN<UnaryOper>, SN<Self>, T),
     Binary(SN<Self>, SN<BinaryOper>, SN<Self>, T),
     Paren(SN<Self>, T),
+    IfThenElse {
+        if_cond: SN<Expr<N, T>>,
+        then_val: SN<Expr<N, T>>,
+        else_val: SN<Expr<N, T>>,
+        ty: T,
+    },
 
     // Generated only by parser errors.
     Error(SourcedSpan),
+}
+
+impl<N, T> Expr<N, T> {
+    #[must_use]
+    #[inline]
+    pub const fn if_then_else(
+        if_cond: SN<Expr<N, T>>,
+        then_val: SN<Expr<N, T>>,
+        else_val: SN<Expr<N, T>>,
+        ty: T,
+    ) -> Self {
+        Self::IfThenElse {
+            if_cond,
+            then_val,
+            else_val,
+            ty,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

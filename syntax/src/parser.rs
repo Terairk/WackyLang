@@ -120,7 +120,14 @@ where
         let array_elem = array_elem_parser(ident.clone(), expr.clone());
 
         // parse parenthesized expressions
-        let paren_expr = expr.delim_by(Delim::Paren).sn();
+        let paren_expr = expr.clone().delim_by(Delim::Paren).sn();
+
+        // parse if-then-else expressions
+        let if_then_else = just(Token::If).ignore_then(group((
+            expr.clone().then_ignore(just(Token::Then)).sn(),
+            expr.clone().then_ignore(just(Token::Else)).sn(),
+            expr.clone().then_ignore(just(Token::Fi)).sn(),
+        )));
 
         // 'Atoms' are expressions that contain no ambiguity
         let atom = choice((
@@ -134,6 +141,10 @@ where
             // Bootleg approach to get SN<Ident> from Ident parser
             ident.clone().sn().map(|ident| ast::Expr::Ident(ident, ())),
             paren_expr.map(|paren| ast::Expr::Paren(paren, ())),
+            // if-then-else expression should be parsed after all others
+            if_then_else.map(|(if_cond, then_val, else_val)| {
+                ast::Expr::if_then_else(if_cond, then_val, else_val, ())
+            }),
         ));
 
         // Perform simplistic error recovery on Atom expressions

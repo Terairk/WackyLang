@@ -504,6 +504,9 @@ pub(crate) mod ast_lowering_ctx {
                 TypedExpr::Paren(sn_expr, _t) => {
                     self.lower_expr(sn_expr.into_inner(), instructions)
                 }
+                TypedExpr::IfThenElse { .. } => {
+                    todo!("Conditional expressions have not been implemented")
+                }
                 TypedExpr::Error(_) => unreachable!(
                     "Unless there is a bug somewhere in frontend, this should not be reachable."
                 ),
