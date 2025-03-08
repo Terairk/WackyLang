@@ -7,7 +7,7 @@ use backend::predefined::generate_predefined;
 use backend::replace_pseudo::replace_pseudo_in_program;
 use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
-use chumsky::{extra, Parser};
+use chumsky::{Parser, extra};
 use clap::Parser as ClapParser;
 use middle::ast_transform::lower_program;
 use std::path::PathBuf;
@@ -16,7 +16,7 @@ use syntax::ast;
 use syntax::parser::program_parser;
 use syntax::rename::rename;
 use syntax::source::{SourcedSpan, StrSourceId};
-use syntax::token::{lexer, Token};
+use syntax::token::{Token, lexer};
 use syntax::typecheck::typecheck;
 use syntax::{build_semantic_error_report, build_syntactic_report};
 

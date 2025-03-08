@@ -4,7 +4,6 @@
 
 pub mod ast_transform;
 pub mod types;
-pub mod types_future_playground;
 pub mod wackir;
 
 #[inline]
