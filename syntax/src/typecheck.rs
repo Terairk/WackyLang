@@ -25,6 +25,7 @@ impl SN<Expr<RenamedName, SemanticType>> {
             Expr::Unary(_, _, t) => t,
             Expr::Binary(_, _, _, t) => t,
             Expr::Paren(_, t) => t,
+            Expr::IfThenElse { ty, .. } => ty,
             Expr::Error(_) => unreachable!(), // Parser errors can't be possible here
         }
     }
@@ -41,6 +42,7 @@ impl Expr<RenamedName, SemanticType> {
             | Self::Unary(_, _, t)
             | Self::Binary(_, _, _, t)
             | Self::Paren(_, t) => t,
+            Self::IfThenElse { ty, .. } => ty,
             Self::Error(_) => unreachable!(), // Parser errors can't be possible here
         }
     }
@@ -63,7 +65,7 @@ impl SN<LValue<RenamedName, SemanticType>> {
 
     fn refine_lvalue_type(self, refinement_ty: SemanticType, resolver: &TypeResolver) -> Self {
         // make sure we are not coercing to `AnyType` as this looses type information
-        if (refinement_ty == SemanticType::AnyType) {
+        if refinement_ty == SemanticType::AnyType {
             return self;
         };
 
@@ -105,7 +107,7 @@ impl SN<RValue<RenamedName, SemanticType>> {
         }
 
         // make sure we are not coercing to `AnyType` as this looses type information
-        if (to == SemanticType::AnyType) {
+        if to == SemanticType::AnyType {
             return Ok(self);
         };
 
@@ -152,7 +154,7 @@ impl SN<PairElem<RenamedName, SemanticType>> {
         resolver: &TypeResolver,
     ) -> SN<PairElem<RenamedName, SemanticType>> {
         // make sure we are not coercing to `AnyType` as this looses type information
-        if (refinement_ty == SemanticType::AnyType) {
+        if refinement_ty == SemanticType::AnyType {
             return self;
         };
 
@@ -629,6 +631,7 @@ impl Folder for TypeResolver {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     #[inline]
     fn fold_expr(
         &mut self,
@@ -659,10 +662,12 @@ impl Folder for TypeResolver {
             Expr::Unary(op, expr, _) => {
                 let resolved_expr = self.fold_expr(expr);
                 let resolved_type = match *op.inner() {
-                    UnaryOper::Not => {
+                    UnaryOper::LNot => {
                         self.unary_expect(&resolved_expr, SemanticType::Bool, SemanticType::Bool)
                     }
-                    UnaryOper::Minus => {
+                    UnaryOper::Minus
+                    // for now, bitwise operations only work on integers
+                    | UnaryOper::BNot => {
                         self.unary_expect(&resolved_expr, SemanticType::Int, SemanticType::Int)
                     }
                     UnaryOper::Len => match resolved_expr.get_type(self) {
@@ -695,7 +700,12 @@ impl Folder for TypeResolver {
                     | BinaryOper::Div
                     | BinaryOper::Mod
                     | BinaryOper::Add
-                    | BinaryOper::Sub => self.binary_expect(
+                    | BinaryOper::Sub
+                    // for now, bitwise operations only work on integers
+                    | BinaryOper::BAnd
+                    | BinaryOper::BXor
+                    | BinaryOper::BOr
+                    => self.binary_expect(
                         resolved_lhs.clone(),
                         resolved_rhs.clone(),
                         SemanticType::Int,
@@ -704,15 +714,18 @@ impl Folder for TypeResolver {
 
                     // Comparison ops (Int, Int) -> Bool or (char, char) -> Bool
                     BinaryOper::Lte | BinaryOper::Lt | BinaryOper::Gte | BinaryOper::Gt => {
-                        if resolved_lhs.get_type(self) != SemanticType::Int {
-                            self.binary_expect(
+                        let resolved_lhs_type = resolved_lhs.get_type(self);
+                        match resolved_lhs_type {
+                            // if integer or character type, use it
+                            SemanticType::Int | SemanticType::Char => self.binary_expect(
                                 resolved_lhs.clone(),
                                 resolved_rhs.clone(),
-                                SemanticType::Char,
+                                resolved_lhs_type,
                                 SemanticType::Bool,
-                            )
-                        } else {
-                            self.binary_expect(
+                            ),
+
+                            // otherwise use integer as fallback for typechecking
+                            _ => self.binary_expect(
                                 resolved_lhs.clone(),
                                 resolved_rhs.clone(),
                                 SemanticType::Int,
@@ -738,7 +751,7 @@ impl Folder for TypeResolver {
                         }
                     }
                     // Logical ops (Bool, Bool) -> Bool
-                    BinaryOper::And | BinaryOper::Or => self.binary_expect(
+                    BinaryOper::LAnd | BinaryOper::LOr => self.binary_expect(
                         resolved_lhs.clone(),
                         resolved_rhs.clone(),
                         SemanticType::Bool,
@@ -751,6 +764,86 @@ impl Folder for TypeResolver {
                 let resolved_expr = self.fold_expr(expr);
                 let resolved_type = resolved_expr.get_type(self);
                 Expr::Paren(resolved_expr, resolved_type)
+            }
+            Expr::IfThenElse {
+                if_cond,
+                then_val,
+                else_val,
+                ty: _ty,
+            } => {
+                // enforce that the if-cond is of an appropriate tye
+                let resolved_if_cond = self.fold_expr(if_cond);
+                if resolved_if_cond.get_type(self) != SemanticType::Bool {
+                    self.add_error(TypeMismatch(
+                        resolved_if_cond.span(),
+                        resolved_if_cond.get_type(self),
+                        SemanticType::Bool,
+                    ));
+                }
+
+                // resolve then/else values and types
+                let resolved_then_val = self.fold_expr(then_val.clone());
+                let resolved_then_val_type = resolved_then_val.clone().get_type(self);
+                let resolved_else_val = self.fold_expr(else_val.clone());
+                let resolved_else_val_type = resolved_else_val.clone().get_type(self);
+
+                // Do not coerce into error-type/any-type if can be avoided
+                let bad_coerce_target = |t: &SemanticType| match t {
+                    SemanticType::AnyType | SemanticType::Error(_) => true,
+                    _ => false,
+                };
+
+                // try to coerce then-to-else
+                if !bad_coerce_target(&resolved_else_val_type)
+                    && resolved_then_val_type.can_coerce_into(&resolved_else_val_type)
+                {
+                    Expr::IfThenElse {
+                        if_cond: resolved_if_cond,
+                        then_val: resolved_then_val,
+                        else_val: resolved_else_val,
+                        ty: resolved_else_val_type,
+                    }
+                }
+                // try to coerce else-to-then, even if it might be a bad target
+                else if resolved_else_val_type.can_coerce_into(&resolved_then_val_type) {
+                    Expr::IfThenElse {
+                        if_cond: resolved_if_cond,
+                        then_val: resolved_then_val,
+                        else_val: resolved_else_val,
+                        ty: resolved_then_val_type,
+                    }
+                }
+                // upon reaching incompatible types, emmit a type-mismatch error
+                else {
+                    // if we tried coercing then-to-else and failed, add error to then-val
+                    if !bad_coerce_target(&resolved_else_val_type) {
+                        self.add_error(TypeMismatch(
+                            then_val.span(),
+                            resolved_then_val_type,
+                            resolved_else_val_type,
+                        ));
+                        Expr::IfThenElse {
+                            if_cond: resolved_if_cond,
+                            then_val: resolved_then_val,
+                            else_val: resolved_else_val,
+                            ty: SemanticType::Error(then_val.span()),
+                        }
+                    }
+                    // otherwise if we tried coercing else-to-then, add report to else-val
+                    else {
+                        self.add_error(TypeMismatch(
+                            else_val.span(),
+                            resolved_else_val_type,
+                            resolved_then_val_type,
+                        ));
+                        Expr::IfThenElse {
+                            if_cond: resolved_if_cond,
+                            then_val: resolved_then_val,
+                            else_val: resolved_else_val,
+                            ty: SemanticType::Error(else_val.span()),
+                        }
+                    }
+                }
             }
             Expr::Error(span) => Expr::Error(span),
         })

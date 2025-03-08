@@ -1,21 +1,14 @@
-use crate::assembly_ast::AsmInstruction::{
-    Call, Cmov, Cmp, JmpCC, Mov, MovZeroExtend, SetCC, Test,
-};
-use crate::assembly_ast::AssemblyType::{Byte, Longword, Quadword};
-use crate::assembly_ast::CondCode::{E, NE};
-use crate::assembly_ast::Operand::*;
-use crate::assembly_ast::Operand::{Imm, Reg};
-use crate::assembly_ast::Register::*;
-use crate::assembly_ast::Register::{AX, DI, SI};
 use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
-    Register,
+};
+use crate::assembly_ast::{
+    AsmInstruction::*, AssemblyType::*, CondCode::*, Operand::*, Register::*,
 };
 use crate::predefined::{
-    inbuiltArrLoad1, inbuiltArrLoad4, inbuiltArrLoad8, inbuiltBadChar, inbuiltDivZero, inbuiltExit,
-    inbuiltFree, inbuiltFreePair, inbuiltMalloc, inbuiltNullAccess, inbuiltPrintBool,
-    inbuiltPrintChar, inbuiltPrintInt, inbuiltPrintPtr, inbuiltPrintString, inbuiltPrintln,
-    inbuiltReadChar, inbuiltReadInt,
+    INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO,
+    INBUILT_EXIT, INBUILT_FREE, INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS,
+    INBUILT_PRINTLN, INBUILT_PRINT_BOOL, INBUILT_PRINT_CHAR, INBUILT_PRINT_INT,
+    INBUILT_PRINT_PTR, INBUILT_PRINT_STRING, INBUILT_READ_CHAR, INBUILT_READ_INT,
 };
 use middle::types::{BitWidth, WackType};
 use middle::wackir::{
@@ -25,6 +18,11 @@ use middle::wackir::{
 use std::collections::{BTreeMap, HashMap};
 use util::gen_flags::{insert_flag_gbl, GenFlags};
 /* ================== PUBLIC API ================== */
+
+// The stack size for parameters is 8 bytes
+const PARAM_STACK_SIZE: i32 = 8;
+// Parameters are stored at 16(%rbp) and onwards
+const STACK_START_PARAM: i32 = 16;
 
 #[inline]
 #[must_use]
@@ -62,7 +60,7 @@ pub struct AsmGen {
 }
 
 fn convert_type(ty: &WackType) -> AssemblyType {
-    use AssemblyType::{Byte, Longword, Quadword};
+    use {Byte, Longword, Quadword};
 
     match ty {
         WackType::Int { width } => match width {
@@ -74,9 +72,9 @@ fn convert_type(ty: &WackType) -> AssemblyType {
             BitWidth::W64 => Quadword,
         },
         WackType::Pointer(_) => Quadword, // labels are pointers to code
-        WackType::Array(_) => unimplemented!(
-            "The Wack::Array <-> AssemblyType::ByteArray conversion is not implemented yet"
-        ),
+        WackType::Array(_) => {
+            unimplemented!("The Wack::Array <-> ByteArray conversion is not implemented yet")
+        }
         WackType::Pair(_, _) => {
             unimplemented!("The AssemblyType system does not support raw pair-types yet")
         }
@@ -90,8 +88,8 @@ const fn get_type_from_literal(lit: &WackLiteral) -> AssemblyType {
     match *lit {
         WackLiteral::Int(_) => Longword,
         WackLiteral::Bool(_) | WackLiteral::Char(_) => Byte,
-        WackLiteral::StringLit(_) => AssemblyType::Quadword,
-        WackLiteral::NullPair => AssemblyType::Quadword,
+        WackLiteral::StringLit(_) => Quadword,
+        WackLiteral::NullPair => Quadword,
     }
 }
 
@@ -131,18 +129,19 @@ impl AsmGen {
         }
     }
 
+    #[allow(dead_code)]
     fn get_asm_type_for_ident(&self, ident: &WackTempIdent) -> AssemblyType {
-        return *self
+        *self
             .symbol_table
             .get(ident)
-            .expect("Variable not in symbol table");
+            .expect("Variable not in symbol table")
     }
 
     fn lower_main_asm(&mut self, instrs: Vec<WackInstr>) -> AsmFunction {
-        use AsmInstruction::{Mov, Pop, Push, Ret};
-        use AssemblyType::Quadword;
-        use Operand::Reg;
-        use Register::{BP, SP};
+        use Quadword;
+        use Reg;
+        use {BP, SP};
+        use {Mov, Pop, Push, Ret};
         let mut asm_instructions = Vec::new();
         asm_instructions.push(Push(Reg(BP)));
         asm_instructions.push(Mov {
@@ -160,10 +159,10 @@ impl AsmGen {
             dst: Reg(SP),
         });
         asm_instructions.push(Pop(Reg(BP)));
-        asm_instructions.push(AsmInstruction::Mov {
+        asm_instructions.push(Mov {
             typ: Quadword,
-            src: Operand::Imm(0),
-            dst: Operand::Reg(AX),
+            src: Imm(0),
+            dst: Reg(AX),
         });
         asm_instructions.push(Ret);
 
@@ -177,25 +176,23 @@ impl AsmGen {
     }
 
     fn lower_function(&mut self, wack_function: WackFunction) -> AsmFunction {
-        // TODO: when we move the pushing to this phase instead of emission
+        // when we move the pushing to this phase instead of emission
         // add the push and mov instructions for rbp and rsp
-        use AsmInstruction as Asm;
-        use Register::{CX, DI, DX, R8, R9, SI};
         let mut asm = Vec::new();
         let func_name: String = wack_function.name.into();
         let params = wack_function.params;
 
-        asm.push(Asm::Push(Operand::Reg(Register::BP)));
-        asm.push(Asm::Mov {
-            typ: AssemblyType::Quadword,
-            src: Operand::Reg(Register::SP),
-            dst: Operand::Reg(Register::BP),
+        asm.push(Push(Reg(BP)));
+        asm.push(Mov {
+            typ: Quadword,
+            src: Reg(SP),
+            dst: Reg(BP),
         });
 
         // Handle parameters finally
         // Pair up the parameters and registers for the first 6 parameters.
 
-        asm.push(Asm::Comment(
+        asm.push(Comment(
             "Push registers onto stack to prevent clobbering".to_owned(),
         ));
         let arg_regs = [DI, SI, DX, CX, R8, R9];
@@ -203,16 +200,16 @@ impl AsmGen {
             let wack_value = WackValue::Var(param.clone());
             let typ = self.get_asm_type(&wack_value);
             let param_name = self.lower_value(wack_value, &mut asm);
-            asm.push(AsmInstruction::Mov {
+            asm.push(Mov {
                 typ,
-                src: Operand::Reg(*reg),
+                src: Reg(*reg),
                 dst: param_name,
             });
         }
 
         // if there are extra parameters beyond the 6 registers
         // move them from the stack into the parameters
-        asm.push(Asm::Comment(
+        asm.push(Comment(
             "Move remaining parameters from stack into our stack frame".to_owned(),
         ));
         let mut stack_index = 0;
@@ -220,12 +217,14 @@ impl AsmGen {
             let wack_value = WackValue::Var(param.clone());
             let typ = self.get_asm_type(&wack_value);
             let param_name = self.lower_value(wack_value, &mut asm);
-            asm.push(AsmInstruction::Mov {
+            // Params are stored at 16(%rbp) and onwards
+            asm.push(Mov {
                 typ,
-                src: Operand::Stack(16 + stack_index),
+                src: Memory(BP, STACK_START_PARAM + stack_index),
                 dst: param_name,
             });
-            stack_index += 8;
+            // Move to next parameter which are 8 bytes apart
+            stack_index += PARAM_STACK_SIZE;
         }
 
         for instr in wack_function.body {
@@ -248,75 +247,72 @@ impl AsmGen {
         let operand = self.lower_value(src, asm);
         let func_name = match ty {
             WackPrintType::Int => {
-                asm.push(AsmInstruction::Mov {
+                asm.push(Mov {
                     typ: Longword,
                     src: operand,
-                    dst: Operand::Reg(DI),
+                    dst: Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::PRINT_INT);
-                inbuiltPrintInt.to_owned()
+                INBUILT_PRINT_INT.to_owned()
             }
             WackPrintType::Bool => {
-                asm.push(AsmInstruction::Mov {
-                    typ: AssemblyType::Byte,
+                asm.push(Mov {
+                    typ: Byte,
                     src: operand,
-                    dst: Operand::Reg(DI),
+                    dst: Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::PRINT_BOOLEAN);
-                inbuiltPrintBool.to_owned()
+                INBUILT_PRINT_BOOL.to_owned()
             }
             WackPrintType::Char => {
-                asm.push(AsmInstruction::Mov {
-                    typ: AssemblyType::Byte,
+                asm.push(Mov {
+                    typ: Byte,
                     src: operand,
-                    dst: Operand::Reg(DI),
+                    dst: Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::PRINT_CHR);
-                inbuiltPrintChar.to_owned()
+                INBUILT_PRINT_CHAR.to_owned()
             }
             WackPrintType::StringOrCharArray => {
                 // println!("operand is: {operand:?}");
                 match operand {
-                    Operand::Data(_, _) => {
-                        asm.push(AsmInstruction::Lea {
+                    Data(_, _) => {
+                        asm.push(Lea {
                             src: operand,
-                            dst: Operand::Reg(DI),
+                            dst: Reg(DI),
                         });
                     }
                     _ => {
-                        asm.push(AsmInstruction::Mov {
-                            typ: AssemblyType::Quadword,
+                        asm.push(Mov {
+                            typ: Quadword,
                             src: operand,
-                            dst: Operand::Reg(DI),
+                            dst: Reg(DI),
                         });
                     }
                 }
                 insert_flag_gbl(GenFlags::PRINT_STR);
-                inbuiltPrintString.to_owned()
+                INBUILT_PRINT_STRING.to_owned()
             }
             WackPrintType::OtherArray | WackPrintType::Pair => {
-                asm.push(AsmInstruction::Mov {
-                    typ: AssemblyType::Quadword,
+                asm.push(Mov {
+                    typ: Quadword,
                     src: operand,
-                    dst: Operand::Reg(DI),
+                    dst: Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::PRINT_PTR);
-                inbuiltPrintPtr.to_owned()
+                INBUILT_PRINT_PTR.to_owned()
 
                 //TODO: does this print `nil` for null pointers??
             }
         };
-        asm.push(AsmInstruction::Call(func_name, false));
+        asm.push(Call(func_name, false));
     }
 
     #[allow(clippy::too_many_lines)]
     fn lower_instruction(&mut self, instr: WackInstr, asm: &mut Vec<AsmInstruction>) {
-        use AsmInstruction::{Cmp, Jmp, JmpCC, Label as OtherLabel, Lea, Mov};
-        use AssemblyType::{Longword, Quadword};
         use WackInstr::{
             Binary, Copy, FunCall, Jump, JumpIfNotZero, JumpIfZero, Label, Return, Unary,
         };
-        // TODO: finish this scaffolding
         match instr {
             Return(value) => self.lower_return(value, asm),
             Unary { op, src, dst } => self.lower_unary(&op, src, dst, asm),
@@ -331,12 +327,12 @@ impl AsmGen {
                 let typ = self.get_asm_type(&condition);
                 let condition = self.lower_value(condition, asm);
                 asm.push(Cmp {
-                    typ: typ,
-                    op1: Operand::Imm(0),
+                    typ,
+                    op1: Imm(0),
                     op2: condition,
                 });
                 asm.push(JmpCC {
-                    condition: CondCode::E,
+                    condition: E,
                     label: target.into(),
                     is_func: false,
                 });
@@ -345,12 +341,12 @@ impl AsmGen {
                 let typ = self.get_asm_type(&condition);
                 let condition = self.lower_value(condition, asm);
                 asm.push(Cmp {
-                    typ: typ,
-                    op1: Operand::Imm(0),
+                    typ,
+                    op1: Imm(0),
                     op2: condition,
                 });
                 asm.push(JmpCC {
-                    condition: CondCode::NE,
+                    condition: NE,
                     label: target.into(),
                     is_func: false,
                 });
@@ -360,7 +356,7 @@ impl AsmGen {
                 let src_operand = self.lower_value(src, asm);
                 let dst_operand = self.lower_value(WackValue::Var(dst), asm);
                 match src_operand {
-                    Operand::Data(_, _) => asm.push(Lea {
+                    Data(_, _) => asm.push(Lea {
                         src: src_operand,
                         dst: dst_operand,
                     }),
@@ -371,7 +367,7 @@ impl AsmGen {
                     }),
                 }
             }
-            Label(id) => asm.push(OtherLabel(id.into())),
+            Label(id) => asm.push(AsmInstruction::Label(id.into())),
             FunCall {
                 fun_name,
                 args,
@@ -381,17 +377,17 @@ impl AsmGen {
             WackInstr::Println { src, ty } => {
                 self.lower_print(src, ty, asm);
                 insert_flag_gbl(GenFlags::PRINT_LN);
-                asm.push(Call(inbuiltPrintln.to_owned(), false));
+                asm.push(Call(INBUILT_PRINTLN.to_owned(), false));
             }
             WackInstr::Exit(value) => {
                 insert_flag_gbl(GenFlags::EXIT);
                 let operand = self.lower_value(value, asm);
                 asm.push(Mov {
-                    typ: AssemblyType::Longword,
+                    typ: Longword,
                     src: operand,
-                    dst: Operand::Reg(DI),
+                    dst: Reg(DI),
                 });
-                asm.push(AsmInstruction::Call(inbuiltExit.to_owned(), false));
+                asm.push(Call(INBUILT_EXIT.to_owned(), false));
             }
             WackInstr::Read { dst, ty } => {
                 let asm_typ = match ty {
@@ -400,63 +396,63 @@ impl AsmGen {
                 };
                 let dst = WackValue::Var(dst);
                 let operand = self.lower_value(dst, asm);
-                asm.push(AsmInstruction::Mov {
+                asm.push(Mov {
                     typ: asm_typ,
                     src: operand.clone(),
-                    dst: Operand::Reg(DI),
+                    dst: Reg(DI),
                 });
                 match ty {
                     WackReadType::Int => {
                         insert_flag_gbl(GenFlags::READ_INT);
-                        asm.push(Call(inbuiltReadInt.to_owned(), false));
+                        asm.push(Call(INBUILT_READ_INT.to_owned(), false));
                     }
                     WackReadType::Char => {
                         insert_flag_gbl(GenFlags::READ_CHR);
-                        asm.push(Call(inbuiltReadChar.to_owned(), false));
+                        asm.push(Call(INBUILT_READ_CHAR.to_owned(), false));
                     }
                 }
-                asm.push(AsmInstruction::Mov {
+                asm.push(Mov {
                     typ: asm_typ,
-                    src: Operand::Reg(AX),
+                    src: Reg(AX),
                     dst: operand,
                 });
             }
             WackInstr::FreeUnchecked(value) => {
                 let operand = self.lower_value(value, asm);
                 insert_flag_gbl(GenFlags::FREE);
-                asm.push(AsmInstruction::Mov {
+                asm.push(Mov {
                     typ: Quadword,
                     src: operand,
-                    dst: Operand::Reg(DI),
+                    dst: Reg(DI),
                 });
-                asm.push(AsmInstruction::Call(inbuiltFree.to_owned(), false));
+                asm.push(Call(INBUILT_FREE.to_owned(), false));
             }
             WackInstr::FreeChecked(value) => {
                 let operand = self.lower_value(value, asm);
                 insert_flag_gbl(GenFlags::FREE_PAIR);
-                asm.push(AsmInstruction::Mov {
+                asm.push(Mov {
                     typ: Quadword,
                     src: operand,
-                    dst: Operand::Reg(DI),
+                    dst: Reg(DI),
                 });
-                asm.push(AsmInstruction::Call(inbuiltFreePair.to_owned(), false));
+                asm.push(Call(INBUILT_FREE_PAIR.to_owned(), false));
             }
             WackInstr::Alloc { size, dst_ptr } => {
                 // println!("alloc size {}", size);
                 let dst_ptr = WackValue::Var(dst_ptr);
                 let operand = self.lower_value(dst_ptr, asm);
                 // Moving size to RDI for malloc function
-                asm.push(AsmInstruction::Mov {
+                asm.push(Mov {
                     typ: Longword,
-                    src: Operand::Imm(size as i32),
-                    dst: Operand::Reg(DI),
+                    src: Imm(size as i32),
+                    dst: Reg(DI),
                 });
                 insert_flag_gbl(GenFlags::MALLOC);
-                asm.push(AsmInstruction::Call(inbuiltMalloc.to_owned(), false));
+                asm.push(Call(INBUILT_MALLOC.to_owned(), false));
                 // Moving pointer received to dst_ptr
-                asm.push(AsmInstruction::Mov {
+                asm.push(Mov {
                     typ: Quadword,
-                    src: Operand::Reg(AX),
+                    src: Reg(AX),
                     dst: operand,
                 });
             }
@@ -467,49 +463,57 @@ impl AsmGen {
             } => {
                 let typ = self.get_asm_type(&src);
                 let operand = self.lower_value(src, asm);
-                let get_base_dst_instr = AsmInstruction::Mov {
+                let operand2 = self.lower_value(dst_ptr, asm);
+                // println!("operand1: {operand:?}");
+                // println!("operand2: {operand2:?}");
+                let get_base_dst_instr = Mov {
                     typ: Quadword,
-                    src: self.lower_temp_ident(dst_ptr),
+                    src: operand2,
                     dst: Reg(AX),
                 };
                 asm.push(get_base_dst_instr);
-                let new_dst = Operand::Memory(AX, offset.try_into().expect("weird offset"));
-                asm.push(AsmInstruction::Mov {
-                    typ: typ,
-                    src: operand,
-                    dst: new_dst,
-                });
+                let new_dst = Memory(AX, offset.try_into().expect("weird offset"));
+                if let Data(_, _) = operand {
+                    asm.push(Lea {
+                        src: operand,
+                        dst: new_dst,
+                    });
+                } else {
+                    asm.push(Mov {
+                        typ,
+                        src: operand,
+                        dst: new_dst,
+                    });
+                }
             }
             WackInstr::Load { src_ptr, dst } => {
-                // TODO: double check this
                 let dst = WackValue::Var(dst);
-                let dst_type = self.get_asm_type(&dst);
                 let operand_src_ptr = self.lower_value(src_ptr, asm);
                 let operand_dst = self.lower_value(dst, asm);
-                asm.push(AsmInstruction::Mov {
+                asm.push(Mov {
                     typ: Quadword,
                     src: operand_src_ptr,
-                    dst: Operand::Reg(AX),
+                    dst: Reg(AX),
                 });
-                asm.push(AsmInstruction::Mov {
+                asm.push(Mov {
                     typ: Quadword,
-                    src: Operand::Memory(AX, 0),
+                    src: Memory(AX, 0),
                     dst: operand_dst,
                 });
             }
             WackInstr::NullPtrGuard(ptr) => {
                 let operand = self.lower_value(ptr, asm);
                 // Compare pointer with 0 to check if it's null
-                asm.push(AsmInstruction::Cmp {
+                asm.push(Cmp {
                     typ: Quadword,
                     op1: operand,
-                    op2: Operand::Imm(0),
+                    op2: Imm(0),
                 });
                 insert_flag_gbl(GenFlags::NULL_DEREF);
                 // Jump to _errNull code if pointer is null
-                asm.push(AsmInstruction::JmpCC {
-                    condition: CondCode::E,
-                    label: inbuiltNullAccess.to_owned(),
+                asm.push(JmpCC {
+                    condition: E,
+                    label: INBUILT_NULL_ACCESS.to_owned(),
                     is_func: true,
                 });
             }
@@ -520,24 +524,24 @@ impl AsmGen {
                 offset,
                 dst_ptr,
             } => {
-                use Register::{AX, DX};
+                use {AX, DX};
                 let src_ptr_operand = self.lower_value(src_ptr, asm);
                 let value = WackValue::Var(dst_ptr);
                 let dst_ptr_operand = self.lower_value(value, asm);
                 let index_operand = self.lower_value(index, asm);
-                asm.push(AsmInstruction::Mov {
+                asm.push(Mov {
                     typ: Quadword,
                     src: src_ptr_operand.clone(),
-                    dst: Operand::Reg(AX),
+                    dst: Reg(AX),
                 });
-                asm.push(AsmInstruction::Mov {
+                asm.push(Mov {
                     typ: Quadword,
                     src: index_operand,
-                    dst: Operand::Reg(DX),
+                    dst: Reg(DX),
                 });
-                asm.push(AsmInstruction::Lea {
-                    src: Operand::Indexed {
-                        offset: offset as i32,
+                asm.push(Lea {
+                    src: Indexed {
+                        offset,
                         base: AX,
                         index: DX,
                         scale: scale as i32,
@@ -554,37 +558,37 @@ impl AsmGen {
                 let src_array_operand = self.lower_value(src_array_ptr, asm);
                 let value = WackValue::Var(dst_elem_ptr);
                 let dst_ptr_operand = self.lower_value(value, asm);
-                asm.push(AsmInstruction::Mov {
+                asm.push(Mov {
                     typ: Quadword,
                     src: src_array_operand,
-                    dst: Operand::Reg(Register::R9),
+                    dst: Reg(R9),
                 });
                 let index_operand = self.lower_value(index, asm);
-                asm.push(AsmInstruction::Mov {
+                asm.push(Mov {
                     typ: Longword,
                     src: index_operand,
-                    dst: Operand::Reg(Register::R10),
+                    dst: Reg(R10),
                 });
-                // println!("scale: {scale:?}");
-                let (asm_type, inbuilt_instr) = match scale {
+
+                let inbuilt_instr = match scale {
                     1 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS1);
-                        (Byte, inbuiltArrLoad1)
+                        INBUILT_ARR_LOAD1
                     }
                     4 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS4);
-                        (Longword, inbuiltArrLoad4)
+                        INBUILT_ARR_LOAD4
                     }
                     8 => {
                         insert_flag_gbl(GenFlags::ARRAY_ACCESS8);
-                        (Quadword, inbuiltArrLoad8)
+                        INBUILT_ARR_LOAD8
                     }
                     _ => unreachable!("unexpected scale value in array access"),
                 };
-                asm.push(AsmInstruction::Call(inbuilt_instr.to_owned(), false));
-                asm.push(AsmInstruction::Mov {
+                asm.push(Call(inbuilt_instr.to_owned(), false));
+                asm.push(Mov {
                     typ: Quadword,
-                    src: Operand::Reg(Register::R9),
+                    src: Reg(R9),
                     dst: dst_ptr_operand,
                 });
             } // _ => unimplemented!(), // The following instructions are (for now) deleted
@@ -604,9 +608,6 @@ impl AsmGen {
         dst: WackTempIdent,
         asm: &mut Vec<AsmInstruction>,
     ) {
-        use AsmInstruction as Asm;
-        use Operand::Reg;
-        use Register::{AX, CX, DI, DX, R8, R9, SI};
         let arg_regs = [DI, SI, DX, CX, R8, R9];
 
         // adjust stack alignment
@@ -621,26 +622,34 @@ impl AsmGen {
         // register_args is a slice of WackValues up to 6 values
         // stack_args is an Option of a slice of WackValues
         let stack_padding = if stack_args.iter().len() % 2 != 0 {
-            8
+            PARAM_STACK_SIZE
         } else {
             0
         };
 
         // used to align the stack to 16 bytes for function calls
-        asm.push(Asm::Comment("This aligns stack to 16 bytes".to_owned()));
+        asm.push(Comment("This aligns stack to 16 bytes".to_owned()));
         if stack_padding != 0 {
-            asm.push(Asm::AllocateStack(stack_padding));
+            asm.push(AllocateStack(stack_padding));
         }
 
         // pass args in registers
         for (reg_index, tacky_arg) in register_args.iter().enumerate() {
             let r = arg_regs[reg_index];
+            let typ = self.get_asm_type(tacky_arg);
             let assembly_arg = self.lower_value(tacky_arg.clone(), asm);
-            asm.push(Asm::Mov {
-                typ: AssemblyType::Longword,
-                src: assembly_arg,
-                dst: Operand::Reg(r),
-            });
+            if let Data(_, _) = assembly_arg {
+                asm.push(Lea {
+                    src: assembly_arg,
+                    dst: Reg(r),
+                });
+            } else {
+                asm.push(Mov {
+                    typ,
+                    src: assembly_arg,
+                    dst: Reg(r),
+                });
+            }
         }
 
         // pass rest of args on stack
@@ -651,46 +660,47 @@ impl AsmGen {
         // a 4-byte memory operand and those 4 bytes after it aren't readable memory
 
         if let Some(stack_args) = stack_args {
-            asm.push(Asm::Comment(
+            asm.push(Comment(
                 "Pushing arguments to stack in reverse order".to_owned(),
             ));
             for tacky_arg in stack_args.iter().rev() {
                 let typ = self.get_asm_type(tacky_arg);
                 let assembly_arg: Operand = self.lower_value(tacky_arg.clone(), asm);
-                if let Operand::Reg(_) = assembly_arg {
-                    asm.push(Asm::Push(assembly_arg));
-                } else if let Operand::Imm(_) = assembly_arg {
-                    asm.push(Asm::Push(assembly_arg));
-                } else if typ == AssemblyType::Quadword {
-                    asm.push(Asm::Push(assembly_arg));
+                if let Reg(_) = assembly_arg {
+                    asm.push(Push(assembly_arg));
+                } else if let Imm(_) = assembly_arg {
+                    asm.push(Push(assembly_arg));
+                } else if typ == Quadword {
+                    asm.push(Push(assembly_arg));
                 } else {
                     // This solves the issue of pushing -4(%rbp) to the stack
-                    asm.push(Asm::Mov {
+                    asm.push(Mov {
                         typ: Longword,
                         src: assembly_arg,
                         dst: Reg(AX),
                     });
-                    asm.push(Asm::Push(Reg(AX)));
+                    asm.push(Push(Reg(AX)));
                 }
             }
         }
 
         // Any function call that the user makes will only call
         // other wacc functions which are all internal, hence external flag is false
-        asm.push(Asm::Call(fun_name.into(), false));
+        asm.push(Call(fun_name.into(), false));
 
         // adjust stack pointer
         #[allow(clippy::cast_possible_truncation)]
-        let bytes_to_remove: i32 = 8 * stack_args.map_or(0, |args| args.len()) as i32;
+        let bytes_to_remove: i32 =
+            PARAM_STACK_SIZE * stack_args.map_or(0, |args| args.len()) as i32;
         if bytes_to_remove != 0 {
-            asm.push(Asm::DeallocateStack(bytes_to_remove));
+            asm.push(DeallocateStack(bytes_to_remove));
         }
 
         // handle return value
         let dst = WackValue::Var(dst);
         let dst_typ = self.get_asm_type(&dst);
         let assembly_dst = self.lower_value(dst, asm);
-        asm.push(Asm::Mov {
+        asm.push(Mov {
             typ: dst_typ,
             src: Reg(AX),
             dst: assembly_dst,
@@ -698,59 +708,50 @@ impl AsmGen {
     }
 
     fn lower_return(&mut self, value: WackValue, asm_instructions: &mut Vec<AsmInstruction>) {
-        use AsmInstruction as Asm;
-        use AssemblyType::Quadword;
-        use Operand::Reg;
-        use Register::{AX, BP, SP};
-
         let typ = self.get_asm_type(&value);
         let operand = self.lower_value(value, asm_instructions);
         // TODO: most of these arms aren't correct apart from Imm
         // in particular, these dont take into account types
         // also this can be refactored
         match operand {
-            Operand::Imm(_) => asm_instructions.push(Asm::Mov {
+            Imm(_) => asm_instructions.push(Mov {
                 typ,
                 src: operand,
                 dst: Reg(AX),
             }),
-            Operand::Reg(_) => asm_instructions.push(Asm::Mov {
+            Reg(_) => asm_instructions.push(Mov {
                 typ,
                 src: operand,
                 dst: Reg(AX),
             }),
-            Operand::Pseudo(_) => asm_instructions.push(Asm::Mov {
+            Pseudo(_) => asm_instructions.push(Mov {
                 typ,
                 src: operand,
                 dst: Reg(AX),
             }),
-            Operand::Memory(_, _) => asm_instructions.push(Asm::Mov {
+            Memory(_, _) => asm_instructions.push(Mov {
                 typ,
                 src: operand,
                 dst: Reg(AX),
             }),
-            Operand::Data(_, _) => asm_instructions.push(Asm::Mov {
+            Data(_, _) => asm_instructions.push(Mov {
                 typ,
                 src: operand,
                 dst: Reg(AX),
             }),
-            Operand::PseudoMem(_, _) => asm_instructions.push(Asm::Mov {
-                typ,
-                src: operand,
-                dst: Reg(AX),
-            }),
-            Operand::Indexed { .. } => unimplemented!(),
-            Operand::Stack(_) => unimplemented!(),
+            Indexed { .. } => {
+                unimplemented!("for now we don't make indexed at this lowering stage")
+            }
         }
 
-        asm_instructions.push(Asm::Mov {
+        asm_instructions.push(Mov {
             typ: Quadword,
             src: Reg(BP),
             dst: Reg(SP),
         });
-        asm_instructions.push(Asm::Pop(Reg(BP)));
+        asm_instructions.push(Pop(Reg(BP)));
 
-        asm_instructions.push(Asm::Ret);
+        asm_instructions.push(Ret);
     }
 
     fn lower_unary(
@@ -760,7 +761,6 @@ impl AsmGen {
         dst: WackTempIdent,
         asm: &mut Vec<AsmInstruction>,
     ) {
-        use AsmInstruction as Asm;
         // TODO: check if this is what I need to do
         let dst = WackValue::Var(dst);
         let src_typ = self.get_asm_type(&src);
@@ -771,7 +771,7 @@ impl AsmGen {
         let op = op.clone();
         #[allow(clippy::single_match_else)]
         match op {
-            UnaryOp::Not => {
+            UnaryOp::LNot => {
                 let new_instrs = vec![
                     Cmp {
                         typ: src_typ,
@@ -811,7 +811,7 @@ impl AsmGen {
                     },
                     JmpCC {
                         condition: NE,
-                        label: inbuiltBadChar.to_owned(),
+                        label: INBUILT_BAD_CHAR.to_owned(),
                         is_func: true,
                     },
                     Mov {
@@ -830,12 +830,12 @@ impl AsmGen {
                 dst: dst_operand,
             }),
             _ => {
-                asm.push(Asm::Mov {
+                asm.push(Mov {
                     typ: src_typ,
                     src: src_operand,
                     dst: dst_operand.clone(),
                 });
-                asm.push(Asm::Unary {
+                asm.push(Unary {
                     operator: op.into(),
                     typ: src_typ,
                     operand: dst_operand,
@@ -852,7 +852,6 @@ impl AsmGen {
         dst: WackTempIdent,
         asm: &mut Vec<AsmInstruction>,
     ) {
-        use AsmInstruction as Asm;
         use BinaryOp::*;
 
         let src_typ = self.get_asm_type(&src1);
@@ -873,34 +872,34 @@ impl AsmGen {
                 assert_eq!(src_typ, Longword);
 
                 let new_instrs = vec![
-                    Asm::Cmp {
-                        typ: AssemblyType::Longword,
+                    Cmp {
+                        typ: Longword,
                         op1: src2_operand.clone(),
-                        op2: Operand::Imm(0),
+                        op2: Imm(0),
                     },
-                    Asm::JmpCC {
-                        condition: CondCode::E,
-                        label: inbuiltDivZero.to_owned(),
+                    JmpCC {
+                        condition: E,
+                        label: INBUILT_DIV_ZERO.to_owned(),
                         is_func: true,
                     },
-                    Asm::Mov {
-                        typ: AssemblyType::Longword,
+                    Mov {
+                        typ: Longword,
                         src: src1_operand,
-                        dst: Operand::Reg(Register::AX),
+                        dst: Reg(AX),
                     },
-                    Asm::Cdq,
-                    Asm::Idiv(src2_operand),
+                    Cdq,
+                    Idiv(src2_operand),
                 ];
                 // Result is stored in different registers
                 // Depending on operation
                 let dst_reg = match *op {
-                    Div => Operand::Reg(Register::AX),
-                    Mod => Operand::Reg(Register::DX),
+                    Div => Reg(AX),
+                    Mod => Reg(DX),
                     _ => unreachable!(),
                 };
                 asm.extend(new_instrs);
-                asm.push(Asm::Mov {
-                    typ: AssemblyType::Longword,
+                asm.push(Mov {
+                    typ: Longword,
                     src: dst_reg,
                     dst: dst_operand,
                 });
@@ -908,34 +907,34 @@ impl AsmGen {
             Mul | Add | Sub => {
                 // Handle other binary operations in the same way
                 assert_eq!(src_typ, Longword);
-                asm.push(Asm::Mov {
-                    typ: AssemblyType::Longword,
+                asm.push(Mov {
+                    typ: Longword,
                     src: src1_operand,
                     dst: dst_operand.clone(),
                 });
                 let asm_op = convert_arith_binop(op.clone());
                 // For now its binary operations so insert flag here
                 insert_flag_gbl(GenFlags::OVERFLOW);
-                asm.push(Asm::Binary {
+                asm.push(Binary {
                     operator: asm_op,
-                    typ: AssemblyType::Longword,
+                    typ: Longword,
                     op1: src2_operand,
                     op2: dst_operand,
                 });
             }
             Gt | Gte | Lt | Lte | Eq | Neq => {
                 let new_instrs = vec![
-                    Asm::Cmp {
+                    Cmp {
                         typ: src_typ,
                         op1: src2_operand,
                         op2: src1_operand,
                     },
-                    Asm::Mov {
+                    Mov {
                         typ: dst_typ,
-                        src: Operand::Imm(0),
+                        src: Imm(0),
                         dst: dst_operand.clone(),
                     },
-                    Asm::SetCC {
+                    SetCC {
                         condition: convert_code(op.clone()),
                         operand: dst_operand,
                     },
@@ -952,34 +951,25 @@ impl AsmGen {
         value: WackValue,
         _asm_instructions: &mut Vec<AsmInstruction>,
     ) -> Operand {
+        use WackLiteral::{Bool, Char, Int, NullPair, StringLit};
         use WackValue::{Literal, Var};
         match value {
-            Literal(lit) => self.lower_wack_liter(lit),
-            // TODO: need to figure out if its a Scalar or Aggregate Value
-            // so I can do either Pseudo or PseudoMem, for now its Pseudo
-            Var(ident) => self.lower_temp_ident(ident),
-        }
-    }
-
-    fn lower_wack_liter(&mut self, wack_literal: WackLiteral) -> Operand {
-        match wack_literal {
-            WackLiteral::Int(i) => Operand::Imm(i),
-            WackLiteral::Bool(b) => Operand::Imm(i32::from(b.into_u8())),
-            WackLiteral::Char(c) => Operand::Imm(i32::from(c.into_u8())),
+            Literal(Int(i)) => Imm(i),
+            Literal(Bool(b)) => Imm(i32::from(b.into_u8())),
+            Literal(Char(c)) => Imm(i32::from(c.into_u8())),
             // TODO: StringLit, need to add to symbol table with current function probably
             // while keeping track of a unique counter just for string constants
             // so we can emit properly, also this should emit a thing for RIP relative addressing
             // honestly its kinda similar to ConstDouble from the book
-            WackLiteral::StringLit(s) => {
+            Literal(StringLit(s)) => {
                 let label = self.generate_str_label(&s);
-                Operand::Data(label, 0)
+                Data(label, 0)
             }
-            WackLiteral::NullPair => Operand::Imm(0),
+            Literal(NullPair) => Imm(0),
+            // TODO: need to figure out if its a Scalar or Aggregate Value
+            // so I can do either Pseudo or PseudoMem, for now its Pseudo
+            Var(ident) => Pseudo(ident.into()),
         }
-    }
-
-    fn lower_temp_ident(&mut self, wack_temp: WackTempIdent) -> Operand {
-        Operand::Pseudo(wack_temp.into())
     }
 }
 
@@ -997,15 +987,14 @@ fn convert_arith_binop(wacky_binop: BinaryOp) -> AsmBinaryOperator {
 
 fn convert_code(code: BinaryOp) -> CondCode {
     use BinaryOp::*;
-    use CondCode as CC;
 
     match code {
-        Gt => CC::G,
-        Gte => CC::GE,
-        Lt => CC::L,
-        Lte => CC::LE,
-        Eq => CC::E,
-        Neq => CC::NE,
+        Gt => G,
+        Gte => GE,
+        Lt => L,
+        Lte => LE,
+        Eq => E,
+        Neq => NE,
         _ => panic!("Invalid binary comparison operator for Asm"),
     }
 }

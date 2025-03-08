@@ -1,8 +1,10 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
+use crate::container::{ItemVec, MultiItem};
 use crate::ext::ParserExt as _;
 use crate::{alias, ast, ext::CharExt as _, private};
-use chumsky::combinator::MapWith;
+use chumsky::combinator::{MapWith, ToSlice};
+use chumsky::container::Container as _;
 use chumsky::extra::ParserExtra;
 use chumsky::input::MapExtra;
 use chumsky::{error::Rich, input::StrInput, prelude::*, text};
@@ -104,8 +106,12 @@ pub enum Token {
     Star,
     Percent,
     ForwardSlash,
-    And,
-    Or,
+    AmpersandAmpersand,
+    Ampersand,
+    PipePipe,
+    Pipe,
+    Caret,
+    Tilde,
     Semicolon,
     Comma,
 
@@ -173,8 +179,12 @@ impl fmt::Display for Token {
             Self::Star => write!(f, "*"),
             Self::Percent => write!(f, "%"),
             Self::ForwardSlash => write!(f, "/"),
-            Self::And => write!(f, "&&"),
-            Self::Or => write!(f, "||"),
+            Self::AmpersandAmpersand => write!(f, "&&"),
+            Self::Ampersand => write!(f, "&"),
+            Self::PipePipe => write!(f, "||"),
+            Self::Pipe => write!(f, "|"),
+            Self::Caret => write!(f, "^"),
+            Self::Tilde => write!(f, "~"),
             Self::Semicolon => write!(f, ";"),
             Self::Comma => write!(f, ","),
             Self::Begin => write!(f, "begin"),
@@ -213,11 +223,51 @@ impl fmt::Display for Token {
     }
 }
 
-/// An intermediary token-type that encodes the corrections made to the grammar, to accommodate for
-/// the mistakes made by the longest-match lexing algorithm
-enum LongestMatchCorrectionToken<'src, I: Input<'src>> {
-    Token(Token),
-    NoWhitespacePlusMinusIntLiter(Vec<(Token, I::Span)>),
+// constants associated with int-literal parsing
+const BINARY_RADIX: u32 = 2;
+const OCTAL_RADIX: u32 = 8;
+const DECIMAL_RADIX: u32 = 10;
+const HEXADECIMAL_RADIX: u32 = 16;
+const INT_LITERAL_PREFIXES: [&str; 6] = ["0b", "0B", "0o", "0O", "0x", "0X"];
+
+#[allow(clippy::items_after_statements)]
+fn int_liter<'src, I, E>() -> impl alias::Parser<'src, I, Token, E>
+where
+    I: StrInput<'src, Token = char, Slice = &'src str>,
+    E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
+{
+    // binary literals are prefixed with either `0b` or `0B`
+    let binary = regex(r"[+-]?(?:0b|0B)[01]+")
+        .parse_i32(BINARY_RADIX)
+        .labelled("<binary-int-liter>")
+        .as_context();
+
+    // octal literals are prefixed with either `0o` or `0O`
+    let octal = regex(r"[+-]?(?:0o|0O)[0-7]+")
+        .parse_i32(OCTAL_RADIX)
+        .labelled("<octal-int-liter>")
+        .as_context();
+
+    // copy the Regex pattern found in the WACC spec verbatim for decimal literals
+    let decimal = regex(r"[+-]?[0-9]+")
+        .parse_i32(DECIMAL_RADIX)
+        .labelled("<decimal-int-liter>")
+        .as_context();
+
+    // hexadecimal literals are prefixed with either `0x` or `0X`
+    let hexadecimal = regex(r"[+-]?(?:0x|0X)[0-9a-fA-F]+")
+        .parse_i32(HEXADECIMAL_RADIX)
+        .labelled("<hexadecimal-int-liter>")
+        .as_context();
+
+    // An integer literal is one of these: note decimal does last due to no prefix
+    choice((hexadecimal, octal, binary, decimal))
+        // once we have parsed an integer-literal string, we can unwrap any errors
+        // in order to resume parser-control-flow to the usual
+        .try_map(|result, _| result)
+        .map(Token::IntLiter)
+        .labelled("<int-liter>")
+        .as_context()
 }
 
 #[allow(
@@ -226,8 +276,7 @@ enum LongestMatchCorrectionToken<'src, I: Input<'src>> {
     clippy::single_call_fn
 )]
 #[inline]
-fn unflattened_token_lexer<'src, I, E>(
-) -> impl alias::Parser<'src, I, Vec<(LongestMatchCorrectionToken<'src, I>, I::Span)>, E>
+pub fn lexer<'src, I, E>() -> impl alias::Parser<'src, I, Vec<(Token, I::Span)>, E>
 where
     I: StrInput<'src, Token = char, Slice = &'src str>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
@@ -238,29 +287,27 @@ where
     // TODO: eventually replace with custom error type with variants and so on,
     // TODO: so it is easier to create type-safe custom errors that can be reported later on
 
+    // <comment>  ::=  ‘#’ (any-character-except-EOL)* (⟨EOL⟩ | ⟨EOF⟩)
+    let eol = just('\n').ignored();
+    let comment = group((
+        just('#').ignored(),
+        any().and_is(eol.not()).repeated(),
+        choice((eol, end())),
+    ))
+    .labelled("<comment>")
+    .as_context();
+    let comments = comment.padded().repeated();
+
     // WACC identifiers are C-style, so we can use the default `text::ident` parser
     let ident = text::ident()
-        .pipe((
-            ast::Ident::from_str,
-            Token::Ident,
-            LongestMatchCorrectionToken::Token,
-        ))
+        .pipe((ast::Ident::from_str, Token::Ident))
+        .span_tuple()
+        .map(MultiItem::Item)
         .labelled("<ident>")
         .as_context();
 
-    // copy the Regex pattern found in the WACC spec verbatim
-    let int_liter = regex("[\\+-]?[0-9]+")
-        .try_map(|s: &str, span| {
-            s.parse::<i32>().map_err(|_| {
-                Rich::custom(
-                    span,
-                    format!("The integer literal '{s}' does not fit within 32 bytes"),
-                )
-            })
-        })
-        .map(Token::IntLiter)
-        .labelled("<int-liter>")
-        .as_context();
+    // All integer literals
+    let int_liter = int_liter();
 
     // character parser
     let well_formed_character = choice((
@@ -332,7 +379,8 @@ where
                 .map_with(|_, _| Token::CharLiter('6')),
             ),
         ))
-        .map(LongestMatchCorrectionToken::Token)
+        .span_tuple()
+        .map(MultiItem::Item)
         .labelled("<char-liter>")
         .as_context();
 
@@ -376,8 +424,9 @@ where
                     .map_with(|lit, _| ArcIntern::from(lit)),
             ),
         ))
-        .pipe((Token::StrLiter,))
-        .map(LongestMatchCorrectionToken::Token)
+        .map(Token::StrLiter)
+        .span_tuple()
+        .map(MultiItem::Item)
         .labelled("<str-liter>")
         .as_context();
 
@@ -387,7 +436,8 @@ where
         just('[').to(Token::Open(Delim::Bracket)),
         just(']').to(Token::Close(Delim::Bracket)),
     ))
-    .map(LongestMatchCorrectionToken::Token);
+    .span_tuple()
+    .map(MultiItem::Item);
 
     // all other symbols parser
     let plus = just('+').to(Token::Plus);
@@ -402,18 +452,23 @@ where
         just('!').to(Token::Bang),
         just("==").to(Token::EqualsEquals),
         just('=').to(Token::Equals),
+        just("&&").to(Token::AmpersandAmpersand),
+        just('&').to(Token::Ampersand),
+        just("||").to(Token::PipePipe),
+        just('|').to(Token::Pipe),
         // symbols without ambiguity
         plus.clone(),
         minus.clone(),
         just('*').to(Token::Star),
         just('%').to(Token::Percent),
         just('/').to(Token::ForwardSlash),
-        just("&&").to(Token::And),
-        just("||").to(Token::Or),
+        just('^').to(Token::Caret),
+        just('~').to(Token::Tilde),
         just(';').to(Token::Semicolon),
         just(',').to(Token::Comma),
     ))
-    .map(LongestMatchCorrectionToken::Token);
+    .span_tuple()
+    .map(MultiItem::Item);
 
     let keywords = choice([
         text::keyword("begin").to(Token::Begin),
@@ -449,18 +504,20 @@ where
         text::keyword("true").to(Token::True),
         text::keyword("false").to(Token::False),
     ])
-    .map(LongestMatchCorrectionToken::Token);
+    .span_tuple()
+    .map(MultiItem::Item);
 
     // if integer literals are separated by plus/minus with no whitespace
     // then this should be parsed as a separate disambiguation token
     let spanned_int_liter = int_liter.clone().span_tuple();
-    let plus_or_minus = plus.or(minus).span_tuple();
+    let plus_or_minus = plus.clone().or(minus.clone()).span_tuple();
     let no_whitespace_plus_minus_int_liter = group((
         spanned_int_liter.clone(),
+        comments.ignored(), // any amount of whitespace/comments should be ignored at this position
         plus_or_minus.clone(),
         spanned_int_liter.clone(),
     ))
-    .map(|(lhs, op, rhs)| vec![lhs, op, rhs])
+    .map(|(lhs, (), op, rhs)| vec![lhs, op, rhs])
     .foldl(
         group((plus_or_minus, spanned_int_liter)).repeated(),
         |mut lhs, (op, rhs)| {
@@ -469,14 +526,14 @@ where
             lhs
         },
     )
-    .map(LongestMatchCorrectionToken::NoWhitespacePlusMinusIntLiter);
+    .map(MultiItem::Multi);
 
     let token = choice((
         // parse the exceptions to the "longest match" algorithm first
         no_whitespace_plus_minus_int_liter,
         // parse literals before other symbols, as they have precedence over any other occurrences
         // of symbols e.g. the literal +14343 should take precedence over the plus symbol '+'
-        int_liter.map(LongestMatchCorrectionToken::Token),
+        int_liter.span_tuple().map(MultiItem::Item),
         char_liter,
         str_liter,
         // parse symbols
@@ -487,59 +544,17 @@ where
         ident,
     ));
 
-    // <comment>  ::=  ‘#’ (any-character-except-EOL)* (⟨EOL⟩ | ⟨EOF⟩)
-    let eol = just('\n').ignored();
-    let comment = group((
-        just('#').ignored(),
-        any().and_is(eol.not()).repeated(),
-        choice((eol, end())),
-    ))
-    .labelled("<comment>")
-    .as_context();
-
     // tokens are padded by comments and whitespace
     token
-        .map_with(|t, e| (t, e.span()))
-        .padded_by(comment.padded().repeated())
+        .padded_by(comments)
         .padded()
         // If we encounter an error, skip and attempt to lex the next character as a token instead
         .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
-        .collect()
+        .collect::<ItemVec<_>>()
+        .map(ItemVec::into_inner)
         // We must consume the entire source at the end
         .then_ignore(end())
-}
-
-#[must_use]
-#[inline]
-pub fn lexer<'src, I, E>() -> impl alias::Parser<'src, I, Vec<(Token, I::Span)>, E>
-where
-    I: StrInput<'src, Token = char, Slice = &'src str>,
-    I::Span: Clone,
-    E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
-{
-    let lexer = unflattened_token_lexer::<'src, I, _>();
-
-    lexer.map(|tokens| {
-        // create new flattened vector
-        let mut vec = Vec::<(Token, I::Span)>::with_capacity(tokens.len());
-
-        // iterate through the tokens and either add them directly to the new
-        // vector, or flatten them first and then append them
-        for (t, s) in tokens {
-            match t {
-                LongestMatchCorrectionToken::Token(t) => {
-                    vec.push((t, s));
-                }
-                LongestMatchCorrectionToken::NoWhitespacePlusMinusIntLiter(mut t) => {
-                    vec.append(&mut t);
-                }
-            }
-        }
-
-        // we are done flattening, return the result
-        vec
-    })
 }
 
 /// An extension trait for [Parser] local to this file, for convenient dot-syntax utility methods
@@ -555,5 +570,55 @@ where
     #[inline]
     fn span_tuple(self) -> MapWith<Self, O, fn(O, &mut MapExtra<'src, '_, I, E>) -> (O, I::Span)> {
         self.map_with(|t, e| (t, e.span()))
+    }
+
+    /// Parses a string slice to [`i32`] (or an error variant upon failure) given some [`radix`]
+    /// with [`i32::from_str_radix`] function. The error is not emmitted to the parsing-system
+    /// in order to not trigger unnecessary control-flow alterations
+    #[allow(clippy::type_complexity)]
+    fn parse_i32(
+        self,
+        radix: u32,
+    ) -> MapWith<
+        ToSlice<T, O>,
+        &'src str,
+        impl for<'b> Fn(&'src str, &mut MapExtra<'src, 'b, I, E>) -> Result<i32, E::Error> + Clone,
+    >
+    where
+        I: StrInput<'src, Token = char, Slice = &'src str>,
+        E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
+    {
+        self.to_slice()
+            .map_with(move |s: &'src str, e: &mut MapExtra<_, _>| {
+                // check for plus or minus
+                let mut s_trimmed = s.trim_start_matches(['+', '-']);
+                let minus_sign = match (s == s_trimmed, s.chars().next()) {
+                    (true, _) | (_, Some('+')) => None,
+                    (_, Some('-')) => Some('-'),
+                    _ => unreachable!("This should never happen"),
+                };
+
+                // Trim any prefixes (should ideally only be one) of them
+                for prefix in INT_LITERAL_PREFIXES {
+                    let s_trimmed_new = s_trimmed.trim_start_matches(prefix);
+
+                    // if prefix trimmed successfully, break
+                    if s_trimmed_new != s_trimmed {
+                        s_trimmed = s_trimmed_new;
+                        break;
+                    }
+                }
+
+                // Create final string-to-be-parsed together with any minus sign. Parse into `i32`
+                // literal, or map any errors as appropriate.
+                let s_to_parse =
+                    minus_sign.map_or_else(|| s_trimmed.to_owned(), |c| format!("{c}{s_trimmed}"));
+                i32::from_str_radix(&s_to_parse, radix).map_err(|_| {
+                    Rich::custom(
+                        e.span(),
+                        format!("The integer literal '{s}' does not fit within 32 bytes"),
+                    )
+                })
+            })
     }
 }

@@ -105,16 +105,16 @@ pub enum AsmInstruction {
         label: String,
         is_func: bool, // Field to guide code emission to know if its local or not
     },
-    JmpOverflow(String), // Distinguish this from JmpCC due to jumping to other functions
     SetCC {
         condition: CondCode,
         operand: Operand,
     },
     Label(String),
     Comment(String),
-    // Temporary thing below
+    // These are high level instructions that serve a purpose
+    // of not incurring runtime checks for overflows
+    // Alternative would be adding a flag to Binary
     AllocateStack(i32),
-    // Temporary thing below
     DeallocateStack(i32),
     Push(Operand),
     Pop(Operand),
@@ -125,20 +125,17 @@ pub enum AsmInstruction {
 
 #[derive(Debug, Clone)]
 pub enum Operand {
-    Imm(i32), // TODO: immediate values should be represented as unsigned integers
+    Imm(i32),
     Reg(Register),
     Pseudo(String),
-    Memory(Register, i32),  // I think is used for array/pair access
-    Data(String, i32),      // i think used for RIP relative
-    PseudoMem(String, i32), // I do not remember
+    Memory(Register, i32), // I think is used for array/pair access
+    Data(String, i32),     // i think used for RIP relative
     Indexed {
         base: Register,
         index: Register,
         scale: i32,
         offset: i32,
     },
-    // This is a temporary thing for now
-    Stack(i32),
 }
 
 // For now we only need these directives
@@ -157,40 +154,28 @@ pub enum AsmBinaryOperator {
     Mult,
     And,
     Or,
-    Xor,
-    Shl,
-    ShrTwoOp,
 }
 
-// I'm unsure if Assembly Unary Operators
-// should have Len, Ord, Chr
-// but I need some way of guiding the code gen
-// Length could be put somewhere else like a simple
-// memory lookup, but id have to change the structure of
-// it being a unary operator
-// To do that, I'd have to change from Len in syntax AST to a
-// different construct in Wacky IR
-// Ord is also technically a redundant operation (rn at least)
-// Only Chr needs special handling due to runtime
+// sadly we don't use any other AsmUnaryOperator's
+// -smth is translated as 0 - smth else so it turns into binary
 #[derive(Debug, Clone)]
 pub enum AsmUnaryOperator {
-    Neg,
     Not,
-    Shr,
 }
 
 #[derive(Debug, Clone)]
 pub enum CondCode {
-    E,
-    NE,
-    G,
-    GE,
-    L,
-    LE,
-    A,
-    AE,
-    B,
-    BE,
+    E,  // Equal
+    NE, // Not equal
+    G,  // Greater
+    GE, // Greater or equal
+    L,  // Less
+    LE, // Less or equal
+    A,  // Above
+    AE, // Above or equal
+    B,  // Below
+    BE, // Below or equal
+    OF, // Overflow
 }
 
 // Other registers are callee saved
@@ -217,7 +202,6 @@ pub enum AssemblyType {
     Byte,     // 1 byte
     Longword, // 4 bytes
     Quadword, // 8 bytes
-    ByteArray { size: i32, alignment: i32 },
 }
 
 /* ================ PRETTY PRINTER ============== */
@@ -247,8 +231,7 @@ impl From<UnaryOp> for AsmUnaryOperator {
     #[inline]
     fn from(op: UnaryOp) -> Self {
         match op {
-            UnaryOp::Negate => Self::Neg,
-            UnaryOp::Not => Self::Not,
+            UnaryOp::LNot => Self::Not,
             _ => panic!("Invalid ASM unary operator"),
         }
     }

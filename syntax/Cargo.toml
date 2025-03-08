@@ -25,6 +25,8 @@ thiserror = { workspace = true }
 internment = { workspace = true, features = ["arc"] }
 
 # parsing and error reporting
+ariadne = { workspace = true }
+parse_int = { workspace = true }
 chumsky = { workspace = true, features = [
     "std",
     "stacker",
@@ -33,4 +35,4 @@ chumsky = { workspace = true, features = [
     "regex",
     "nightly",
 ] }
-ariadne = { workspace = true }
+

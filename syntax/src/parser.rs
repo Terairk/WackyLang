@@ -120,7 +120,14 @@ where
         let array_elem = array_elem_parser(ident.clone(), expr.clone());
 
         // parse parenthesized expressions
-        let paren_expr = expr.delim_by(Delim::Paren).sn();
+        let paren_expr = expr.clone().delim_by(Delim::Paren).sn();
+
+        // parse if-then-else expressions
+        let if_then_else = just(Token::If).ignore_then(group((
+            expr.clone().then_ignore(just(Token::Then)).sn(),
+            expr.clone().then_ignore(just(Token::Else)).sn(),
+            expr.clone().then_ignore(just(Token::Fi)).sn(),
+        )));
 
         // 'Atoms' are expressions that contain no ambiguity
         let atom = choice((
@@ -134,6 +141,10 @@ where
             // Bootleg approach to get SN<Ident> from Ident parser
             ident.clone().sn().map(|ident| ast::Expr::Ident(ident, ())),
             paren_expr.map(|paren| ast::Expr::Paren(paren, ())),
+            // if-then-else expression should be parsed after all others
+            if_then_else.map(|(if_cond, then_val, else_val)| {
+                ast::Expr::if_then_else(if_cond, then_val, else_val, ())
+            }),
         ));
 
         // Perform simplistic error recovery on Atom expressions
@@ -145,7 +156,8 @@ where
 
         // unary and binary operator parsers
         let unary_oper = choice((
-            just(Token::Bang).to(ast::UnaryOper::Not),
+            just(Token::Tilde).to(ast::UnaryOper::BNot),
+            just(Token::Bang).to(ast::UnaryOper::LNot),
             just(Token::Minus).to(ast::UnaryOper::Minus),
             just(Token::Len).to(ast::UnaryOper::Len),
             just(Token::Ord).to(ast::UnaryOper::Ord),
@@ -185,13 +197,28 @@ where
         .sn()
         .labelled("<binary-oper>")
         .as_context();
-        let land_oper = just(Token::And)
-            .to(ast::BinaryOper::And)
+        let band_oper = just(Token::Ampersand)
+            .to(ast::BinaryOper::BAnd)
             .sn()
             .labelled("<binary-oper>")
             .as_context();
-        let lor_oper = just(Token::Or)
-            .to(ast::BinaryOper::Or)
+        let bxor_oper = just(Token::Caret)
+            .to(ast::BinaryOper::BXor)
+            .sn()
+            .labelled("<binary-oper>")
+            .as_context();
+        let bor_oper = just(Token::Pipe)
+            .to(ast::BinaryOper::BOr)
+            .sn()
+            .labelled("<binary-oper>")
+            .as_context();
+        let land_oper = just(Token::AmpersandAmpersand)
+            .to(ast::BinaryOper::LAnd)
+            .sn()
+            .labelled("<binary-oper>")
+            .as_context();
+        let lor_oper = just(Token::PipePipe)
+            .to(ast::BinaryOper::LOr)
             .sn()
             .labelled("<binary-oper>")
             .as_context();
@@ -227,8 +254,14 @@ where
         // a PRATT parser for right-infix operator expressions
         #[allow(clippy::shadow_unrelated)]
         let expr = atom.pratt((
-            // logical AND (&&) has more precedence than logical OR (||), where AND has
-            // precedence just below that of equality comparisons
+            // bitwise AND (&) has more precedence than bitwise XOR (^),
+            // bitwise XOR (^) has more precedence than bitwise OR (|),
+            // bitwise OR (|) has more precedence than logical AND (&&),
+            // logical AND (&&) has more precedence than logical OR (||),
+            // where bitwise AND (&) has precedence just below that of equality comparisons
+            infix(right(5), band_oper, binary_create),
+            infix(left(4), bxor_oper, binary_create), // XOR is left associative, similar to arithmetic addition
+            infix(right(3), bor_oper, binary_create),
             infix(right(2), land_oper, binary_create),
             infix(right(1), lor_oper, binary_create),
         ));

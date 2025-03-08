@@ -1,0 +1,33 @@
+# this tests feature-parity of binary literals with decimal literals
+
+# Output:
+
+# Program:
+
+begin
+  # `0b` prefix
+  int x1 = 0b00110100 ;
+  int x2 = +0b01010000 ;
+  int x3 = -0b111010000 ;
+
+  # `0B` prefix
+  int x4 = 0B00110100 ;
+  int x5 = +0B01010000 ;
+  int x6 = -0B111010000 ;
+
+  # integer expressions with whitespace
+  int x7 = ( 0B0100 * -0b1110 + +0b1000 * 0B0011 ) ;
+
+  # extreme condition with no-whitespace
+  int x8 = 0b00110100+0B00100 *
+
+
+           0B001110
+           # indefinite amount of comments, newlines, and whitespace
+
+
+
+
+
+                 -0B111010000
+end

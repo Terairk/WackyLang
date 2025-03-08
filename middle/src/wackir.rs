@@ -189,7 +189,7 @@ pub enum WackInstr {
         src_ptr: WackValue,
         index: WackValue,
         scale: usize,
-        offset: usize,
+        offset: i32,
         dst_ptr: WackTempIdent, // you can only store into an identifier
     },
 
@@ -199,8 +199,8 @@ pub enum WackInstr {
     /// It can be seen as an automated version of C's `memcpy`.
     CopyToOffset {
         src: WackValue,
-        dst_ptr: WackTempIdent, // you can only store into an identifier
-        offset: usize,
+        dst_ptr: WackValue, // you can only store into an identifier
+        offset: i32,
     },
 
     // /// ??
@@ -250,7 +250,15 @@ pub enum WackInstr {
         size: usize,
         dst_ptr: WackTempIdent, // you can only store into an identifier
     },
-
+    // /// Malloc a pointer for array in R9
+    // /// Move that pointer to R11
+    // ///
+    // AllocArray {
+    //     elem_size: usize,
+    //     length: usize,
+    //     elems: Vec<WackValue>,
+    //     dst_ptr: WackTempIdent,
+    // },
     /// This frees the memory associated with the pointer that the value holds, without
     /// checking if the pointer is `null` or not.
     /// If it is `null`, nothing is done and no runtime errors occur.
@@ -284,12 +292,12 @@ impl WackInstr {
     const DEFAULT_ADD_PTR_SCALE: usize = 1;
 
     // The default offset for pointer arithmetic is zero, i.e. no offset
-    const DEFAULT_ADD_PTR_OFFSET: usize = 0;
+    const DEFAULT_ADD_PTR_OFFSET: i32 = 0;
 
     /// Creates a pointer-arithmetic instruction that simply adds a fixed offset.
     #[inline]
     #[must_use]
-    pub const fn add_ptr_offset(src_ptr: WackValue, offset: usize, dst_ptr: WackTempIdent) -> Self {
+    pub const fn add_ptr_offset(src_ptr: WackValue, offset: i32, dst_ptr: WackTempIdent) -> Self {
         Self::AddPtr {
             src_ptr,
             index: Self::DEFAULT_ADD_PTR_INDEX,
@@ -583,7 +591,8 @@ pub mod wack_char {
 // Len, Ord, Chr somewhere else
 #[derive(Clone, Debug)]
 pub enum UnaryOp {
-    Not,
+    BNot,
+    LNot,
     Negate,
     Len,
     Ord,
@@ -604,8 +613,11 @@ pub enum BinaryOp {
     Lte,
     Eq,
     Neq,
-    And,
-    Or,
+    BAnd,
+    BXor,
+    BOr,
+    LAnd,
+    LOr,
 }
 
 impl From<ast::BinaryOper> for BinaryOp {
@@ -623,8 +635,11 @@ impl From<ast::BinaryOper> for BinaryOp {
             ast::BinaryOper::Gt => Self::Gt,
             ast::BinaryOper::Eq => Self::Eq,
             ast::BinaryOper::Neq => Self::Neq,
-            ast::BinaryOper::And => Self::And,
-            ast::BinaryOper::Or => Self::Or,
+            ast::BinaryOper::BAnd => Self::BAnd,
+            ast::BinaryOper::BXor => Self::BXor,
+            ast::BinaryOper::BOr => Self::BOr,
+            ast::BinaryOper::LAnd => Self::LAnd,
+            ast::BinaryOper::LOr => Self::LOr,
         }
     }
 }
@@ -633,7 +648,8 @@ impl From<ast::UnaryOper> for UnaryOp {
     #[inline]
     fn from(unop: ast::UnaryOper) -> Self {
         match unop {
-            ast::UnaryOper::Not => Self::Not,
+            ast::UnaryOper::BNot => Self::BNot,
+            ast::UnaryOper::LNot => Self::LNot,
             ast::UnaryOper::Minus => Self::Negate,
             ast::UnaryOper::Len => Self::Len,
             ast::UnaryOper::Ord => Self::Ord,

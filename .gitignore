@@ -1,6 +1,6 @@
 /target
 compile
 .*
-*.wacc
+./*.wacc
 *.s
 *.core

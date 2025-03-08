@@ -6,21 +6,23 @@
 // We'll use R10D as a scratch register because it usually doesn't serve
 // any special purpose
 
+use crate::assembly_ast::CondCode;
+use crate::assembly_ast::Operand::{Data, Memory, Reg};
 use crate::{
     assembly_ast::{
-        AsmBinaryOperator, AsmFunction,
-        AsmInstruction::{self, *},
-        AsmProgram, AsmUnaryOperator, AssemblyType,
-        Operand::{self, *},
-        Register::{self, *},
+        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmInstruction::*, AsmProgram,
+        AssemblyType, Operand, Operand::Imm, Register::*,
     },
-    predefined::inbuiltOverflow,
+    predefined::INBUILT_OVERFLOW,
 };
 
+///
+/// Fix the assembly instructions in the program to ensure they are valid x86-64 instructions.
+/// Some instructions have special requirements such as needing a register as 2nd operand
 #[must_use]
 #[inline]
 pub fn fix_program(program: AsmProgram) -> AsmProgram {
-    use Operand::Imm;
+    use Imm;
     // Process each function separately
     let mut new_functions: Vec<AsmFunction> = Vec::new();
 
@@ -28,10 +30,10 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
         let mut new_func_body: Vec<AsmInstruction> = Vec::new();
         for instr in func.instructions {
             match instr {
-                AsmInstruction::Mov { typ, src, dst } => {
+                Mov { typ, src, dst } => {
                     fix_move(&mut new_func_body, typ, src, dst);
                 }
-                AsmInstruction::MovZeroExtend {
+                MovZeroExtend {
                     src_type,
                     dst_type,
                     src,
@@ -39,29 +41,24 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
                 } => {
                     fix_zero_extend(&mut new_func_body, src_type, dst_type, src, dst);
                 }
-                AsmInstruction::Binary {
+                Binary {
                     operator,
                     typ,
                     op1,
                     op2,
                 } => fix_binary(&mut new_func_body, operator, typ, op1, op2),
-                AsmInstruction::Idiv(Imm(val)) => {
+                Idiv(Imm(val)) => {
                     fix_idiv(&mut new_func_body, val);
                 }
-                AsmInstruction::Cmp { typ, op1, op2 } => fix_cmp(&mut new_func_body, typ, op1, op2),
-                AsmInstruction::Lea { src, dst } => {
+                Cmp { typ, op1, op2 } => fix_cmp(&mut new_func_body, typ, op1, op2),
+                Lea { src, dst } => {
                     fix_lea(&mut new_func_body, src, dst);
                 }
-                AsmInstruction::Unary {
-                    operator,
-                    typ,
-                    operand,
-                } => fix_unary(&mut new_func_body, operator, typ, operand),
+                // All other instructions are left unchanged as they dont have special requirements
                 _ => new_func_body.push(instr),
             }
         }
 
-        // TODO: maybe we can use bon crate
         new_functions.push(AsmFunction {
             name: func.name,
             global: func.global,
@@ -75,34 +72,6 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
     }
 }
 
-fn fix_unary(
-    new_func_body: &mut Vec<AsmInstruction>,
-    operator: AsmUnaryOperator,
-    typ: AssemblyType,
-    operand: Operand,
-) {
-    match operator {
-        AsmUnaryOperator::Neg => {
-            let new_instrs = vec![
-                AsmInstruction::Unary {
-                    operator: AsmUnaryOperator::Neg,
-                    typ,
-                    operand,
-                },
-                AsmInstruction::JmpOverflow(inbuiltOverflow.to_owned()),
-            ];
-            new_func_body.extend(new_instrs);
-        }
-        _ => {
-            new_func_body.push(AsmInstruction::Unary {
-                operator,
-                typ,
-                operand,
-            });
-        }
-    }
-}
-
 fn fix_zero_extend(
     new_func_body: &mut Vec<AsmInstruction>,
     src_type: AssemblyType,
@@ -112,38 +81,40 @@ fn fix_zero_extend(
 ) {
     if src_type == AssemblyType::Byte {
         let new_instrs = match (src.clone(), dst.clone()) {
-            (Operand::Imm(_), Operand::Stack(_)) => vec![
-                AsmInstruction::Mov {
+            // Zero extend can't have Immediate as source
+            // so we move it into a register first
+            (Imm(_), Memory(_, _)) => vec![
+                Mov {
                     typ: src_type,
                     src,
-                    dst: Operand::Reg(Register::R10),
+                    dst: Reg(R10),
                 },
-                AsmInstruction::MovZeroExtend {
-                    src_type: src_type,
-                    dst_type: dst_type,
-                    src: Operand::Reg(Register::R10),
-                    dst: Operand::Reg(Register::R11),
+                MovZeroExtend {
+                    src_type,
+                    dst_type,
+                    src: Reg(R10),
+                    dst: Reg(R11),
                 },
-                AsmInstruction::Mov {
+                Mov {
                     typ: dst_type,
-                    src: Operand::Reg(Register::R11),
+                    src: Reg(R11),
                     dst,
                 },
             ],
-            (_, Operand::Stack(_)) => vec![
-                AsmInstruction::MovZeroExtend {
-                    src_type: src_type,
-                    dst_type: dst_type,
+            (_, Memory(_, _)) => vec![
+                MovZeroExtend {
+                    src_type,
+                    dst_type,
                     src,
-                    dst: Operand::Reg(Register::R10),
+                    dst: Reg(R10),
                 },
-                AsmInstruction::Mov {
+                Mov {
                     typ: dst_type,
-                    src: Operand::Reg(Register::R10),
+                    src: Reg(R10),
                     dst,
                 },
             ],
-            _ => vec![AsmInstruction::MovZeroExtend {
+            _ => vec![MovZeroExtend {
                 src_type,
                 dst_type,
                 src,
@@ -169,19 +140,23 @@ fn fix_binary(
     match operator {
         AsmBinOp::Add | AsmBinOp::Sub => fix_add_sub(operator, typ, op1, op2, asm),
         AsmBinOp::Mult => fix_mult(typ, op1, op2, asm),
-        _ => asm.push(AsmInstruction::Binary {
+        _ => asm.push(Binary {
             operator,
             typ,
             op1,
             op2,
         }),
     }
-    asm.push(AsmInstruction::JmpOverflow(inbuiltOverflow.to_owned()));
+    asm.push(JmpCC {
+        condition: CondCode::OF,
+        label: INBUILT_OVERFLOW.to_owned(),
+        is_func: true,
+    });
 }
 
 fn fix_move(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand, dst: Operand) {
     let new_instrs = match (src.clone(), dst.clone()) {
-        (Memory(_, _), Stack(_)) => vec![
+        (Memory(_, _) | Data(_, _), Memory(_, _)) => vec![
             Mov {
                 typ,
                 src,
@@ -193,19 +168,7 @@ fn fix_move(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, src: Operand, dst:
                 dst,
             },
         ],
-        (Operand::Stack(_), Operand::Stack(_)) => vec![
-            AsmInstruction::Mov {
-                typ: typ,
-                src,
-                dst: Operand::Reg(Register::R10),
-            },
-            AsmInstruction::Mov {
-                typ,
-                src: Operand::Reg(Register::R10),
-                dst,
-            },
-        ],
-        _ => vec![AsmInstruction::Mov { typ, src, dst }],
+        _ => vec![Mov { typ, src, dst }],
     };
     asm.extend(new_instrs);
 }
@@ -218,20 +181,20 @@ fn fix_add_sub(
     asm: &mut Vec<AsmInstruction>,
 ) {
     let new_instrs = match (op1.clone(), op2.clone()) {
-        (Operand::Stack(_), Operand::Stack(_)) => vec![
-            AsmInstruction::Mov {
-                typ: typ.clone(),
+        (Memory(_, _), Memory(_, _)) => vec![
+            Mov {
+                typ,
                 src: op1,
-                dst: Operand::Reg(Register::R10),
+                dst: Reg(R10),
             },
-            AsmInstruction::Binary {
+            Binary {
                 operator,
                 typ,
-                op1: Operand::Reg(Register::R10),
+                op1: Reg(R10),
                 op2,
             },
         ],
-        _ => vec![AsmInstruction::Binary {
+        _ => vec![Binary {
             operator,
             typ,
             op1,
@@ -243,25 +206,25 @@ fn fix_add_sub(
 
 fn fix_mult(typ: AssemblyType, op1: Operand, op2: Operand, asm: &mut Vec<AsmInstruction>) {
     let new_instrs = match (op1.clone(), op2.clone()) {
-        (_, Operand::Stack(_)) => vec![
-            AsmInstruction::Mov {
-                typ: typ.clone(),
-                src: op2.clone(),
-                dst: Operand::Reg(Register::R11),
-            },
-            AsmInstruction::Binary {
-                operator: AsmBinaryOperator::Mult,
-                typ: typ.clone(),
-                op1,
-                op2: Operand::Reg(Register::R11),
-            },
-            AsmInstruction::Mov {
+        (_, Memory(_, _)) => vec![
+            Mov {
                 typ,
-                src: Operand::Reg(Register::R11),
+                src: op2.clone(),
+                dst: Reg(R11),
+            },
+            Binary {
+                operator: AsmBinaryOperator::Mult,
+                typ,
+                op1,
+                op2: Reg(R11),
+            },
+            Mov {
+                typ,
+                src: Reg(R11),
                 dst: op2,
             },
         ],
-        _ => vec![AsmInstruction::Binary {
+        _ => vec![Binary {
             operator: AsmBinaryOperator::Mult,
             typ,
             op1,
@@ -271,63 +234,63 @@ fn fix_mult(typ: AssemblyType, op1: Operand, op2: Operand, asm: &mut Vec<AsmInst
     asm.extend(new_instrs);
 }
 
+// Can't perform IDiv with immediate value so move into a
+// register first
 fn fix_idiv(asm: &mut Vec<AsmInstruction>, val: i32) {
     let new_instrs = vec![
-        AsmInstruction::Mov {
+        Mov {
             typ: AssemblyType::Longword,
-            src: Operand::Imm(val),
-            dst: Operand::Reg(Register::R10),
+            src: Imm(val),
+            dst: Reg(R10),
         },
-        AsmInstruction::Idiv(Operand::Reg(Register::R10)),
+        Idiv(Reg(R10)),
     ];
     asm.extend(new_instrs);
 }
 
 fn fix_cmp(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, op1: Operand, op2: Operand) {
     let new_instrs = match (op1.clone(), op2.clone()) {
-        (Operand::Stack(_), Operand::Stack(_)) => vec![
-            AsmInstruction::Mov {
-                typ: typ.clone(),
-                src: op1,
-                dst: Operand::Reg(Register::R10),
-            },
-            AsmInstruction::Cmp {
+        (Memory(_, _), Memory(_, _)) => vec![
+            Mov {
                 typ,
-                op1: Operand::Reg(Register::R10),
+                src: op1,
+                dst: Reg(R10),
+            },
+            Cmp {
+                typ,
+                op1: Reg(R10),
                 op2,
             },
         ],
-        (_, Operand::Imm(_)) => vec![
-            AsmInstruction::Mov {
-                typ: typ.clone(),
+        (_, Imm(_)) => vec![
+            Mov {
+                typ,
                 src: op2,
-                dst: Operand::Reg(Register::R11),
+                dst: Reg(R11),
             },
-            AsmInstruction::Cmp {
+            Cmp {
                 typ,
                 op1,
-                op2: Operand::Reg(Register::R11),
+                op2: Reg(R11),
             },
         ],
-        _ => vec![AsmInstruction::Cmp { typ, op1, op2 }],
+        _ => vec![Cmp { typ, op1, op2 }],
     };
     asm.extend(new_instrs);
 }
 
 fn fix_lea(asm: &mut Vec<AsmInstruction>, src: Operand, dst: Operand) {
     let new_instrs = match (src.clone(), dst.clone()) {
-        (_, Operand::Stack(_)) => vec![
-            AsmInstruction::Lea {
-                src,
-                dst: Operand::Reg(Register::R9),
-            },
-            AsmInstruction::Mov {
+        // Lea can't have memory as destination, must be register
+        (_, Memory(_, _)) => vec![
+            Lea { src, dst: Reg(R9) },
+            Mov {
                 typ: AssemblyType::Quadword,
-                src: Operand::Reg(Register::R9),
+                src: Reg(R9),
                 dst,
             },
         ],
-        _ => vec![AsmInstruction::Lea { src, dst }],
+        _ => vec![Lea { src, dst }],
     };
     asm.extend(new_instrs);
 }
@@ -347,15 +310,15 @@ mod tests {
             name: "example".to_owned(),
             global: false,
             instructions: vec![
-                AsmInstruction::Mov {
+                Mov {
                     typ: AssemblyType::Longword,
-                    src: Operand::Stack(-4),
-                    dst: Operand::Stack(-8),
+                    src: Memory(BP, -4),
+                    dst: Memory(BP, -8),
                 },
-                AsmInstruction::Mov {
+                Mov {
                     typ: AssemblyType::Longword,
-                    src: Operand::Imm(5),
-                    dst: Operand::Stack(-4),
+                    src: Imm(5),
+                    dst: Memory(BP, -4),
                 },
             ],
             directives: vec![],
@@ -373,11 +336,11 @@ mod tests {
 
         // Index 1 and 2 should correspond to rewriting of mov from Stack(-4) to Stack(-8)
         let func = &fixed_program.asm_functions[0];
-        println!("{:?}", func.instructions);
-        if let AsmInstruction::Mov { src, dst, .. } = &func.instructions[0] {
+        if let Mov { src, dst, .. } = &func.instructions[0] {
             // first rewritten instruction: mov -4(%rbp) to %r10
+            println!("1st instruction, src: {:?}, dst: {:?}", src, dst);
             match (src, dst) {
-                (Operand::Stack(s1), Operand::Reg(Register::R10)) => {
+                (Memory(BP, s1), Reg(R10)) => {
                     assert_eq!(*s1, -4);
                 }
                 _ => panic!("First rewritten mov is incorrect."),
@@ -386,10 +349,12 @@ mod tests {
             panic!("Expected a mov instruction at index 1.");
         }
 
-        if let AsmInstruction::Mov { src, dst, .. } = &func.instructions[1] {
+        if let Mov { src, dst, .. } = &func.instructions[1] {
             // second rewritten instruction: mov %r10 to -8(%rbp)
+
+            println!("2nd instruction, src: {:?}, dst: {:?}", src, dst);
             match (src, dst) {
-                (Operand::Reg(Register::R10), Operand::Stack(s2)) => {
+                (Reg(R10), Memory(BP, s2)) => {
                     assert_eq!(*s2, -8);
                 }
                 _ => panic!("Second rewritten mov is incorrect."),
@@ -399,9 +364,10 @@ mod tests {
         }
 
         // The third instruction should be the valid mov that was unchanged.
-        if let AsmInstruction::Mov { src, dst, .. } = &func.instructions[2] {
+        if let Mov { src, dst, .. } = &func.instructions[2] {
+            println!("3rd instruction {:?}, {:?}", src, dst);
             match (src, dst) {
-                (Operand::Imm(val), Operand::Stack(s)) => {
+                (Imm(val), Memory(BP, s)) => {
                     assert_eq!(*val, 5);
                     assert_eq!(*s, -4);
                 }
