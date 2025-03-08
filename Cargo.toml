@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "backend",
     "compiler",
+    "frontend",
     "middle",
     "syntax",
     "util",
@@ -24,6 +25,7 @@ opt-level = 3
 ## Crate members as common dependencies
 backend = { path = "backend" }
 compiler = { path = "compiler" }
+frontend = { path = "frontend" }
 middle = { path = "middle" }
 syntax = { path = "syntax" }
 util = { path = "util" }

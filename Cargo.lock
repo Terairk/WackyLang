@@ -314,6 +314,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0d2fde1f7b3d48b8395d5f2de76c18a528bd6a9cdde438df747bfcba3e05d6f"
 
 [[package]]
+name = "frontend"
+version = "0.1.0"
+dependencies = [
+ "ariadne",
+ "chumsky",
+ "delegate",
+ "extend",
+ "fn_pipe",
+ "impl-trait-for-tuples",
+ "internment",
+ "parse_int",
+ "thiserror",
+ "util",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
