@@ -42,6 +42,11 @@ impl<T, C> Node<T, C> {
     }
 
     #[inline]
+    pub fn box_inner(self) -> BoxedNode<T, C> {
+        self.map_inner(Box::new)
+    }
+
+    #[inline]
     pub fn map_inner<U, F: FnOnce(T) -> U>(self, f: F) -> Node<U, C> {
         Node {
             inner: f(self.inner),
@@ -145,5 +150,21 @@ impl<T, C> BoxedNode<T, C> {
             inner: Box::new(f(*self.inner)),
             context: self.context,
         }
+    }
+
+    #[inline]
+    pub fn transpose_ref(&self) -> Node<&T, C>
+    where
+        C: Clone,
+    {
+        Node::new(&self.inner, self.context.clone())
+    }
+
+    #[inline]
+    pub fn transpose_mut(&mut self) -> Node<&mut T, C>
+    where
+        C: Clone,
+    {
+        Node::new(&mut self.inner, self.context.clone())
     }
 }
