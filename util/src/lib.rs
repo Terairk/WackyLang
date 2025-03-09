@@ -5,6 +5,7 @@
 
 pub mod gen_flags;
 pub mod nonempty;
+pub mod opt_flags;
 pub mod rust_gadt_playground;
 
 // pub(crate) mod private {

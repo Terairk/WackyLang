@@ -19,6 +19,7 @@ use syntax::source::{SourcedSpan, StrSourceId};
 use syntax::token::{Token, lexer};
 use syntax::typecheck::typecheck;
 use syntax::{build_semantic_error_report, build_syntactic_report};
+use util::opt_flags::OptimizationConfig;
 
 // type aliases, because Rust's type inference can't yet handle this, and typing the same
 // stuff over and over is very annoying and unreadable :)
@@ -80,6 +81,41 @@ struct Args {
     /// Stop after code generation phase and print the final assembly code
     #[arg(long)]
     codegen: bool,
+
+    /* ==================== Optimization Flags ==================== */
+    /// Enable constant folding
+    #[arg(long = "fold")]
+    fold_constants: bool,
+
+    /// Enable copy propagation
+    #[arg(long = "copy-prop")]
+    copy_propagation: bool,
+
+    /// Eliminate unreachable/dead code
+    #[arg(long = "rm-unreachable")]
+    eliminate_unreachable_code: bool,
+
+    /// Eliminate dead stores
+    #[arg(long = "rm-dead-stores")]
+    eliminate_dead_stores: bool,
+
+    /// Enable all optimizations
+    #[arg(long = "O")]
+    optimize: bool,
+}
+
+impl Args {
+    ///
+    /// Reconstruct an OptimizationConfig from the command line arguments
+    /// that we can pass to the optimization passes
+    fn get_optimization_config(&self) -> OptimizationConfig {
+        OptimizationConfig::builder()
+            .fold_constants(self.optimize || self.fold_constants)
+            .copy_propagation(self.optimize || self.copy_propagation)
+            .eliminate_unreachable_code(self.optimize || self.eliminate_unreachable_code)
+            .eliminate_dead_stores(self.optimize || self.eliminate_dead_stores)
+            .build()
+    }
 }
 
 static SEMANTIC_ERR_CODE: u8 = 200;

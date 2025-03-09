@@ -97,13 +97,11 @@ pub struct WackProgram {
 #[derive(Clone)]
 pub struct WackFunction {
     pub name: WackGlobIdent,
-    pub params: Vec<WackTempIdent>, // TODO: maybe should be GLOB ident??
-    // Not sure if we need types, should be fine
-    // if we have Symbol Table
+    pub params: Vec<WackTempIdent>,
     pub body: Vec<WackInstr>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum WackInstr {
     // TODO: at the end of this, remove redundant instructions
     // TODO: change any `src` and `dst` from "WackValue" bc it might not make sense to e.g. to "store" into a constant value
@@ -111,27 +109,6 @@ pub enum WackInstr {
     /// This instruction returns a value from within a function body.
     Return(WackValue),
 
-    // /// Extends a 32-bit signed integer value to a 64-bit signed integer value,
-    // /// preserving the sign-bit in the process.
-    // SignExtend {
-    //     src: WackValue,
-    //     dst: WackValue,
-    // }, // TODO: uncomment when its _actually_ needed
-
-    // /// Converts a 64-bit integer value to a 32-bit integer value, by moving the
-    // /// lowest 4 bytes to the [`dst`].
-    // Truncate {
-    //     src: WackValue,
-    //     dst: WackValue,
-    // }, // TODO: uncomment when its _actually_ needed
-
-    // /// Extends a 32-bit integer value to a 64-bit integer value, by filling the
-    // /// new highest 4 bytes with zeros, without regard to any sign-bit in [`src`].
-    // ZeroExtend {
-    //     src: WackValue,
-    //     dst: WackValue,
-    // }, // TODO: uncomment when its _actually_ needed
-    //
     /// USAGE: `dst = op(src)`
     Unary {
         op: UnaryOp,
@@ -203,13 +180,6 @@ pub enum WackInstr {
         offset: i32,
     },
 
-    // /// ??
-    // CopyFromOffset {
-    //     src: WackTempIdent,
-    //     dst: WackValue,
-    //     offset: u32,
-    // }, // TODO: uncomment when its _actually_ needed
-    //
     /// Performs checked array-access, indexing into the array at [`src_array_ptr`] and storing
     /// the pointer of the element corresponding to [`index`] into the [`dst_elem_ptr`] operand.
     ///
@@ -242,23 +212,15 @@ pub enum WackInstr {
         dst: WackTempIdent, // you can only store into an identifier
         ty: WackReadType,
     },
+
     /// Allocates [`size`] bytes on the heap (or crashes with out-of-memory runtime error) and
     /// stores the memory address of the start of the allocated memory-region in [`dst`].
-    ///
-    /// It can be seen as an automated version of C's `malloc`.
+    ///    /// It can be seen as an automated version of C's `malloc`.
     Alloc {
         size: usize,
         dst_ptr: WackTempIdent, // you can only store into an identifier
     },
-    // /// Malloc a pointer for array in R9
-    // /// Move that pointer to R11
-    // ///
-    // AllocArray {
-    //     elem_size: usize,
-    //     length: usize,
-    //     elems: Vec<WackValue>,
-    //     dst_ptr: WackTempIdent,
-    // },
+
     /// This frees the memory associated with the pointer that the value holds, without
     /// checking if the pointer is `null` or not.
     /// If it is `null`, nothing is done and no runtime errors occur.
@@ -380,7 +342,7 @@ impl WackPrintType {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WackValue {
     Literal(WackLiteral), // My only concern is the error type on SemanticType
     Var(WackTempIdent),
@@ -589,7 +551,7 @@ pub mod wack_char {
 // I know that these are the same as the ones in ast.rs but I'm not sure if I want to
 // couple them together or not. For now I'll separate them just in case I need to move
 // Len, Ord, Chr somewhere else
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Copy)]
 pub enum UnaryOp {
     BNot,
     LNot,
@@ -600,7 +562,7 @@ pub enum UnaryOp {
 }
 
 // See UnaryOperator explanation above
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Copy)]
 pub enum BinaryOp {
     Mul,
     Div,
@@ -748,8 +710,8 @@ pub struct WackTempIdent(ast::Ident, usize);
 
 // impls relating to `WackTempIdent`
 pub mod wack_temp_ident {
-    use crate::ast_transform::ast_lowering_ctx::With;
     use crate::ast_transform::AstLoweringCtx;
+    use crate::ast_transform::ast_lowering_ctx::With;
     use crate::wackir::WackTempIdent;
     use std::fmt;
     use std::fmt::{Debug, Formatter};

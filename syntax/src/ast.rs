@@ -206,43 +206,48 @@ impl Debug for Liter {
 }
 
 impl<N: fmt::Debug, T: fmt::Debug> fmt::Debug for Expr<N, T> {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
+        match *self {
             // Custom implementation for Liter and Ident variant
-            Self::Liter(liter, t) => {
-                write!(f, "Liter({:?}, {:?})", liter, t)
+            Self::Liter(ref liter, ref t) => {
+                write!(f, "Liter({liter:?}, {t:?})")
             }
 
-            Self::Ident(id, t) => {
-                write!(f, "Ident({:?}, {:?})", id, t)
+            Self::Ident(ref id, ref t) => {
+                write!(f, "Ident({id:?}, {t:?})")
             }
             // Default implementation for all other variants
             _ => {
                 // Use the standard Debug derive implementation for other variants
-                match self {
-                    Self::Ident(id, t) => f.debug_tuple("Ident").field(id).field(t).finish(),
-                    Self::ArrayElem(elem, t) => {
+                match *self {
+                    Self::Ident(ref id, ref t) => {
+                        f.debug_tuple("Ident").field(id).field(t).finish()
+                    }
+                    Self::ArrayElem(ref elem, ref t) => {
                         f.debug_tuple("ArrayElem").field(elem).field(t).finish()
                     }
-                    Self::Unary(op, expr, t) => f
+                    Self::Unary(ref op, ref expr, ref t) => f
                         .debug_tuple("Unary")
                         .field(op)
                         .field(expr)
                         .field(t)
                         .finish(),
-                    Self::Binary(lhs, op, rhs, t) => f
+                    Self::Binary(ref lhs, ref op, ref rhs, ref t) => f
                         .debug_tuple("Binary")
                         .field(lhs)
                         .field(op)
                         .field(rhs)
                         .field(t)
                         .finish(),
-                    Self::Paren(expr, t) => f.debug_tuple("Paren").field(expr).field(t).finish(),
+                    Self::Paren(ref expr, ref t) => {
+                        f.debug_tuple("Paren").field(expr).field(t).finish()
+                    }
                     Self::IfThenElse {
-                        if_cond,
-                        then_val,
-                        else_val,
-                        ty,
+                        ref if_cond,
+                        ref then_val,
+                        ref else_val,
+                        ref ty,
                     } => f
                         .debug_struct("IfThenElse")
                         .field("if_cond", if_cond)
@@ -250,7 +255,7 @@ impl<N: fmt::Debug, T: fmt::Debug> fmt::Debug for Expr<N, T> {
                         .field("else_val", else_val)
                         .field("ty", ty)
                         .finish(),
-                    Expr::Error(span) => f.debug_tuple("Error").field(span).finish(),
+                    Self::Error(ref span) => f.debug_tuple("Error").field(span).finish(),
                     // We've already handled Liter and Binary cases above
                     _ => unreachable!(),
                 }
