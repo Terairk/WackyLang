@@ -13,10 +13,10 @@ use chumsky::input::Input;
 use chumsky::Parser;
 use std::io::Write;
 
-pub mod hir;
 pub mod node;
 pub mod parsing;
 pub mod source;
+pub mod wacc_hir;
 
 /// Namespace for all the type/trait aliases used by this crate.
 pub(crate) mod alias {

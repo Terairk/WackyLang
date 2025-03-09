@@ -11,4 +11,5 @@
 // >remove error nodes from AST
 // >remove all loop kinds and change to loop+if+break
 
-pub mod hir_ast;
+pub mod hir;
+mod lower_ast;

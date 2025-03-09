@@ -1,13 +1,14 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
 use crate::alias::InternStr;
-use crate::source::{SourcedNode, SourcedSpan};
+use crate::source::{SourcedBoxedNode, SourcedNode, SourcedSpan};
 use std::fmt::Debug;
 use thiserror::Error;
 use util::nonempty::NonemptyArray;
 
 // A file-local type alias for better readability of type definitions
 type SN<T> = SourcedNode<T>;
+type SBN<T> = SourcedBoxedNode<T>;
 
 #[derive(Clone, Debug)]
 pub struct Program {
@@ -94,7 +95,7 @@ pub enum PairElemSelector {
 }
 
 #[derive(Clone, Debug)]
-pub struct PairElem(pub PairElemSelector, pub SN<LValue>);
+pub struct PairElem(pub PairElemSelector, pub SBN<LValue>);
 
 #[derive(Clone, Debug)]
 pub struct ArrayElem {
@@ -106,14 +107,14 @@ pub struct ArrayElem {
 pub enum Expr {
     Liter(SN<Liter>),
     Ident(SN<Ident>),
-    ArrayElem(SN<ArrayElem>),
-    Unary(SN<UnaryOper>, SN<Self>),
-    Binary(SN<Self>, SN<BinaryOper>, SN<Self>),
-    Paren(SN<Self>),
+    ArrayElem(SBN<ArrayElem>),
+    Unary(SN<UnaryOper>, SBN<Self>),
+    Binary(SBN<Self>, SN<BinaryOper>, SBN<Self>),
+    Paren(SBN<Self>),
     IfThenElse {
-        if_cond: SN<Expr>,
-        then_val: SN<Expr>,
-        else_val: SN<Expr>,
+        if_cond: SBN<Self>,
+        then_val: SBN<Self>,
+        else_val: SBN<Self>,
     },
 
     // Generated only by parser errors.
@@ -162,7 +163,7 @@ pub enum BinaryOper {
 #[derive(Clone, Debug)]
 pub enum Type {
     BaseType(SN<BaseType>),
-    ArrayType(SN<ArrayType>),
+    ArrayType(SBN<ArrayType>),
     PairType(PairElemType, PairElemType),
 
     // Generated only by parser errors.
@@ -184,7 +185,7 @@ pub struct ArrayType {
 
 #[derive(Clone, Debug)]
 pub enum PairElemType {
-    ArrayType(SN<ArrayType>),
+    ArrayType(SBN<ArrayType>),
     BaseType(SN<BaseType>),
     Pair(SourcedSpan),
 }
@@ -196,9 +197,9 @@ pub struct Ident(InternStr);
 // all implementation blocks live here
 mod impls {
     use crate::alias::InternStr;
-    use crate::parsing::parse_ast::{
+    use crate::parsing::ast::{
         ArrayElem, ArrayType, EmptyStatVecError, Expr, Func, FuncParam, Ident, LValue, Program,
-        RValue, Stat, StatBlock, Type, SN,
+        RValue, Stat, StatBlock, Type, SBN, SN,
     };
     use delegate::delegate;
     use std::fmt;
@@ -209,9 +210,9 @@ mod impls {
         #[must_use]
         #[inline]
         pub const fn if_then_else(
-            if_cond: SN<Self>,
-            then_val: SN<Self>,
-            else_val: SN<Self>,
+            if_cond: SBN<Self>,
+            then_val: SBN<Self>,
+            else_val: SBN<Self>,
         ) -> Self {
             Self::IfThenElse {
                 if_cond,

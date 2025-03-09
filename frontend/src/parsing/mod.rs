@@ -5,15 +5,16 @@ use chumsky::error::Rich;
 use std::io::Write;
 use std::{fmt, io};
 
+pub mod ast;
+pub mod ast_frame;
 pub mod lexer;
 pub(crate) mod multi_item;
-pub mod parse_ast;
 pub mod parser;
 pub mod token;
 
 /// Namespace for all the type/trait aliases used by this module.
 pub(super) mod alias {
-    use crate::parsing::parse_ast;
+    use crate::parsing::ast;
     use crate::parsing::token::Token;
     use crate::source::SourcedSpan;
     use chumsky::extra;
@@ -46,7 +47,7 @@ pub(super) mod alias {
 
     pub type ProgramError<'a> = Rich<'a, Token, SourcedSpan>;
     pub type ProgramExtra<'a> = ErrorExtra<'a, ProgramError<'a>>;
-    pub type ProgramOutput<'a> = ParseOutput<'a, parse_ast::Program, ProgramError<'a>>;
+    pub type ProgramOutput<'a> = ParseOutput<'a, ast::Program, ProgramError<'a>>;
 }
 
 /// Namespace for module-wide extension traits/methods
