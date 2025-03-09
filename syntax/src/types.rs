@@ -73,20 +73,36 @@ impl Type {
             Self::Error(span) => SemanticType::Error(span.clone()),
         }
     }
+}
 
-    #[inline]
+impl ArrayType {
     #[must_use]
-    pub fn size_of(&self) -> usize {
-        match *self {
-            Self::BaseType(ref b) => b.size_of(),
-            Self::ArrayType(ref a) => a.size_of(),
-            Self::PairType(_, _) => BaseType::PAIR_PTR_BYTES,
-            Self::Error(_) => unreachable!("This branch should always be caught during parsing."),
+    #[inline]
+    pub const fn new(elem_type: Type) -> Self {
+        Self { elem_type }
+    }
+}
+
+impl PairElemType {
+    #[inline]
+    pub fn to_semantic_type(&self) -> SemanticType {
+        match self {
+            PairElemType::BaseType(sn_base) => match sn_base.inner() {
+                BaseType::Int => SemanticType::Int,
+                BaseType::Bool => SemanticType::Bool,
+                BaseType::Char => SemanticType::Char,
+                BaseType::String => SemanticType::String,
+            },
+            PairElemType::ArrayType(sn_array) => {
+                let elem_type = sn_array.elem_type.to_semantic_type();
+                SemanticType::Array(Box::new(elem_type))
+            }
+            PairElemType::Pair(_span) => SemanticType::ErasedPair,
         }
     }
 }
 
-impl BaseType {
+impl SemanticType {
     // TODO: the frontend is supposed to be backend-agnostic. The precise sizes of these types
     //       should be moved elsewhere/to the backend, make the frontend more agnostic to e.g.
     //       if the target is 64-bit or 32-bit.
@@ -124,87 +140,6 @@ impl BaseType {
     /// A pair null-literal is simply an all-zero null pointer.
     pub const PAIR_PTR_BYTES: usize = Self::PTR_BYTES;
 
-    #[inline]
-    #[must_use]
-    pub const fn size_of(&self) -> usize {
-        match *self {
-            Self::Int => Self::INT_BYTES,
-            Self::Bool => Self::BOOL_BYTES,
-            Self::Char => Self::CHAR_BYTES,
-            Self::String => Self::STRING_PTR_BYTES,
-        }
-    }
-
-    /// The string-body is a value in the heap which begins with a pointer-sized length value,
-    /// followed by a contiguous array of characters which corresponds to that length value.
-    #[allow(clippy::arithmetic_side_effects)]
-    #[inline]
-    #[must_use]
-    pub const fn string_body_bytes(len: usize) -> usize {
-        Self::STRING_LEN_BYTES + len * Self::STRING_ELEM_BYTES
-    }
-}
-
-impl ArrayType {
-    #[must_use]
-    #[inline]
-    pub const fn new(elem_type: Type) -> Self {
-        Self { elem_type }
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn size_of(&self) -> usize {
-        BaseType::ARRAY_PTR_BYTES
-    }
-
-    /// The array-body is a value in the heap which begins with a pointer-sized length value,
-    /// followed by a contiguous array of elements which corresponds to that length value.
-    #[allow(clippy::arithmetic_side_effects)]
-    #[inline]
-    #[must_use]
-    pub fn array_body_bytes(&self, len: usize) -> usize {
-        BaseType::ARRAY_LEN_BYTES + len * self.elem_size_of()
-    }
-
-    /// The size (in bytes) of the elements of this array
-    #[inline]
-    #[must_use]
-    pub fn elem_size_of(&self) -> usize {
-        self.elem_type.size_of()
-    }
-}
-
-impl PairElemType {
-    #[inline]
-    pub fn to_semantic_type(&self) -> SemanticType {
-        match self {
-            PairElemType::BaseType(sn_base) => match sn_base.inner() {
-                BaseType::Int => SemanticType::Int,
-                BaseType::Bool => SemanticType::Bool,
-                BaseType::Char => SemanticType::Char,
-                BaseType::String => SemanticType::String,
-            },
-            PairElemType::ArrayType(sn_array) => {
-                let elem_type = sn_array.elem_type.to_semantic_type();
-                SemanticType::Array(Box::new(elem_type))
-            }
-            PairElemType::Pair(_span) => SemanticType::ErasedPair,
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn size_of(&self) -> usize {
-        match *self {
-            Self::ArrayType(ref a) => a.size_of(),
-            Self::BaseType(ref b) => b.size_of(),
-            Self::Pair(_) => BaseType::PAIR_PTR_BYTES,
-        }
-    }
-}
-
-impl SemanticType {
     fn pair_inner_erasable(from: &SemanticType, to: &SemanticType) -> bool {
         use SemanticType::{ErasedPair, Pair};
         if let Pair(_, _) = from {
@@ -250,25 +185,6 @@ impl SemanticType {
             (Pair(_, _), ErasedPair) => true,
             (ErasedPair, ErasedPair) => true,
             _ => false,
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn size_of(&self) -> usize {
-        match *self {
-            Self::Int => BaseType::INT_BYTES,
-            Self::Bool => BaseType::BOOL_BYTES,
-            Self::Char => BaseType::CHAR_BYTES,
-            Self::String => BaseType::STRING_PTR_BYTES,
-            Self::Array(_) => BaseType::ARRAY_PTR_BYTES,
-            Self::Pair(_, _) | Self::ErasedPair => BaseType::PAIR_PTR_BYTES,
-            Self::AnyType => {
-                unreachable!("We should not be checking the size of the any-type.")
-            }
-            Self::Error(_) => {
-                unreachable!("The error type should not propogate beyond semantic analysis.")
-            }
         }
     }
 

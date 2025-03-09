@@ -75,7 +75,7 @@ pub(crate) mod ast_lowering_ctx {
     use syntax::node::Node;
     use syntax::rename::RenamedName;
     use syntax::typecheck::TypeResolver;
-    use syntax::types::{BaseType, SemanticType};
+    use syntax::types::SemanticType;
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub struct With<T, C> {
@@ -644,7 +644,7 @@ pub(crate) mod ast_lowering_ctx {
             //   `alloc_size_bytes = array_len_bytes + (array_len * array_elem_bytes)`
             // the array is stored on the heap prefixed with its length, so it needs to allocate
             // memory to store that length-value as well.
-            let array_len_bytes = BaseType::ARRAY_LEN_BYTES;
+            let array_len_bytes = SemanticType::ARRAY_LEN_BYTES;
             let array_len = elems.len();
             let array_elem_bytes = elem_ty.try_size_of().unwrap();
             let alloc_size_bytes = array_len_bytes + array_len * array_elem_bytes;

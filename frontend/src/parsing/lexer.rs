@@ -1,8 +1,11 @@
 use crate::alias::InternStr;
-use crate::container::{ItemVec, MultiItem};
-use crate::ext::{CharExt, ParserExt};
+use crate::parsing::alias::{LexerExtra, LexerOutput};
+use crate::parsing::ext::{CharExt, ParserExt};
+use crate::parsing::multi_item::{ItemVec, MultiItem};
 use crate::parsing::token::{Delim, Token};
-use crate::{alias, private};
+use crate::parsing::{alias, build_syntactic_report};
+use crate::source::{SourcedSpan, StrSourceId};
+use crate::{private, StreamType};
 use chumsky::combinator::{MapWith, ToSlice};
 use chumsky::error::Rich;
 use chumsky::extra::ParserExtra;
@@ -11,6 +14,9 @@ use chumsky::prelude::{any, choice, end, group, just, regex, skip_then_retry_unt
 use chumsky::IterParser;
 use chumsky::{text, Parser};
 use extend::ext;
+use std::io;
+use std::io::Write;
+use thiserror::Error;
 
 // constants associated with int-literal parsing
 const BINARY_RADIX: u32 = 2;
@@ -410,4 +416,55 @@ where
                 })
             })
     }
+}
+
+#[derive(Debug, Error)]
+pub enum LexingPhaseError {
+    #[error("Encountered lexing error while parsing, error report written to provided output")]
+    LexingErrorWritten,
+    #[error(transparent)]
+    IoError(#[from] io::Error),
+}
+
+/// # Errors
+/// TODO: add errors docs
+///
+#[allow(
+    clippy::missing_panics_doc,
+    clippy::expect_used,
+    clippy::needless_pass_by_value
+)]
+#[inline]
+pub fn lexing_phase<S: AsRef<str>, W: Write + Clone>(
+    source: S,
+    source_id: StrSourceId,
+    lexing_error_code: i32,
+    stream_type: StreamType,
+    output_stream: W,
+) -> Result<Vec<(Token, SourcedSpan)>, LexingPhaseError> {
+    let source = source.as_ref();
+
+    // so the pattern is, make sure everything is WAAYYY to generic :) and supply
+    // concrete implementations later via turbofish syntax :)))
+    let (tokens, lexing_errs): LexerOutput = Parser::parse(
+        &lexer::<_, LexerExtra>(),
+        source.with_context((source_id, ())),
+    )
+    .into_output_errors();
+
+    // Done to appease the borrow checker while displaying errors
+    if !lexing_errs.is_empty() {
+        for e in &lexing_errs {
+            build_syntactic_report(
+                e,
+                source,
+                lexing_error_code,
+                stream_type,
+                output_stream.clone(),
+            )?;
+        }
+        return Err(LexingPhaseError::LexingErrorWritten);
+    }
+
+    Ok(tokens.expect("If lexing errors are not empty, tokens should be Valid"))
 }

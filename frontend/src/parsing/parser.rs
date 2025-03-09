@@ -1,12 +1,11 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
-use crate::ext::ParserExt as _;
-use crate::parsing::ast;
+use crate::parsing::alias::{ProgramExtra, ProgramOutput};
+use crate::parsing::ext::ParserExt;
 use crate::parsing::token::{Delim, Token};
-use crate::source::{SourcedNode, SourcedSpan};
-use crate::{alias, private};
-use chumsky::input::{Checkpoint, Cursor};
-use chumsky::inspector::Inspector;
+use crate::parsing::{alias, ast, build_syntactic_report};
+use crate::source::{SourcedNode, SourcedSpan, StrSourceId};
+use crate::{private, StreamType};
 use chumsky::pratt::right;
 use chumsky::{
     combinator::{DelimitedBy, MapWith},
@@ -21,8 +20,9 @@ use chumsky::{
     Parser,
 };
 use extend::ext;
-use std::fmt;
-use std::marker::PhantomData;
+use std::io;
+use std::io::Write;
+use thiserror::Error;
 use util::nonempty::NonemptyArray;
 
 /// A file-local type alias for better readability of type definitions
@@ -590,37 +590,89 @@ where
         .as_context()
 }
 
-#[derive(Default)]
-pub struct DebugInspector<'src, I>(PhantomData<&'src I>)
-where
-    I: Input<'src>;
-
-impl<'src, I> Inspector<'src, I> for DebugInspector<'src, I>
-where
-    I: Input<'src>,
-    I::Token: fmt::Debug,
-{
-    type Checkpoint = usize;
-
-    fn on_token(&mut self, token: &I::Token) {
-        println!("DEBUG INSPECTOR: on token: {:#?}", token);
-    }
-
-    fn on_save<'parse>(&self, cursor: &Cursor<'src, 'parse, I>) -> Self::Checkpoint {
-        let location = I::cursor_location(cursor.inner());
-        println!("DEBUG INSPECTOR: on save: {:#?}", location);
-        location
-    }
-
-    fn on_rewind<'parse>(&mut self, marker: &Checkpoint<'src, 'parse, I, Self::Checkpoint>) {
-        let location = I::cursor_location(marker.cursor().inner());
-        let checkpoint = marker.inspector();
-        println!(
-            "DEBUG INSPECTOR: on rewind: from {:#?} to {:#?}",
-            location, checkpoint
-        );
-    }
+#[derive(Debug, Error)]
+pub enum ParsingPhaseError {
+    #[error("Encountered parsing error, corresponding error report written to provided output")]
+    ParsingErrorWritten,
+    #[error(transparent)]
+    IoError(#[from] io::Error),
 }
+
+/// # Errors
+/// TODO: add errors docs
+///
+#[allow(
+    clippy::missing_panics_doc,
+    clippy::expect_used,
+    clippy::needless_pass_by_value
+)]
+#[inline]
+pub fn parsing_phase<S: AsRef<str>, W: Write + Clone>(
+    source: S,
+    source_id: StrSourceId,
+    tokens: Vec<(Token, SourcedSpan)>,
+    parsing_error_code: i32,
+    stream_type: StreamType,
+    output_stream: W,
+) -> Result<ast::Program, ParsingPhaseError> {
+    // attach the span of each token to it before parsing, so it is not forgotten
+    let source = source.as_ref();
+    let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
+    let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
+
+    // parse the tree
+    #[allow(clippy::pattern_type_mismatch)]
+    let (parsed, parse_errs): ProgramOutput =
+        Parser::parse(&program_parser::<_, ProgramExtra>(), spanned_tokens).into_output_errors();
+
+    // return any parsed errors
+    if !parse_errs.is_empty() {
+        for e in &parse_errs {
+            build_syntactic_report(
+                e,
+                source.clone(),
+                parsing_error_code,
+                stream_type,
+                output_stream.clone(),
+            )?
+        }
+        return Err(ParsingPhaseError::ParsingErrorWritten);
+    }
+
+    Ok(parsed.expect("If lexing errors are not empty, tokens should be Valid"))
+}
+
+// #[derive(Default)]
+// pub struct DebugInspector<'src, I>(PhantomData<&'src I>)
+// where
+//     I: Input<'src>;
+//
+// impl<'src, I> Inspector<'src, I> for DebugInspector<'src, I>
+// where
+//     I: Input<'src>,
+//     I::Token: fmt::Debug,
+// {
+//     type Checkpoint = usize;
+//
+//     fn on_token(&mut self, token: &I::Token) {
+//         println!("DEBUG INSPECTOR: on token: {:#?}", token);
+//     }
+//
+//     fn on_save<'parse>(&self, cursor: &Cursor<'src, 'parse, I>) -> Self::Checkpoint {
+//         let location = I::cursor_location(cursor.inner());
+//         println!("DEBUG INSPECTOR: on save: {:#?}", location);
+//         location
+//     }
+//
+//     fn on_rewind<'parse>(&mut self, marker: &Checkpoint<'src, 'parse, I, Self::Checkpoint>) {
+//         let location = I::cursor_location(marker.cursor().inner());
+//         let checkpoint = marker.inspector();
+//         println!(
+//             "DEBUG INSPECTOR: on rewind: from {:#?} to {:#?}",
+//             location, checkpoint
+//         );
+//     }
+// }
 
 /// An extension trait for [Parser] local to this file, for convenient dot-syntax utility methods
 #[ext(name = LocalParserExt, supertraits = Sized + private::Sealed)]
