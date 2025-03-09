@@ -196,7 +196,7 @@ pub struct Ident(InternStr);
 // all implementation blocks live here
 mod impls {
     use crate::alias::InternStr;
-    use crate::parsing::ast::{
+    use crate::parsing::parse_ast::{
         ArrayElem, ArrayType, EmptyStatVecError, Expr, Func, FuncParam, Ident, LValue, Program,
         RValue, Stat, StatBlock, Type, SN,
     };
