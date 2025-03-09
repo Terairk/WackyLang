@@ -77,6 +77,12 @@ impl<T> NonemptyArray<T> {
     pub fn iter(&self) -> slice::Iter<'_, T> {
         self.0.iter()
     }
+
+    #[inline]
+    #[must_use]
+    pub fn map<U, F: FnMut(T) -> U>(self, f: F) -> NonemptyArray<U> {
+        NonemptyArray(self.0.into_iter().map(f).collect())
+    }
 }
 
 impl<T> ops::Index<usize> for NonemptyArray<T> {

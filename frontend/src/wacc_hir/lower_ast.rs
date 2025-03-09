@@ -181,35 +181,33 @@ impl LoweringCtx {
     }
 
     pub fn lower_expr(&mut self, expr: &ast::Expr) -> Expr {
-        expr.collapse_frames(|frame: ExprFrame<Expr>| {
-            match frame {
-                ExprFrame::Liter(l) => Expr::Liter(l.map_inner(|l| Self::lower_liter(&l))),
-                // ExprFrame::ArrayElem(_) => todo!(),
-                ExprFrame::Ident(i) => Expr::Ident(self.lower_ident_sn(i)),
-                ExprFrame::Unary(op, e) => Expr::Unary(
-                    op.map_inner(|op| Self::lower_unary_oper(&op)),
-                    e.box_inner(),
-                ),
-                ExprFrame::Binary(le, op, re) => Expr::Binary(
-                    le.box_inner(),
-                    op.map_inner(|op| Self::lower_binary_oper(&op)),
-                    re.box_inner(),
-                ),
-                ExprFrame::Paren(e) => e.into_inner(),
-                ExprFrame::IfThenElse {
-                    if_cond,
-                    then_val,
-                    else_val,
-                } => Expr::IfThenElse {
-                    if_cond: if_cond.box_inner(),
-                    then_val: then_val.box_inner(),
-                    else_val: else_val.box_inner(),
-                },
-                ExprFrame::Error(_) => unreachable!(
-                    "The error-expression {:?} should not be present in the AST past the parsing stage",
-                    r#frame
-                ),
-            }
+        expr.collapse_frames(|frame: ExprFrame<Expr>| match frame {
+            ExprFrame::Liter(l) => Expr::Liter(l.map_inner(|l| Self::lower_liter(&l))),
+            ExprFrame::ArrayElem(a) => todo!(),
+            ExprFrame::Ident(i) => Expr::Ident(self.lower_ident_sn(i)),
+            ExprFrame::Unary(op, e) => Expr::Unary(
+                op.map_inner(|op| Self::lower_unary_oper(&op)),
+                e.box_inner(),
+            ),
+            ExprFrame::Binary(le, op, re) => Expr::Binary(
+                le.box_inner(),
+                op.map_inner(|op| Self::lower_binary_oper(&op)),
+                re.box_inner(),
+            ),
+            ExprFrame::Paren(e) => e.into_inner(),
+            ExprFrame::IfThenElse {
+                if_cond,
+                then_val,
+                else_val,
+            } => Expr::IfThenElse {
+                if_cond: if_cond.box_inner(),
+                then_val: then_val.box_inner(),
+                else_val: else_val.box_inner(),
+            },
+            ExprFrame::Error(_) => unreachable!(
+                "The error-expression {:?} should not be present in the AST past the parsing stage",
+                r#frame
+            ),
         })
     }
 

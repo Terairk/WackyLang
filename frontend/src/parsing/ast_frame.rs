@@ -3,6 +3,7 @@
 use crate::parsing::ast::{BinaryOper, Ident, Liter, UnaryOper};
 use crate::source::{SourcedBoxedNode, SourcedNode, SourcedSpan};
 use std::fmt::Debug;
+use util::nonempty::NonemptyArray;
 
 // A file-local type alias for better readability of type definitions
 type SN<T> = SourcedNode<T>;
@@ -94,12 +95,12 @@ type SBN<T> = SourcedBoxedNode<T>;
 //
 // #[derive(Clone, Debug)]
 // pub struct PairElem(pub PairElemSelector, pub SBN<LValue>);
-//
-// #[derive(Clone, Debug)]
-// pub struct ArrayElem {
-//     pub array_name: SN<Ident>,
-//     pub indices: NonemptyArray<SN<Expr>>,
-// }
+
+#[derive(Clone, Debug)]
+pub struct ArrayElemFrame<A> {
+    pub array_name: SN<Ident>,
+    pub indices: NonemptyArray<SN<A>>,
+}
 
 // SBN<T> -> BoxedNode<T, SourcedSpan> -> Node<Box<T>, SourcedSpan>
 // Node<A, SourcedSpan> -> SN<A>
@@ -107,7 +108,7 @@ type SBN<T> = SourcedBoxedNode<T>;
 pub enum ExprFrame<A> {
     Liter(SN<Liter>),
     Ident(SN<Ident>),
-    // ArrayElem(SBN<ArrayElem>),
+    ArrayElem(SN<ArrayElemFrame<A>>),
     Unary(SN<UnaryOper>, SN<A>),
     Binary(SN<A>, SN<BinaryOper>, SN<A>),
     Paren(SN<A>),
@@ -153,8 +154,20 @@ pub enum ExprFrame<A> {
 
 mod impls {
     use crate::parsing::ast::Expr;
-    use crate::parsing::ast_frame::ExprFrame;
+    use crate::parsing::ast_frame::{ArrayElemFrame, ExprFrame};
     use recursion::{Collapsible, Expandable, MappableFrame, PartiallyApplied};
+
+    impl MappableFrame for ArrayElemFrame<PartiallyApplied> {
+        type Frame<X> = ArrayElemFrame<X>;
+
+        #[inline]
+        fn map_frame<A, B>(input: Self::Frame<A>, mut f: impl FnMut(A) -> B) -> Self::Frame<B> {
+            ArrayElemFrame {
+                array_name: input.array_name,
+                indices: input.indices.map(|e| e.map_inner(&mut f)),
+            }
+        }
+    }
 
     impl MappableFrame for ExprFrame<PartiallyApplied> {
         type Frame<X> = ExprFrame<X>;
@@ -164,7 +177,9 @@ mod impls {
             match input {
                 ExprFrame::Liter(l) => ExprFrame::Liter(l),
                 ExprFrame::Ident(i) => ExprFrame::Ident(i),
-                // ExprFrame::ArrayElem(_) => todo!(),
+                ExprFrame::ArrayElem(a) => ExprFrame::ArrayElem(
+                    a.map_inner(|a| ArrayElemFrame::<PartiallyApplied>::map_frame(a, f)),
+                ),
                 ExprFrame::Unary(op, e) => ExprFrame::Unary(op, e.map_inner(&mut f)),
                 ExprFrame::Binary(le, op, re) => {
                     ExprFrame::Binary(le.map_inner(&mut f), op, re.map_inner(&mut f))
@@ -192,7 +207,7 @@ mod impls {
             match *self {
                 Expr::Liter(ref l) => ExprFrame::Liter(l.clone()),
                 Expr::Ident(ref i) => ExprFrame::Ident(i.clone()),
-                Expr::ArrayElem(_) => todo!(),
+                Expr::ArrayElem(ref a) => unimplemented!(),
                 Expr::Unary(ref op, ref e) => ExprFrame::Unary(op.clone(), e.transpose_ref()),
                 Expr::Binary(ref le, ref op, ref re) => {
                     ExprFrame::Binary(le.transpose_ref(), op.clone(), re.transpose_ref())
@@ -219,7 +234,7 @@ mod impls {
         fn from_frame(val: <Self::FrameToken as MappableFrame>::Frame<Self>) -> Self {
             match val {
                 ExprFrame::Liter(l) => Self::Liter(l),
-                // ExprFrame::ArrayElem(_) => todo!(),
+                ExprFrame::ArrayElem(a) => todo!(),
                 ExprFrame::Ident(i) => Self::Ident(i),
                 ExprFrame::Unary(op, e) => Self::Unary(op, e.box_inner()),
                 ExprFrame::Binary(le, op, re) => Self::Binary(le.box_inner(), op, re.box_inner()),

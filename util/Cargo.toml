@@ -17,3 +17,4 @@ workspace = true
 thiserror = { workspace = true }
 bitflags = { workspace = true }
 once_cell = { workspace = true }
+recursion = { workspace = true }
