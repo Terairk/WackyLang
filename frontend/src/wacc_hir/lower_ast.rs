@@ -11,6 +11,7 @@ use util::ext::BoxedSliceExt as _;
 use util::func::f1::F1OnceExt as _;
 use util::func::f2::F2OnceExt as _;
 
+use crate::SemanticError;
 use util::nonempty::NonemptyArray;
 
 // A file-local type alias for better readability of type definitions
@@ -19,9 +20,61 @@ type SBN<T> = SourcedBoxedNode<T>;
 
 #[derive(Debug, Clone)]
 pub enum AstLoweringError {
-    DuplicateIdent(crate::wacc_hir::SN<ast::Ident>),
-    UndefinedIdent(crate::wacc_hir::SN<ast::Ident>),
+    DuplicateIdent(SN<ast::Ident>),
+    UndefinedIdent(SN<ast::Ident>),
     ReturnInMain(SourcedSpan),
+}
+
+impl AstLoweringError {
+    #[inline]
+    pub const fn message_header(&self) -> &'static str {
+        match *self {
+            // Duplicate identifier errors get a special header
+            Self::DuplicateIdent(_) => "Duplicate Identifier",
+            // Handle other error variants the same way
+            _ => "Semantic Error",
+        }
+    }
+
+    #[inline]
+    pub fn message_body(&self) -> String {
+        match *self {
+            Self::DuplicateIdent(ref ident) => {
+                format!(
+                    "Identifier '{}' already defined in current scope.",
+                    ident.inner()
+                )
+            }
+            Self::UndefinedIdent(ref ident) => {
+                format!("Undefined identifier '{}'", ident.inner())
+            }
+            Self::ReturnInMain(_) => "Cannot return from main function".to_string(),
+        }
+    }
+
+    #[inline]
+    pub fn into_span(self) -> SourcedSpan {
+        match self {
+            Self::DuplicateIdent(s) | Self::UndefinedIdent(s) => s.span(),
+            Self::ReturnInMain(s) => s,
+        }
+    }
+
+    #[inline]
+    pub fn into_semantic_error(self) -> SemanticError<&'static str, String> {
+        SemanticError {
+            message_header: self.message_header(),
+            message_body: self.message_body(),
+            span: self.into_span(),
+        }
+    }
+}
+
+impl From<AstLoweringError> for SemanticError<&'static str, String> {
+    #[inline]
+    fn from(value: AstLoweringError) -> Self {
+        value.into_semantic_error()
+    }
 }
 
 pub struct AstLoweringPhaseResult {

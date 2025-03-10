@@ -11,7 +11,11 @@
 // >remove error nodes from AST
 // >remove all loop kinds and change to loop+if+break
 
+use crate::parsing::ast;
 use crate::source::SourcedNode;
+use crate::wacc_hir::hir::Program;
+use crate::wacc_hir::lower_ast::{lower_ast, AstLoweringPhaseResult, FuncSymbolTable};
+use crate::{build_semantic_report, StreamType};
 use chumsky::input::Input;
 use chumsky::Parser;
 use std::io;
@@ -33,44 +37,44 @@ pub enum AstLoweringPhaseError {
     IoError(#[from] io::Error),
 }
 
-// /// # Errors
-// /// TODO: add errors docs
-// ///
-// #[allow(
-//     clippy::missing_panics_doc,
-//     clippy::expect_used,
-//     clippy::needless_pass_by_value
-// )]
-// #[inline]
-// pub fn ast_lowering_phase<S: AsRef<str>, W: Write + Clone>(
-//     source: S,
-//     program_ast: ast::Program,
-//     ast_lowering_error_code: i32,
-//     stream_type: StreamType,
-//     output_stream: W,
-// ) -> Result<(Program, FuncSymbolTable), AstLoweringPhaseError> {
-//     let source = source.as_ref();
-//
-//     // perform lowering
-//     let AstLoweringPhaseResult {
-//         output,
-//         errors,
-//         func_symbol_table,
-//     } = lower_ast(program_ast);
-//
-//     // Done to appease the borrow checker while displaying errors
-//     if !errors.is_empty() {
-//         for e in &errors {
-//             build_syntactic_report(
-//                 e,
-//                 source,
-//                 ast_lowering_error_code,
-//                 stream_type,
-//                 output_stream.clone(),
-//             )?;
-//         }
-//         return Err(AstLoweringPhaseError::AstLoweringErrorWritten);
-//     }
-//
-//     Ok((output, func_symbol_table))
-// }
+/// # Errors
+/// TODO: add errors docs
+///
+#[allow(
+    clippy::missing_panics_doc,
+    clippy::expect_used,
+    clippy::needless_pass_by_value
+)]
+#[inline]
+pub fn ast_lowering_phase<S: AsRef<str>, W: Write + Clone>(
+    source: S,
+    program_ast: ast::Program,
+    ast_lowering_error_code: i32,
+    stream_type: StreamType,
+    output_stream: W,
+) -> Result<(Program, FuncSymbolTable), AstLoweringPhaseError> {
+    let source = source.as_ref();
+
+    // perform lowering
+    let AstLoweringPhaseResult {
+        output,
+        errors,
+        func_symbol_table,
+    } = lower_ast(program_ast);
+
+    // Done to appease the borrow checker while displaying errors
+    if !errors.is_empty() {
+        for e in errors {
+            build_semantic_report(
+                e,
+                source,
+                ast_lowering_error_code,
+                stream_type,
+                output_stream.clone(),
+            )?;
+        }
+        return Err(AstLoweringPhaseError::AstLoweringErrorWritten);
+    }
+
+    Ok((output, func_symbol_table))
+}
