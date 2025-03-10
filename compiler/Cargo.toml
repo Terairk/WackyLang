@@ -15,12 +15,19 @@ ariadne = { workspace = true }
 util = { workspace = true }
 
 chumsky = { workspace = true, features = [
-    "std",
-    "stacker",
-    "memoization",
-    "pratt",
-    "regex",
-    "nightly",
+  "std",
+  "stacker",
+  "memoization",
+  "pratt",
+  "regex",
+  "nightly",
 ] }
 clap = { workspace = true, features = ["derive"] }
 regex = { workspace = true }
+
+# Used for testing the compiler with different optimization flags
+[features]
+const-fold = []
+copy-prop = []
+dead-store-elim = []
+unreachable-code = []

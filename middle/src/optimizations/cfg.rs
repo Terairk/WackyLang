@@ -1,11 +1,11 @@
 use crate::wackir::WackInstr;
 
-pub struct CFG;
+pub type CFG = Vec<WackInstr>;
 
 pub fn make_cfg(instrs: Vec<WackInstr>) -> CFG {
-    todo!()
+    instrs
 }
 
 pub fn cfg_to_instrs(cfg: CFG) -> Vec<WackInstr> {
-    todo!()
+    cfg
 }

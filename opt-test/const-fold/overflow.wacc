@@ -1,0 +1,5 @@
+# This shouldn't generate checks for overflowing rather just overflows
+begin
+  println 20147483 * 1000
+end
+

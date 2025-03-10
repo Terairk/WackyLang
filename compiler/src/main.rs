@@ -104,6 +104,12 @@ struct Args {
     optimize: bool,
 }
 
+#[cfg(feature = "const-fold")]
+const CONST_FOLD: bool = true;
+
+#[cfg(not(feature = "const-fold"))]
+const CONST_FOLD: bool = false;
+
 impl Args {
     ///
     /// Reconstruct an OptimizationConfig from the command line arguments
@@ -125,6 +131,7 @@ static SYNTAX_ERR_CODE: u8 = 100;
 fn main() -> ExitCode {
     let args = Args::parse();
 
+    let optimization_config = args.get_optimization_config();
     // Read the source file.
     let file_path: PathBuf = args.input;
 
@@ -247,6 +254,7 @@ fn main() -> ExitCode {
     // TODO: add string constant pass to either this pass or assembly pass
     // may need to modify my Wacky IR / Assembly Ast
     let (wacky_ir, counter, symbol_table) = lower_program(typed_ast, type_resolver);
+    let wacky_ir = middle::optimizations::optimize(wacky_ir, optimization_config);
 
     if args.wacky {
         println!("{wacky_ir:#?}");

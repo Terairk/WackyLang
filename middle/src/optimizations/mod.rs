@@ -14,10 +14,15 @@ use unreachable_code_elim::eliminate_unreachable_code;
 use util::opt_flags::OptimizationConfig;
 
 /// Optimizes an entire WackIR program.
+#[must_use]
 #[inline]
 pub fn optimize(program: WackProgram, config: OptimizationConfig) -> WackProgram {
     let mut optimized_program = program;
 
+    // optimize main body
+    optimized_program.main_body = optimize_fun(optimized_program.main_body, config);
+
+    // optimize user functions
     for fun in optimized_program.functions.iter_mut() {
         // use mem::take to avoid cloning the function body
         let body = mem::take(&mut fun.body);
