@@ -7,11 +7,12 @@
 extern crate core;
 
 pub mod apply;
-pub mod dyn_traits;
+mod dyn_traits;
 pub mod gen_flags;
 pub mod nonempty;
 pub mod recursion;
-pub mod rust_gadt_playground;
+mod rust_gadt_playground;
+mod typelevel;
 
 pub(crate) mod private {
     // sealed traits support
