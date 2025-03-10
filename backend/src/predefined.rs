@@ -2,7 +2,8 @@
 // that our code will then call.
 
 use crate::assembly_ast::{
-    AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Directive, Operand, Register,
+    AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Directive, LABEL, Operand,
+    Register,
 };
 
 use crate::assembly_ast::AsmBinaryOperator::{Add, And, Sub};
@@ -442,7 +443,7 @@ static PRINTB: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Data(PRINTB_STR0.to_owned(), 0),
             dst: Reg(DX),
         },
-        Jmp("printb1".to_owned()),
+        Jmp("printb1".to_owned(), LABEL),
         Label("printb0".to_owned()),
         Lea {
             src: Data(PRINTB_STR1.to_owned(), 0),

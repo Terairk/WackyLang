@@ -1,6 +1,6 @@
 use crate::assembly_ast::{
-    AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
-    Register,
+    AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, FUNCTION,
+    LABEL, Operand, Register,
 };
 use AsmInstruction::{
     AllocateStack, Binary, Call, Cdq, Cmov, Cmp, Comment, DeallocateStack, Idiv, Jmp, JmpCC, Lea,
@@ -324,7 +324,9 @@ impl AsmGen {
                 src2,
                 dst,
             } => self.lower_binary(op, src1, src2, dst, asm),
-            Jump(target) => asm.push(Jmp(target.into())),
+            // Any Jump from MiddleIR is a Label Jump, perhaps a change of name is better
+            // ie JumpToLabel
+            Jump(target) => asm.push(Jmp(target.into(), LABEL)),
             JumpIfZero { condition, target } => {
                 let typ = self.get_asm_type(&condition);
                 let condition = self.lower_value(condition, asm);
@@ -354,7 +356,7 @@ impl AsmGen {
                 });
             }
             JumpToHandler(predefined_func_name) => {
-                asm.push(Jmp(predefined_func_name.into()));
+                asm.push(Jmp(predefined_func_name.into(), FUNCTION));
             }
             Copy { src, dst } => {
                 let src_typ = self.get_asm_type(&src);

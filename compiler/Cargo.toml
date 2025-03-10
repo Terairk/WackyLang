@@ -29,5 +29,5 @@ regex = { workspace = true }
 [features]
 const-fold = []
 copy-prop = []
-dead-store-elim = []
-unreachable-code = []
+rm-unreachable = []
+rm-deadstores = []

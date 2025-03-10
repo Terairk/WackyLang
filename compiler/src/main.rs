@@ -104,12 +104,6 @@ struct Args {
     optimize: bool,
 }
 
-#[cfg(feature = "const-fold")]
-const CONST_FOLD: bool = true;
-
-#[cfg(not(feature = "const-fold"))]
-const CONST_FOLD: bool = false;
-
 impl Args {
     ///
     /// Reconstruct an OptimizationConfig from the command line arguments

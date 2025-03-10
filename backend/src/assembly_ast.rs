@@ -38,6 +38,10 @@
 
 use middle::wackir::UnaryOp;
 use std::fmt::Debug;
+pub type IsFunction = bool;
+// This is a flag to guide code emission to know if it should add a .L_
+pub const FUNCTION: IsFunction = true;
+pub const LABEL: IsFunction = false;
 
 // implement Debug below
 #[derive(Clone)]
@@ -99,11 +103,11 @@ pub enum AsmInstruction {
     },
     Idiv(Operand), // We convert from Binary(Div, _, _, _) -> IDiv
     Cdq,           // Need this for division
-    Jmp(String),
+    Jmp(String, IsFunction),
     JmpCC {
         condition: CondCode,
         label: String,
-        is_func: bool, // Field to guide code emission to know if its local or not
+        is_func: IsFunction, // Field to guide code emission to know if its local or not
     },
     SetCC {
         condition: CondCode,

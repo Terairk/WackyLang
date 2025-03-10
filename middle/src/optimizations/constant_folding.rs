@@ -25,6 +25,7 @@ use util::gen_flags::insert_flag_gbl;
 pub fn constant_fold_function(function_body: Vec<WackInstr>) -> Vec<WackInstr> {
     // TODO: if all helper functions return just one function, change how this function body works
     // seems like its only one instruction each but I'll leave it as Vec for more flexibility
+    // println!("Optimizing function");
     let mut optimized_body = Vec::new();
     for instr in function_body {
         let new_instrs = match instr {
@@ -37,14 +38,14 @@ pub fn constant_fold_function(function_body: Vec<WackInstr>) -> Vec<WackInstr> {
             } => eval_binary_op(op, src1, src2, dst),
             JumpIfZero { condition, target } => {
                 if let Literal(WackLiteral::Bool(value)) = condition {
-                    if value { vec![Jump(target)] } else { vec![] }
+                    if value { vec![] } else { vec![Jump(target)] }
                 } else {
                     vec![JumpIfZero { condition, target }]
                 }
             }
             JumpIfNotZero { condition, target } => {
                 if let Literal(WackLiteral::Bool(value)) = condition {
-                    if value { vec![] } else { vec![Jump(target)] }
+                    if value { vec![Jump(target)] } else { vec![] }
                 } else {
                     vec![JumpIfNotZero { condition, target }]
                 }
