@@ -9,7 +9,7 @@
 #![feature(stmt_expr_attributes)]
 #![feature(unboxed_closures)]
 
-use crate::error::{semantic_error_to_reason, SemanticError};
+use crate::error::SemanticError;
 use crate::source::SourcedSpan;
 use ariadne::{CharSet, Label, Report, Source};
 use chumsky::error::Rich;
@@ -276,20 +276,14 @@ pub fn semantic_report_helper(
     source: String,
 ) {
     let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
-    Report::build(
-        ariadne::ReportKind::Error,
-        (file_path, span.clone().as_range()),
-    )
-    .with_config(config)
-    .with_message(message)
-    .with_code(420)
-    .with_label(
-        Label::new((file_path, span.clone().as_range()))
-            .with_message(semantic_error_to_reason(error)),
-    )
-    .finish()
-    .print((file_path, Source::from(source)))
-    .unwrap();
+    Report::build(ariadne::ReportKind::Error, error.span())
+        .with_config(config)
+        .with_message(message)
+        .with_code(420)
+        .with_label(Label::new(error.span()).with_message(error.semantic_error_to_reason()))
+        .finish()
+        .print((error.span().source_id().clone(), Source::from(source)))
+        .unwrap();
 }
 
 pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, source: String) {

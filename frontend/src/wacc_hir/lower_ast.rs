@@ -5,13 +5,11 @@ use crate::wacc_hir::hir::{
     ArrayElem, ArrayType, BaseType, BinaryOper, Expr, Func, FuncParam, Ident, LValue, Liter,
     PairElem, PairElemSelector, PairElemType, Program, RValue, Stat, StatBlock, Type, UnaryOper,
 };
-use crate::wacc_hir::AstLoweringError;
-use chumsky::container::Container;
 use std::collections::HashMap;
 use std::mem;
 use util::ext::BoxedSliceExt as _;
-use util::func::f1::F1OnceExt;
-use util::func::f2::F2OnceExt;
+use util::func::f1::F1OnceExt as _;
+use util::func::f2::F2OnceExt as _;
 
 use util::nonempty::NonemptyArray;
 
@@ -19,10 +17,45 @@ use util::nonempty::NonemptyArray;
 type SN<T> = SourcedNode<T>;
 type SBN<T> = SourcedBoxedNode<T>;
 
+#[derive(Debug, Clone)]
+pub enum AstLoweringError {
+    DuplicateIdent(crate::wacc_hir::SN<ast::Ident>),
+    UndefinedIdent(crate::wacc_hir::SN<ast::Ident>),
+    ReturnInMain(SourcedSpan),
+}
+
+pub struct AstLoweringPhaseResult {
+    pub output: Program,
+    pub errors: Vec<AstLoweringError>,
+    pub func_symbol_table: FuncSymbolTable,
+}
+
 // We handle functions separately from variables since its easier
 #[derive(Debug)]
-pub struct IdFuncTable {
+pub struct FuncSymbolTable {
     pub functions: HashMap<ast::Ident, (Type, Box<[Type]>)>,
+}
+
+impl FuncSymbolTable {
+    #[allow(clippy::pattern_type_mismatch)]
+    #[inline]
+    pub fn lookup_func_args(&self, ident: &SN<ast::Ident>) -> Result<Box<[Type]>, SourcedSpan> {
+        if let Some((_, args)) = self.functions.get(ident) {
+            Ok(args.clone())
+        } else {
+            Err(ident.span())
+        }
+    }
+
+    #[allow(clippy::pattern_type_mismatch)]
+    #[inline]
+    pub fn lookup_func_return_type(&self, ident: &SN<ast::Ident>) -> Result<Type, SourcedSpan> {
+        if let Some((return_type, _)) = self.functions.get(ident) {
+            Ok(return_type.clone())
+        } else {
+            Err(ident.span())
+        }
+    }
 }
 
 // This struct helps us keep track of the identifiers in the current block
@@ -52,8 +85,8 @@ impl IDMapEntry {
 
 // struct responsible for traversing/folding the AST
 // holds state relevant for the renaming phase
-pub struct LoweringCtx {
-    pub id_func_table: IdFuncTable,
+struct LoweringCtx {
+    pub func_symbol_table: FuncSymbolTable,
     errors: Vec<AstLoweringError>,
     in_main: bool,
     counter: usize,
@@ -64,7 +97,7 @@ impl LoweringCtx {
     #[inline]
     pub fn new() -> Self {
         Self {
-            id_func_table: IdFuncTable {
+            func_symbol_table: FuncSymbolTable {
                 functions: HashMap::new(),
             },
             identifier_map: HashMap::new(),
@@ -84,8 +117,8 @@ impl LoweringCtx {
     }
 
     #[inline]
-    pub const fn get_func_table(&self) -> &IdFuncTable {
-        &self.id_func_table
+    pub const fn get_func_table(&self) -> &FuncSymbolTable {
+        &self.func_symbol_table
     }
 
     // This function is used to create a copy of the current identifier map
@@ -97,24 +130,6 @@ impl LoweringCtx {
             .iter()
             .map(|(k, v)| (k.clone(), v.create_false()))
             .collect()
-    }
-
-    #[inline]
-    pub fn lookup_func_args(&self, ident: &SN<ast::Ident>) -> Box<[Type]> {
-        if let Some((_, args)) = self.id_func_table.functions.get(ident) {
-            args.clone()
-        } else {
-            Box::new([])
-        }
-    }
-
-    #[inline]
-    pub fn lookup_func_return_type(&self, ident: &SN<ast::Ident>) -> Result<Type, SourcedSpan> {
-        if let Some((return_type, _)) = self.id_func_table.functions.get(ident) {
-            Ok(return_type.clone())
-        } else {
-            Err(ident.span())
-        }
     }
 
     #[inline]
@@ -137,9 +152,36 @@ impl LoweringCtx {
         result
     }
 
+    fn build_func_table(
+        id_func_table: &mut FuncSymbolTable,
+        program: &ast::Program,
+    ) -> Result<(), AstLoweringError> {
+        program.funcs.iter().try_for_each(|func| {
+            if id_func_table.functions.contains_key(&func.name) {
+                return Err(AstLoweringError::DuplicateIdent(func.name.clone()));
+            }
+            let (return_type, param_types) = (
+                Self::lower_type(&func.return_type),
+                func.params
+                    .iter()
+                    .map(|param| Self::lower_type(&param.r#type)),
+            );
+            let (return_type, param_types) = (return_type, param_types.collect());
+            id_func_table
+                .functions
+                .insert(func.name.inner().clone(), (return_type, param_types));
+            Ok(())
+        })
+    }
+
     // ----
 
     pub fn lower_program(&mut self, program: ast::Program) -> Program {
+        // Build function table
+        if let Err(err) = Self::build_func_table(&mut self.func_symbol_table, &program) {
+            self.add_error(err);
+        }
+
         // cannot curry mutable-references and still have FnMut, RIP :(
         let lowered_funcs = program.funcs.map(|f| self.lower_func(f));
         let lowered_body = self.lower_stat_block(program.body);
@@ -151,6 +193,9 @@ impl LoweringCtx {
         }
     }
 
+    /// When you enter a new function, you create a new scope just for the args,
+    /// Then you create another scope for the body of the function
+    /// We also keep track if we're in the main function
     #[inline]
     pub fn lower_func(&mut self, func: ast::Func) -> Func {
         let ast::Func {
@@ -159,37 +204,72 @@ impl LoweringCtx {
             params,
             body,
         } = func;
+
+        // perform lowering within temporary-map context
+        self.in_main = false;
+        let new_map = self.copy_id_map_with_false();
+        let old_id_map = mem::replace(&mut self.identifier_map, new_map);
+        let return_type = Self::lower_type_sn(&return_type); // Type remains unchanged
+        // cannot curry mutable-references and still have FnMut, RIP :(
+        let params = params.map(|p| self.lower_func_param(p));
+        let body = self.with_temporary_map(|slf| slf.lower_stat_block(body));
+        self.identifier_map = old_id_map;
+        self.in_main = true;
+
+        // construct output function
         Func {
-            return_type: Self::lower_type_sn(&return_type),
+            return_type,
             name,
-            // cannot curry mutable-references and still have FnMut, RIP :(
-            params: params.map(|p| self.lower_func_param(p)),
-            body: self.lower_stat_block(body),
+            params,
+            body,
         }
     }
 
+    #[allow(clippy::indexing_slicing)]
     #[inline]
     pub fn lower_func_param(&mut self, func_param: ast::FuncParam) -> FuncParam {
         let ast::FuncParam { r#type, name } = func_param;
 
+        // shouldn't panic since we check the key exists
+        let lowered_type = Self::lower_type_sn(&r#type);
+        if self.identifier_map.contains_key(name.inner())
+            && self.identifier_map[name.inner()].from_current_block
+        {
+            self.add_error(AstLoweringError::DuplicateIdent(name.clone()));
+            // return dummy Stat
+            return FuncParam {
+                r#type: lowered_type,
+                name: Ident::new_rouge_zero_sn(name),
+            };
+        }
+
+        // insert new identifier corresponding to function parameter
+        let unique_name = Ident::new_sn(&mut self.counter, name.clone());
+        let map_entry = IDMapEntry::new(unique_name.clone(), true);
+        self.identifier_map.insert(name.inner().clone(), map_entry);
+
+        // return the renamed function parameter
         FuncParam {
-            r#type: Self::lower_type_sn(&r#type),
-            name: self.lower_ident_sn(name),
+            r#type: lowered_type,
+            name: unique_name,
         }
     }
 
     #[allow(clippy::expect_used)]
     pub fn lower_stat_block(&mut self, stat_block: ast::StatBlock) -> StatBlock {
-        // accumulate lowered statements into output vector
-        let mut lowered_stats: MultiItemVec<SN<Stat>> = MultiItemVec::new();
-        for stat_sn in stat_block.0 {
-            lowered_stats.push_multi_item(self.lower_stat_sn(stat_sn));
-        }
+        // lower everything within a temporarily-renamed context
+        self.with_temporary_map(|slf| {
+            // accumulate lowered statements into output vector
+            let mut lowered_stats: MultiItemVec<SN<Stat>> = MultiItemVec::new();
+            for stat_sn in stat_block.0 {
+                lowered_stats.push_multi_item(slf.lower_stat_sn(stat_sn));
+            }
 
-        // there should always be >1 lowered statements by this point
-        StatBlock(NonemptyArray::try_from_boxed_slice(lowered_stats).expect(
-            "Lowering a `StatBlock` should always leave produce at least one lowered `Stat`",
-        ))
+            // there should always be >=1 lowered statements by this point
+            StatBlock(NonemptyArray::try_from_boxed_slice(lowered_stats).expect(
+                "Lowering a `StatBlock` should always leave produce at least one lowered `Stat`",
+            ))
+        })
     }
 
     #[allow(clippy::shadow_unrelated)]
@@ -246,7 +326,13 @@ impl LoweringCtx {
             }),
             ast::Stat::Read(lv) => stat_sn(Stat::Read(self.lower_lvalue_sn(lv))),
             ast::Stat::Free(e) => stat_sn(Stat::Free(self.lower_expr_sn(e))),
-            ast::Stat::Return(e) => stat_sn(Stat::Return(self.lower_expr_sn(e))),
+            ast::Stat::Return(e) => stat_sn({
+                // If we do a return in main, we add an error
+                if self.in_main {
+                    self.add_error(AstLoweringError::ReturnInMain(e.span()));
+                }
+                Stat::Return(self.lower_expr_sn(e))
+            }),
             ast::Stat::Exit(e) => stat_sn(Stat::Exit(self.lower_expr_sn(e))),
             ast::Stat::Print(e) => stat_sn(Stat::Print(self.lower_expr_sn(e))),
             ast::Stat::Println(e) => stat_sn(Stat::Println(self.lower_expr_sn(e))),
@@ -498,9 +584,8 @@ impl LoweringCtx {
     }
 
     pub fn lower_array_type(array_type: &ast::ArrayType) -> ArrayType {
-        let ast::ArrayType { elem_type } = array_type;
         ArrayType {
-            elem_type: Self::lower_type(elem_type),
+            elem_type: Self::lower_type(&array_type.elem_type),
         }
     }
 
@@ -543,13 +628,24 @@ impl LoweringCtx {
         // Use ident part of name and then check if it exists in the function table
         // return name regardless but add an error if it doesn't exist
         let ident = name.inner();
-        if self.id_func_table.functions.contains_key(ident) {
+        if self.func_symbol_table.functions.contains_key(ident) {
         } else {
             self.add_error(AstLoweringError::UndefinedIdent(name.clone()));
             // Return a dummy value so we can maybe very hopefully
             // allow multiple semantic errors
         }
-
         name
+    }
+}
+
+#[inline]
+pub fn lower_ast(program_ast: ast::Program) -> AstLoweringPhaseResult {
+    // lower program AST and discard unnecessary transient information
+    let mut ctx = LoweringCtx::new();
+    let lowered_program = ctx.lower_program(program_ast);
+    AstLoweringPhaseResult {
+        output: lowered_program,
+        errors: ctx.errors,
+        func_symbol_table: ctx.func_symbol_table,
     }
 }

@@ -11,24 +11,66 @@
 // >remove error nodes from AST
 // >remove all loop kinds and change to loop+if+break
 
-use crate::parsing::ast;
 use crate::source::SourcedNode;
+use chumsky::input::Input;
+use chumsky::Parser;
+use std::io;
+use std::io::Write;
+use thiserror::Error;
 
 pub mod hir;
 mod lower_ast;
 
 type SN<T> = SourcedNode<T>;
 
-#[derive(Debug, Clone)]
-pub enum AstLoweringError {
-    // ArityMismatch(SN<ast::Ident>, usize, usize),
-    DuplicateIdent(SN<ast::Ident>),
-    // TypeMismatch(SourcedSpan, SemanticType, SemanticType),
-    // AssignmentWithBothSidesUnknown(SourcedSpan),
-    // MismatchedArgCount(SourcedSpan, usize, usize),
-    // InvalidIndexType(SourcedSpan, SemanticType),
-    // InvalidFreeType(SourcedSpan, SemanticType),
-    // InvalidNumberOfIndexes(SourcedSpan, usize, usize),
-    UndefinedIdent(SN<ast::Ident>),
-    // ReturnInMain(SourcedSpan),
+#[derive(Debug, Error)]
+pub enum AstLoweringPhaseError {
+    #[error(
+        "Encountered error when lowering AST, corresponding error report written to provided output"
+    )]
+    AstLoweringErrorWritten,
+    #[error(transparent)]
+    IoError(#[from] io::Error),
 }
+
+// /// # Errors
+// /// TODO: add errors docs
+// ///
+// #[allow(
+//     clippy::missing_panics_doc,
+//     clippy::expect_used,
+//     clippy::needless_pass_by_value
+// )]
+// #[inline]
+// pub fn ast_lowering_phase<S: AsRef<str>, W: Write + Clone>(
+//     source: S,
+//     program_ast: ast::Program,
+//     ast_lowering_error_code: i32,
+//     stream_type: StreamType,
+//     output_stream: W,
+// ) -> Result<(Program, FuncSymbolTable), AstLoweringPhaseError> {
+//     let source = source.as_ref();
+//
+//     // perform lowering
+//     let AstLoweringPhaseResult {
+//         output,
+//         errors,
+//         func_symbol_table,
+//     } = lower_ast(program_ast);
+//
+//     // Done to appease the borrow checker while displaying errors
+//     if !errors.is_empty() {
+//         for e in &errors {
+//             build_syntactic_report(
+//                 e,
+//                 source,
+//                 ast_lowering_error_code,
+//                 stream_type,
+//                 output_stream.clone(),
+//             )?;
+//         }
+//         return Err(AstLoweringPhaseError::AstLoweringErrorWritten);
+//     }
+//
+//     Ok((output, func_symbol_table))
+// }
