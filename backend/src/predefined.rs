@@ -2,7 +2,7 @@
 // that our code will then call.
 
 use crate::assembly_ast::{
-    AsmFunction, AsmProgram, AssemblyType, CondCode, Directive, Operand, Register,
+    AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Directive, Operand, Register,
 };
 
 use crate::assembly_ast::AsmBinaryOperator::{Add, And, Sub};
@@ -78,19 +78,74 @@ static C_FFLUSH: &str = "fflush";
 static C_SCANF: &str = "scanf";
 static C_PUTS: &str = "puts";
 
-/* ================== FUNC_DEFINITIONS ============  */
+/* ================== HELPER FUNCTIONS ================== */
 
-static ERR_DIV_ZERO_STR0: &str = "ERR_DIV_ZERO_STR0";
-static ERR_DIV_ZERO: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: INBUILT_DIV_ZERO.to_owned(),
-    global: false,
-    instructions: vec![
+// Function prologue (creates stack frame, aligns stack to 16 bytes)
+fn function_prologue() -> Vec<AsmInstruction> {
+    vec![
+        Push(Reg(BP)),
+        Mov {
+            typ: Quadword,
+            src: Reg(SP),
+            dst: Reg(BP),
+        },
         Binary {
             operator: And,
             typ: Quadword,
             op1: Imm(-16),
             op2: Reg(SP),
         },
+    ]
+}
+
+// Function epilogue (restores stack pointer, returns)
+fn function_epilogue() -> Vec<AsmInstruction> {
+    vec![
+        Mov {
+            typ: Quadword,
+            src: Reg(BP),
+            dst: Reg(SP),
+        },
+        Pop(Reg(BP)),
+        Ret,
+    ]
+}
+
+// Creates a complete function with proper prologue/epilogue
+fn create_function(
+    name: String,
+    body_instructions: Vec<AsmInstruction>,
+    directives: Vec<Directive>,
+) -> AsmFunction {
+    let mut instructions = function_prologue();
+    instructions.extend(body_instructions);
+    instructions.extend(function_epilogue());
+
+    AsmFunction {
+        name,
+        global: false,
+        instructions,
+        directives,
+    }
+}
+
+static ALIGN_STACK: AsmInstruction = Binary {
+    operator: And,
+    typ: Quadword,
+    op1: Imm(-16),
+    op2: Reg(SP),
+};
+
+/* ================== FUNC_DEFINITIONS ============  */
+// TODO: Use the above helper functions to redefine the functions below
+// TODO: Use the bon crate to make it clearer what the functions are doing
+
+static ERR_DIV_ZERO_STR0: &str = "ERR_DIV_ZERO_STR0";
+static ERR_DIV_ZERO: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
+    name: INBUILT_DIV_ZERO.to_owned(),
+    global: false,
+    instructions: vec![
+        ALIGN_STACK.clone(),
         Lea {
             src: Data(ERR_DIV_ZERO_STR0.to_owned(), 0),
             dst: Reg(DI),
@@ -106,70 +161,33 @@ static ERR_DIV_ZERO: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     directives: vec![Directive(ERR_DIV_ZERO_STR0, "Error: Division by zero\\n")],
 });
 
-static MALLOC: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: INBUILT_MALLOC.to_owned(),
-    global: false,
-    instructions: vec![
-        Push(Reg(BP)),
-        Mov {
-            typ: Quadword,
-            src: Reg(SP),
-            dst: Reg(BP),
-        },
-        Binary {
-            operator: And,
-            typ: Quadword,
-            op1: Imm(-16),
-            op2: Reg(SP),
-        },
-        Call(C_MALLOC.to_owned(), true),
-        Cmp {
-            typ: Quadword,
-            op1: Imm(0),
-            op2: Reg(AX),
-        },
-        JmpCC {
-            condition: E,
-            label: INBUILT_OOM.to_owned(),
-            is_func: true,
-        },
-        Mov {
-            typ: Quadword,
-            src: Reg(BP),
-            dst: Reg(SP),
-        },
-        Pop(Reg(BP)),
-        Ret,
-    ],
-    directives: vec![],
+// Example usage
+static MALLOC: Lazy<AsmFunction> = Lazy::new(|| {
+    create_function(
+        INBUILT_MALLOC.to_owned(),
+        vec![
+            Call(C_MALLOC.to_owned(), true),
+            Cmp {
+                typ: Quadword,
+                op1: Imm(0),
+                op2: Reg(AX),
+            },
+            JmpCC {
+                condition: E,
+                label: INBUILT_OOM.to_owned(),
+                is_func: true,
+            },
+        ],
+        vec![],
+    )
 });
 
-static FREE: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: INBUILT_FREE.to_owned(),
-    global: false,
-    instructions: vec![
-        Push(Reg(BP)),
-        Mov {
-            typ: Quadword,
-            src: Reg(SP),
-            dst: Reg(BP),
-        },
-        Binary {
-            operator: And,
-            typ: Quadword,
-            op1: Imm(-16),
-            op2: Reg(SP),
-        },
-        Call(C_FREE.to_owned(), true), // true indicates external PLT call
-        Mov {
-            typ: Quadword,
-            src: Reg(BP),
-            dst: Reg(SP),
-        },
-        Pop(Reg(BP)),
-        Ret,
-    ],
-    directives: vec![],
+static FREE: Lazy<AsmFunction> = Lazy::new(|| {
+    create_function(
+        INBUILT_FREE.to_owned(),
+        vec![Call(C_FREE.to_owned(), true)],
+        vec![],
+    )
 });
 
 static FREEPAIR: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
