@@ -35,13 +35,12 @@ fn optimize_fun(mut function_body: Vec<WackInstr>, config: OptimizationConfig) -
     // Iterate and keep applying optimizations until you reach a fixed point
     loop {
         // Store the current state for comparison later
-        // use mem::take to avoid cloning the function body
-        let current_body = mem::take(&mut function_body);
+        let current_body = function_body.clone();
 
         let post_constant_folding = if config.has_fold_constants() {
-            constant_fold_function(&current_body)
+            constant_fold_function(current_body)
         } else {
-            current_body.clone()
+            current_body
         };
 
         let mut cfg = make_cfg(post_constant_folding);
@@ -60,7 +59,7 @@ fn optimize_fun(mut function_body: Vec<WackInstr>, config: OptimizationConfig) -
 
         let optimized_fun_body = cfg_to_instrs(cfg);
 
-        if optimized_fun_body == current_body || optimized_fun_body.is_empty() {
+        if optimized_fun_body == function_body || optimized_fun_body.is_empty() {
             return optimized_fun_body;
         }
 

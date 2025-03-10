@@ -2,15 +2,27 @@
 // that our code will then call.
 
 use crate::assembly_ast::{
-    AsmBinaryOperator::*, AsmFunction, AsmProgram, Directive,
-};
-use crate::assembly_ast::{
-    AsmInstruction::*, AssemblyType::*, CondCode::*, Operand::*, Register::*,
+    AsmFunction, AsmProgram, AssemblyType, CondCode, Directive, Operand, Register,
 };
 
+use crate::assembly_ast::AsmBinaryOperator::{Add, And, Sub};
+use crate::assembly_ast::AsmInstruction::{
+    Binary, Call, Cmov, Cmp, Jmp, JmpCC, Label, Lea, Mov, Pop, Push, Ret, Test,
+};
+use AssemblyType::{Byte, Longword, Quadword};
+use CondCode::{E, GE, L, NE};
+use Operand::{Data, Imm, Indexed, Memory, Reg};
+use Register::{AX, BP, BX, DI, DX, R9, R10, SI, SP};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use util::gen_flags::{GenFlags, get_flags_gbl, rewrite_global_flag};
+use util::gen_flags::{
+    INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_ARR_STORE1,
+    INBUILT_ARR_STORE4, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO, INBUILT_EXIT, INBUILT_FREE,
+    INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS, INBUILT_OOM, INBUILT_OUT_OF_BOUNDS,
+    INBUILT_OVERFLOW, INBUILT_PRINT_BOOL, INBUILT_PRINT_CHAR, INBUILT_PRINT_INT, INBUILT_PRINT_PTR,
+    INBUILT_PRINT_STRING, INBUILT_PRINTLN, INBUILT_READ_CHAR, INBUILT_READ_INT,
+};
 
 #[inline]
 pub fn generate_predefined(program: &mut AsmProgram) {
@@ -55,36 +67,6 @@ pub static PREDEFINED_FUNCTIONS2: Lazy<HashMap<GenFlags, AsmFunction>> = Lazy::n
     m.insert(GenFlags::ARRAY_STORE8, ARR_STORE8.clone());
     m
 });
-
-/* ================== INTERNAL FUNC_NAMES ================== */
-// Anytime you want to call an inbuilt function please use the
-// constant strings, that way the code is more modular and you
-// dont have to change strings in multiple places
-
-pub static INBUILT_DIV_ZERO: &str = "_errDivZero";
-pub static INBUILT_PRINT_STRING: &str = "_prints";
-pub static INBUILT_MALLOC: &str = "_malloc";
-pub static INBUILT_OOM: &str = "_errOutOfMemory";
-pub static INBUILT_FREE: &str = "_free";
-pub static INBUILT_FREE_PAIR: &str = "_freepair";
-pub static INBUILT_NULL_ACCESS: &str = "_errNull";
-pub static INBUILT_PRINT_PTR: &str = "_printp";
-pub static INBUILT_PRINT_CHAR: &str = "_printc";
-pub static INBUILT_PRINT_BOOL: &str = "_printb";
-pub static INBUILT_PRINT_INT: &str = "_printi";
-pub static INBUILT_PRINTLN: &str = "_println";
-pub static INBUILT_ARR_LOAD1: &str = "_arrLoad1";
-pub static INBUILT_ARR_LOAD4: &str = "_arrLoad4";
-pub static INBUILT_ARR_LOAD8: &str = "_arrLoad8";
-pub static INBUILT_OUT_OF_BOUNDS: &str = "_errOutOfBounds";
-pub static INBUILT_BAD_CHAR: &str = "_errBadChar";
-pub static INBUILT_OVERFLOW: &str = "_errOverflow";
-pub static INBUILT_READ_INT: &str = "_readi";
-pub static INBUILT_READ_CHAR: &str = "_readc";
-pub static INBUILT_EXIT: &str = "_exit";
-pub static INBUILT_ARR_STORE1: &str = "_arrStore1";
-pub static INBUILT_ARR_STORE4: &str = "_arrStore4";
-pub static INBUILT_ARR_STORE8: &str = "_arrStore8";
 
 /* ================== EXTERNAL C Functions ================= */
 // These are the functions that are defined in the C lib that we use

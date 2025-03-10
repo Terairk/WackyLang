@@ -4,19 +4,20 @@ use crate::assembly_ast::{
 use crate::assembly_ast::{
     AsmInstruction::*, AssemblyType::*, CondCode::*, Operand::*, Register::*,
 };
-use crate::predefined::{
-    INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO,
-    INBUILT_EXIT, INBUILT_FREE, INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS,
-    INBUILT_PRINTLN, INBUILT_PRINT_BOOL, INBUILT_PRINT_CHAR, INBUILT_PRINT_INT,
-    INBUILT_PRINT_PTR, INBUILT_PRINT_STRING, INBUILT_READ_CHAR, INBUILT_READ_INT,
-};
 use middle::types::{BitWidth, WackType};
+use middle::wackir::WackInstr::JumpToHandler;
 use middle::wackir::{
     BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackPrintType, WackProgram,
     WackReadType, WackTempIdent, WackValue,
 };
 use std::collections::{BTreeMap, HashMap};
-use util::gen_flags::{insert_flag_gbl, GenFlags};
+use util::gen_flags::{GenFlags, insert_flag_gbl};
+use util::gen_flags::{
+    INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO,
+    INBUILT_EXIT, INBUILT_FREE, INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS,
+    INBUILT_PRINT_BOOL, INBUILT_PRINT_CHAR, INBUILT_PRINT_INT, INBUILT_PRINT_PTR,
+    INBUILT_PRINT_STRING, INBUILT_PRINTLN, INBUILT_READ_CHAR, INBUILT_READ_INT,
+};
 /* ================== PUBLIC API ================== */
 
 // The stack size for parameters is 8 bytes
@@ -240,9 +241,6 @@ impl AsmGen {
         }
     }
 
-    /// TODO: Fix bug with printing null pointer
-    /// Lowering value doesn't differentiate between null pointer and 0
-    /// So, we should add special value to Operand
     fn lower_print(&mut self, src: WackValue, ty: WackPrintType, asm: &mut Vec<AsmInstruction>) {
         let operand = self.lower_value(src, asm);
         let func_name = match ty {
@@ -350,6 +348,9 @@ impl AsmGen {
                     label: target.into(),
                     is_func: false,
                 });
+            }
+            JumpToHandler(predefined_func_name) => {
+                asm.push(Jmp(predefined_func_name.into()));
             }
             Copy { src, dst } => {
                 let src_typ = self.get_asm_type(&src);

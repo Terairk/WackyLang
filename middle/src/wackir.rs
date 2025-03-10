@@ -87,6 +87,8 @@ use std::hash::Hash;
 use syntax::ast;
 use syntax::types::SemanticType;
 
+type PredefinedFunction = String;
+
 // Treat WackFunction's slightly differently from main
 #[derive(Clone)]
 pub struct WackProgram {
@@ -202,6 +204,7 @@ pub enum WackInstr {
         condition: WackValue,
         target: WackTempIdent, // you can only store into an identifier
     },
+    JumpToHandler(PredefinedFunction), // Jump to a runtime error handler
     Label(WackTempIdent),
     FunCall {
         fun_name: WackGlobIdent,
@@ -246,65 +249,12 @@ pub enum WackInstr {
     },
 }
 
-impl WackInstr {
-    // The default index for pointer arithmetic is zero, i.e. the very start
-    const DEFAULT_ADD_PTR_INDEX: WackValue = WackValue::Literal(WackLiteral::Int(0));
-
-    // The default scale for pointer arithmetic should be one byte.
-    const DEFAULT_ADD_PTR_SCALE: usize = 1;
-
-    // The default offset for pointer arithmetic is zero, i.e. no offset
-    const DEFAULT_ADD_PTR_OFFSET: i32 = 0;
-
-    /// Creates a pointer-arithmetic instruction that simply adds a fixed offset.
-    #[inline]
-    #[must_use]
-    pub const fn add_ptr_offset(src_ptr: WackValue, offset: i32, dst_ptr: WackTempIdent) -> Self {
-        Self::AddPtr {
-            src_ptr,
-            index: Self::DEFAULT_ADD_PTR_INDEX,
-            scale: Self::DEFAULT_ADD_PTR_SCALE,
-            offset,
-            dst_ptr,
-        }
-    }
-
-    /// Creates a pointer-arithmetic instruction that, provided the scale (in bytes) of each index,
-    /// simply indexes into the array-like region with no offset.
-    #[inline]
-    #[must_use]
-    pub const fn add_ptr_index(
-        src_ptr: WackValue,
-        index: WackValue,
-        scale: usize,
-        dst_ptr: WackTempIdent,
-    ) -> Self {
-        Self::AddPtr {
-            src_ptr,
-            index,
-            scale,
-            offset: Self::DEFAULT_ADD_PTR_OFFSET,
-            dst_ptr,
-        }
-    }
-}
-
 /// A type-argument to the read instruction: this is a type-hint purely, the underlying data
 /// could be of any type - for decoupling concerns since it doesn't need to be nested
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum WackReadType {
     Int,
     Char,
-}
-
-impl WackReadType {
-    pub fn from_semantic_type(semantic_ty: SemanticType) -> Result<Self, Box<str>> {
-        match semantic_ty {
-            SemanticType::Int => Ok(Self::Int),
-            SemanticType::Char => Ok(Self::Char),
-            _ => Err(format!("incorrect semantic type found `{}`", semantic_ty).into()),
-        }
-    }
 }
 
 /// A type-argument to the print instruction: this is a type-hint purely, the underlying data
@@ -320,31 +270,9 @@ pub enum WackPrintType {
     Pair,
 }
 
-impl WackPrintType {
-    pub fn from_semantic_type(semantic_ty: SemanticType) -> Result<Self, Box<str>> {
-        match semantic_ty {
-            SemanticType::Int => Ok(Self::Int),
-            SemanticType::Bool => Ok(Self::Bool),
-            SemanticType::Char => Ok(Self::Char),
-            SemanticType::String => Ok(Self::StringOrCharArray),
-            SemanticType::Array(inner_ty) => match &*inner_ty {
-                SemanticType::Char => Ok(Self::StringOrCharArray),
-                SemanticType::AnyType | SemanticType::Error(_) => {
-                    Err(format!("found error/any semantic type `{}`", inner_ty).into())
-                }
-                _ => Ok(Self::OtherArray),
-            },
-            SemanticType::Pair(_, _) | SemanticType::ErasedPair => Ok(Self::Pair),
-            SemanticType::AnyType | SemanticType::Error(_) => {
-                Err(format!("found error/any semantic type `{}`", semantic_ty).into())
-            }
-        }
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WackValue {
-    Literal(WackLiteral), // My only concern is the error type on SemanticType
+    Literal(WackLiteral), // Literals are all constants
     Var(WackTempIdent),
 }
 
@@ -355,6 +283,40 @@ pub enum WackLiteral {
     Char(WackChar), // 7-bit ASCII fits within 1 byte
     StringLit(ArcIntern<str>),
     NullPair,
+}
+
+// I know that these are the same as the ones in ast.rs but I'm not sure if I want to
+// couple them together or not. For now I'll separate them just in case I need to move
+// Len, Ord, Chr somewhere else
+#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+pub enum UnaryOp {
+    BNot,
+    LNot,
+    Negate,
+    Len,
+    Ord,
+    Chr,
+}
+
+// See UnaryOperator explanation above
+#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+pub enum BinaryOp {
+    Mul,
+    Div,
+    Mod,
+    Add,
+    Sub,
+    Gt,
+    Gte,
+    Lt,
+    Lte,
+    Eq,
+    Neq,
+    BAnd,
+    BXor,
+    BOr,
+    LAnd,
+    LOr,
 }
 
 /// A 1-byte representation of a boolean value - the smallest possible.
@@ -441,6 +403,81 @@ pub mod wack_bool {
         #[inline]
         fn from(wack_bool: WackBool) -> Self {
             wack_bool.into_u8()
+        }
+    }
+}
+
+impl WackInstr {
+    // The default index for pointer arithmetic is zero, i.e. the very start
+    const DEFAULT_ADD_PTR_INDEX: WackValue = WackValue::Literal(WackLiteral::Int(0));
+
+    // The default scale for pointer arithmetic should be one byte.
+    const DEFAULT_ADD_PTR_SCALE: usize = 1;
+
+    // The default offset for pointer arithmetic is zero, i.e. no offset
+    const DEFAULT_ADD_PTR_OFFSET: i32 = 0;
+
+    /// Creates a pointer-arithmetic instruction that simply adds a fixed offset.
+    #[inline]
+    #[must_use]
+    pub const fn add_ptr_offset(src_ptr: WackValue, offset: i32, dst_ptr: WackTempIdent) -> Self {
+        Self::AddPtr {
+            src_ptr,
+            index: Self::DEFAULT_ADD_PTR_INDEX,
+            scale: Self::DEFAULT_ADD_PTR_SCALE,
+            offset,
+            dst_ptr,
+        }
+    }
+
+    /// Creates a pointer-arithmetic instruction that, provided the scale (in bytes) of each index,
+    /// simply indexes into the array-like region with no offset.
+    #[inline]
+    #[must_use]
+    pub const fn add_ptr_index(
+        src_ptr: WackValue,
+        index: WackValue,
+        scale: usize,
+        dst_ptr: WackTempIdent,
+    ) -> Self {
+        Self::AddPtr {
+            src_ptr,
+            index,
+            scale,
+            offset: Self::DEFAULT_ADD_PTR_OFFSET,
+            dst_ptr,
+        }
+    }
+}
+
+impl WackPrintType {
+    pub fn from_semantic_type(semantic_ty: SemanticType) -> Result<Self, Box<str>> {
+        match semantic_ty {
+            SemanticType::Int => Ok(Self::Int),
+            SemanticType::Bool => Ok(Self::Bool),
+            SemanticType::Char => Ok(Self::Char),
+            SemanticType::String => Ok(Self::StringOrCharArray),
+            SemanticType::Array(inner_ty) => match &*inner_ty {
+                SemanticType::Char => Ok(Self::StringOrCharArray),
+                SemanticType::AnyType | SemanticType::Error(_) => {
+                    Err(format!("found error/any semantic type `{}`", inner_ty).into())
+                }
+                _ => Ok(Self::OtherArray),
+            },
+            SemanticType::Pair(_, _) | SemanticType::ErasedPair => Ok(Self::Pair),
+            SemanticType::AnyType | SemanticType::Error(_) => {
+                Err(format!("found error/any semantic type `{}`", semantic_ty).into())
+            }
+        }
+    }
+}
+
+impl WackReadType {
+    pub fn from_semantic_type(semantic_ty: SemanticType) -> Result<Self, Box<str>> {
+        match semantic_ty {
+            SemanticType::Int => Ok(Self::Int),
+            SemanticType::Char => Ok(Self::Char),
+            _ => Err(format!("incorrect semantic type found `{}`", semantic_ty).into()),
         }
     }
 }
@@ -546,40 +583,6 @@ pub mod wack_char {
             value.into_u8()
         }
     }
-}
-
-// I know that these are the same as the ones in ast.rs but I'm not sure if I want to
-// couple them together or not. For now I'll separate them just in case I need to move
-// Len, Ord, Chr somewhere else
-#[derive(Clone, Debug, PartialEq, Eq, Copy)]
-pub enum UnaryOp {
-    BNot,
-    LNot,
-    Negate,
-    Len,
-    Ord,
-    Chr,
-}
-
-// See UnaryOperator explanation above
-#[derive(Clone, Debug, PartialEq, Eq, Copy)]
-pub enum BinaryOp {
-    Mul,
-    Div,
-    Mod,
-    Add,
-    Sub,
-    Gt,
-    Gte,
-    Lt,
-    Lte,
-    Eq,
-    Neq,
-    BAnd,
-    BXor,
-    BOr,
-    LAnd,
-    LOr,
 }
 
 impl From<ast::BinaryOper> for BinaryOp {
@@ -895,6 +898,7 @@ impl fmt::Debug for WackInstr {
                 "JumpIfNotZero {{ condition: {:?}, target: {:?} }}",
                 condition, target
             ),
+            Self::JumpToHandler(fun_name) => write!(f, "JumpToHandler({:?})", fun_name),
             Self::Label(label) => write!(f, "Label({:?})", label),
             Self::FunCall {
                 fun_name,
