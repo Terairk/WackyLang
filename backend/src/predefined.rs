@@ -15,7 +15,7 @@ use Operand::{Data, Imm, Indexed, Memory, Reg};
 use Register::{AX, BP, BX, DI, DX, R9, R10, SI, SP};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use util::gen_flags::{GenFlags, get_flags_gbl, rewrite_global_flag};
+use util::gen_flags::{GenFlags, INBUILT_ARR_STORE8, get_flags_gbl, rewrite_global_flag};
 use util::gen_flags::{
     INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_ARR_STORE1,
     INBUILT_ARR_STORE4, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO, INBUILT_EXIT, INBUILT_FREE,
@@ -555,177 +555,74 @@ static PRINTLN: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     directives: vec![Directive(PRINTLN_STR0, "")],
 });
 
-static ARR_LOAD1: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: INBUILT_ARR_LOAD1.to_owned(),
-    global: false,
-    instructions: vec![
-        Push(Reg(BX)),
-        Test {
-            typ: Longword,
-            op1: Reg(R10),
-            op2: Reg(R10),
-        },
-        Cmov {
-            condition: L,
-            typ: Quadword,
-            src: Reg(R10),
-            dst: Reg(SI),
-        },
-        JmpCC {
-            condition: L,
-            label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-            is_func: true,
-        },
-        Mov {
-            typ: Longword,
-            src: Memory(R9, -4),
-            dst: Reg(BX),
-        },
-        Cmp {
-            typ: Longword,
-            op1: Reg(BX),
-            op2: Reg(R10),
-        },
-        Cmov {
-            condition: GE,
-            typ: Quadword,
-            src: Reg(R10),
-            dst: Reg(SI),
-        },
-        JmpCC {
-            condition: GE,
-            label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-            is_func: true,
-        },
-        Lea {
-            src: Indexed {
-                offset: 0,
-                base: R9,
-                index: R10,
-                scale: 1,
+fn create_arr_load_function(name: String, scale: i32) -> AsmFunction {
+    AsmFunction {
+        name,
+        global: false,
+        instructions: vec![
+            Push(Reg(BX)),
+            Test {
+                typ: Longword,
+                op1: Reg(R10),
+                op2: Reg(R10),
             },
-            dst: Reg(R9),
-        },
-        Pop(Reg(BX)),
-        Ret,
-    ],
-    directives: vec![],
-});
+            Cmov {
+                condition: L,
+                typ: Quadword,
+                src: Reg(R10),
+                dst: Reg(SI),
+            },
+            JmpCC {
+                condition: L,
+                label: INBUILT_OUT_OF_BOUNDS.to_owned(),
+                is_func: true,
+            },
+            Mov {
+                typ: Longword,
+                src: Memory(R9, -4),
+                dst: Reg(BX),
+            },
+            Cmp {
+                typ: Longword,
+                op1: Reg(BX),
+                op2: Reg(R10),
+            },
+            Cmov {
+                condition: GE,
+                typ: Quadword,
+                src: Reg(R10),
+                dst: Reg(SI),
+            },
+            JmpCC {
+                condition: GE,
+                label: INBUILT_OUT_OF_BOUNDS.to_owned(),
+                is_func: true,
+            },
+            Lea {
+                src: Indexed {
+                    offset: 0,
+                    base: R9,
+                    index: R10,
+                    scale,
+                },
+                dst: Reg(R9),
+            },
+            Pop(Reg(BX)),
+            Ret,
+        ],
+        directives: vec![],
+    }
+}
 
-static ARR_LOAD4: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: INBUILT_ARR_LOAD4.to_owned(),
-    global: false,
-    instructions: vec![
-        Push(Reg(BX)),
-        Test {
-            typ: Longword,
-            op1: Reg(R10),
-            op2: Reg(R10),
-        },
-        Cmov {
-            condition: L,
-            typ: Quadword,
-            src: Reg(R10),
-            dst: Reg(SI),
-        },
-        JmpCC {
-            condition: L,
-            label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-            is_func: true,
-        },
-        Mov {
-            typ: Longword,
-            src: Memory(R9, -4),
-            dst: Reg(BX),
-        },
-        Cmp {
-            typ: Longword,
-            op1: Reg(BX),
-            op2: Reg(R10),
-        },
-        Cmov {
-            condition: GE,
-            typ: Quadword,
-            src: Reg(R10),
-            dst: Reg(SI),
-        },
-        JmpCC {
-            condition: GE,
-            label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-            is_func: true,
-        },
-        Lea {
-            // typ: Longword,
-            src: Indexed {
-                offset: 0,
-                base: R9,
-                index: R10,
-                scale: 4,
-            },
-            dst: Reg(R9),
-        },
-        Pop(Reg(BX)),
-        Ret,
-    ],
-    directives: vec![],
-});
+// Then use it to define your functions
+static ARR_LOAD1: Lazy<AsmFunction> =
+    Lazy::new(|| create_arr_load_function(INBUILT_ARR_LOAD1.to_owned(), 1));
 
-static ARR_LOAD8: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: INBUILT_ARR_LOAD8.to_owned(),
-    global: false,
-    instructions: vec![
-        Push(Reg(BX)),
-        Test {
-            typ: Longword,
-            op1: Reg(R10),
-            op2: Reg(R10),
-        },
-        Cmov {
-            condition: L,
-            typ: Quadword,
-            src: Reg(R10),
-            dst: Reg(SI),
-        },
-        JmpCC {
-            condition: L,
-            label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-            is_func: true,
-        },
-        Mov {
-            typ: Longword,
-            src: Memory(R9, -4),
-            dst: Reg(BX),
-        },
-        Cmp {
-            typ: Longword,
-            op1: Reg(BX),
-            op2: Reg(R10),
-        },
-        Cmov {
-            condition: GE,
-            typ: Quadword,
-            src: Reg(R10),
-            dst: Reg(SI),
-        },
-        JmpCC {
-            condition: GE,
-            label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-            is_func: true,
-        },
-        Lea {
-            src: Indexed {
-                offset: 0,
-                base: R9,
-                index: R10,
-                scale: 8,
-            },
-            dst: Reg(R9),
-        },
-        Pop(Reg(BX)),
-        Ret,
-    ],
-    directives: vec![],
-});
+static ARR_LOAD4: Lazy<AsmFunction> =
+    Lazy::new(|| create_arr_load_function(INBUILT_ARR_LOAD4.to_owned(), 4));
+
+static ARR_LOAD8: Lazy<AsmFunction> =
+    Lazy::new(|| create_arr_load_function(INBUILT_ARR_LOAD8.to_owned(), 8));
 
 static ERR_OUT_OF_BOUNDS_STR0: &str = "ERR_OUT_OF_BOUNDS_STR0";
 static ERR_OUT_OF_BOUNDS: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
@@ -836,133 +733,83 @@ static ERR_OVERFLOW: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     )],
 });
 
+fn create_read_function(
+    name: String,
+    str_const_name: &'static str,
+    format_str: &'static str,
+    data_type: AssemblyType,
+) -> AsmFunction {
+    AsmFunction {
+        name,
+        global: false,
+        instructions: vec![
+            Push(Reg(BP)),
+            Mov {
+                typ: Quadword,
+                src: Reg(SP),
+                dst: Reg(BP),
+            },
+            Binary {
+                operator: And,
+                typ: Quadword,
+                op1: Imm(-16),
+                op2: Reg(SP),
+            },
+            Binary {
+                operator: Sub,
+                typ: Quadword,
+                op1: Imm(16),
+                op2: Reg(SP),
+            },
+            Mov {
+                typ: data_type,
+                src: Reg(DI),
+                dst: Memory(SP, 0),
+            },
+            Lea {
+                src: Memory(SP, 0),
+                dst: Reg(SI),
+            },
+            Lea {
+                src: Data(str_const_name.to_owned(), 0),
+                dst: Reg(DI),
+            },
+            Mov {
+                typ: Byte,
+                src: Imm(0),
+                dst: Reg(AX),
+            },
+            Call(C_SCANF.to_owned(), true),
+            Mov {
+                typ: data_type,
+                src: Memory(SP, 0),
+                dst: Reg(AX),
+            },
+            Binary {
+                operator: Add,
+                typ: Quadword,
+                op1: Imm(16),
+                op2: Reg(SP),
+            },
+            Mov {
+                typ: Quadword,
+                src: Reg(BP),
+                dst: Reg(SP),
+            },
+            Pop(Reg(BP)),
+            Ret,
+        ],
+        directives: vec![Directive(str_const_name, format_str)],
+    }
+}
+
 static READI_STR0: &str = "READI_STR0";
-static READI: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: INBUILT_READ_INT.to_owned(),
-    global: false,
-    instructions: vec![
-        Push(Reg(BP)),
-        Mov {
-            typ: Quadword,
-            src: Reg(SP),
-            dst: Reg(BP),
-        },
-        Binary {
-            operator: And,
-            typ: Quadword,
-            op1: Imm(-16),
-            op2: Reg(SP),
-        },
-        Binary {
-            operator: Sub,
-            typ: Quadword,
-            op1: Imm(16),
-            op2: Reg(SP),
-        },
-        Mov {
-            typ: Longword,
-            src: Reg(DI),
-            dst: Memory(SP, 0),
-        },
-        Lea {
-            src: Memory(SP, 0),
-            dst: Reg(SI),
-        },
-        Lea {
-            src: Data(READI_STR0.to_owned(), 0),
-            dst: Reg(DI),
-        },
-        Mov {
-            typ: Byte,
-            src: Imm(0),
-            dst: Reg(AX),
-        },
-        Call(C_SCANF.to_owned(), true),
-        Mov {
-            typ: Longword,
-            src: Memory(SP, 0),
-            dst: Reg(AX),
-        },
-        Binary {
-            operator: Add,
-            typ: Quadword,
-            op1: Imm(16),
-            op2: Reg(SP),
-        },
-        Mov {
-            typ: Quadword,
-            src: Reg(BP),
-            dst: Reg(SP),
-        },
-        Pop(Reg(BP)),
-        Ret,
-    ],
-    directives: vec![Directive(READI_STR0, "%d")],
-});
+static READI: Lazy<AsmFunction> =
+    Lazy::new(|| create_read_function(INBUILT_READ_INT.to_owned(), READI_STR0, "%d", Longword));
 
 static READC_STR0: &str = "READC_STR0";
-static READC: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: INBUILT_READ_CHAR.to_owned(),
-    global: false,
-    instructions: vec![
-        Push(Reg(BP)),
-        Mov {
-            typ: Quadword,
-            src: Reg(SP),
-            dst: Reg(BP),
-        },
-        Binary {
-            operator: And,
-            typ: Quadword,
-            op1: Imm(-16),
-            op2: Reg(SP),
-        },
-        Binary {
-            operator: Sub,
-            typ: Quadword,
-            op1: Imm(16),
-            op2: Reg(SP),
-        },
-        Mov {
-            typ: Byte,
-            src: Reg(DI),
-            dst: Memory(SP, 0),
-        },
-        Lea {
-            src: Memory(SP, 0),
-            dst: Reg(SI),
-        },
-        Lea {
-            src: Data(READC_STR0.to_owned(), 0),
-            dst: Reg(DI),
-        },
-        Mov {
-            typ: Byte,
-            src: Imm(0),
-            dst: Reg(AX),
-        },
-        Call(C_SCANF.to_owned(), true),
-        Mov {
-            typ: Byte,
-            src: Memory(SP, 0),
-            dst: Reg(AX),
-        },
-        Binary {
-            operator: Add,
-            typ: Quadword,
-            op1: Imm(16),
-            op2: Reg(SP),
-        },
-        Mov {
-            typ: Quadword,
-            src: Reg(BP),
-            dst: Reg(SP),
-        },
-        Pop(Reg(BP)),
-        Ret,
-    ],
-    directives: vec![Directive(READC_STR0, " %c")],
-});
+static READC: Lazy<AsmFunction> =
+    Lazy::new(|| create_read_function(INBUILT_READ_CHAR.to_owned(), READC_STR0, " %c", Byte));
 
 static ERR_NULL_STR0: &str = "ERR_NULL_STR0";
 static ERR_NULL: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
@@ -1021,176 +868,72 @@ static EXIT: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     directives: vec![],
 });
 
-static ARR_STORE4: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: INBUILT_ARR_STORE1.to_owned(),
-    global: false,
-    instructions: vec![
-        Push(Reg(BX)),
-        Test {
-            typ: Longword,
-            op1: Reg(R10),
-            op2: Reg(R10),
-        },
-        Cmov {
-            condition: L,
-            typ: Quadword,
-            src: Reg(R10),
-            dst: Reg(SI),
-        },
-        JmpCC {
-            condition: L,
-            label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-            is_func: true,
-        },
-        Mov {
-            typ: Longword,
-            src: Memory(R9, -4),
-            dst: Reg(BX),
-        },
-        Cmp {
-            typ: Longword,
-            op1: Reg(BX),
-            op2: Reg(R10),
-        },
-        Cmov {
-            condition: GE,
-            typ: Quadword,
-            src: Reg(R10),
-            dst: Reg(SI),
-        },
-        JmpCC {
-            condition: GE,
-            label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-            is_func: true,
-        },
-        Mov {
-            typ: Longword,
-            src: Reg(AX),
-            dst: Indexed {
-                offset: 0,
-                base: R9,
-                index: R10,
-                scale: 4,
+fn create_arr_store_function(name: String, data_type: AssemblyType, scale: i32) -> AsmFunction {
+    AsmFunction {
+        name,
+        global: false,
+        instructions: vec![
+            Push(Reg(BX)),
+            Test {
+                typ: Longword,
+                op1: Reg(R10),
+                op2: Reg(R10),
             },
-        },
-        Pop(Reg(BX)),
-        Ret,
-    ],
-    directives: vec![],
-});
+            Cmov {
+                condition: L,
+                typ: Quadword,
+                src: Reg(R10),
+                dst: Reg(SI),
+            },
+            JmpCC {
+                condition: L,
+                label: INBUILT_OUT_OF_BOUNDS.to_owned(),
+                is_func: true,
+            },
+            Mov {
+                typ: Longword,
+                src: Memory(R9, -4),
+                dst: Reg(BX),
+            },
+            Cmp {
+                typ: Longword,
+                op1: Reg(BX),
+                op2: Reg(R10),
+            },
+            Cmov {
+                condition: GE,
+                typ: Quadword,
+                src: Reg(R10),
+                dst: Reg(SI),
+            },
+            JmpCC {
+                condition: GE,
+                label: INBUILT_OUT_OF_BOUNDS.to_owned(),
+                is_func: true,
+            },
+            Mov {
+                typ: data_type,
+                src: Reg(AX),
+                dst: Indexed {
+                    offset: 0,
+                    base: R9,
+                    index: R10,
+                    scale,
+                },
+            },
+            Pop(Reg(BX)),
+            Ret,
+        ],
+        directives: vec![],
+    }
+}
 
-static ARR_STORE1: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: INBUILT_ARR_STORE4.to_owned(),
-    global: false,
-    instructions: vec![
-        Push(Reg(BX)),
-        Test {
-            typ: Longword,
-            op1: Reg(R10),
-            op2: Reg(R10),
-        },
-        Cmov {
-            condition: L,
-            typ: Quadword,
-            src: Reg(R10),
-            dst: Reg(SI),
-        },
-        JmpCC {
-            condition: L,
-            label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-            is_func: true,
-        },
-        Mov {
-            typ: Longword,
-            src: Memory(R9, -4),
-            dst: Reg(BX),
-        },
-        Cmp {
-            typ: Longword,
-            op1: Reg(BX),
-            op2: Reg(R10),
-        },
-        Cmov {
-            condition: GE,
-            typ: Quadword,
-            src: Reg(R10),
-            dst: Reg(SI),
-        },
-        JmpCC {
-            condition: GE,
-            label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-            is_func: true,
-        },
-        Mov {
-            typ: Byte,
-            src: Reg(AX),
-            dst: Indexed {
-                offset: 0,
-                base: R9,
-                index: R10,
-                scale: 1,
-            },
-        },
-        Pop(Reg(BX)),
-        Ret,
-    ],
-    directives: vec![],
-});
+// Then use the helper function to define your store functions
+static ARR_STORE1: Lazy<AsmFunction> =
+    Lazy::new(|| create_arr_store_function(INBUILT_ARR_STORE1.to_owned(), Byte, 1));
 
-static ARR_STORE8: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
-    name: INBUILT_ARR_STORE4.to_owned(),
-    global: false,
-    instructions: vec![
-        Push(Reg(BX)),
-        Test {
-            typ: Longword,
-            op1: Reg(R10),
-            op2: Reg(R10),
-        },
-        Cmov {
-            condition: L,
-            typ: Quadword,
-            src: Reg(R10),
-            dst: Reg(SI),
-        },
-        JmpCC {
-            condition: L,
-            label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-            is_func: true,
-        },
-        Mov {
-            typ: Longword,
-            src: Memory(R9, -4),
-            dst: Reg(BX),
-        },
-        Cmp {
-            typ: Longword,
-            op1: Reg(BX),
-            op2: Reg(R10),
-        },
-        Cmov {
-            condition: GE,
-            typ: Quadword,
-            src: Reg(R10),
-            dst: Reg(SI),
-        },
-        JmpCC {
-            condition: GE,
-            label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-            is_func: true,
-        },
-        Mov {
-            typ: Quadword,
-            src: Reg(AX),
-            dst: Indexed {
-                offset: 0,
-                base: R9,
-                index: R10,
-                scale: 8,
-            },
-        },
-        Pop(Reg(BX)),
-        Ret,
-    ],
-    directives: vec![],
-});
+static ARR_STORE4: Lazy<AsmFunction> =
+    Lazy::new(|| create_arr_store_function(INBUILT_ARR_STORE4.to_owned(), Longword, 4));
+
+static ARR_STORE8: Lazy<AsmFunction> =
+    Lazy::new(|| create_arr_store_function(INBUILT_ARR_STORE8.to_owned(), Quadword, 8));
