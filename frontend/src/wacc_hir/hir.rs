@@ -95,7 +95,7 @@ pub enum RValue {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 #[repr(u8)]
 pub enum PairElemSelector {
     Fst,
@@ -125,7 +125,7 @@ pub enum Expr {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Liter {
     IntLiter(i32),
     BoolLiter(bool),
@@ -135,7 +135,7 @@ pub enum Liter {
     PairLiter,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum UnaryOper {
     BNot,
     LNot,
@@ -145,7 +145,7 @@ pub enum UnaryOper {
     Chr,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum BinaryOper {
     Mul,
     Div,

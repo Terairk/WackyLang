@@ -1,31 +1,21 @@
-//! TODO: crate documentation
-//!
-//! this is here as a placeholder documentation
-//!
-//!
-
-// here, AST lowering is performed:
-// renaming is done, and after:
-// >eliminate scopes in statements,
-// >parenthesis in expressions
-// >remove error nodes from AST
-// >remove all loop kinds and change to loop+if+break
+//! This phase lowers the AST into Higher Intermediate Representation by:
+//! 1) Renaming all (repeating and non-repeating) variables, so all variable identifiers are unique
+//! 2) Eliminating scopes in statements
+//! 3) Eliminating parentheses in expressions
+//! 4) Removing all error-nodes from the parsing phase
+//! 5) Lowering all conditional statement constructs to [`hir::Stat::IfThenElse`]
+//! 6) Lowering all loop constructs into a combination of [`hir::Stat::Loop`], [`hir::Stat::IfThenElse`], and [`hir::Stat::Break`]
 
 use crate::parsing::ast;
-use crate::source::SourcedNode;
 use crate::wacc_hir::hir::Program;
 use crate::wacc_hir::lower_ast::{lower_ast, AstLoweringPhaseResult, FuncSymbolTable};
 use crate::{build_semantic_report, StreamType};
-use chumsky::input::Input;
-use chumsky::Parser;
 use std::io;
 use std::io::Write;
 use thiserror::Error;
 
 pub mod hir;
 mod lower_ast;
-
-type SN<T> = SourcedNode<T>;
 
 #[derive(Debug, Error)]
 pub enum AstLoweringPhaseError {
