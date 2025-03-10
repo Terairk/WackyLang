@@ -7,7 +7,7 @@ use backend::predefined::generate_predefined;
 use backend::replace_pseudo::replace_pseudo_in_program;
 use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
-use chumsky::{Parser, extra};
+use chumsky::{extra, Parser};
 use clap::Parser as ClapParser;
 use middle::ast_transform::lower_program;
 use std::path::PathBuf;
@@ -16,7 +16,7 @@ use syntax::ast;
 use syntax::parser::program_parser;
 use syntax::rename::rename;
 use syntax::source::{SourcedSpan, StrSourceId};
-use syntax::token::{Token, lexer};
+use syntax::token::{lexer, Token};
 use syntax::typecheck::typecheck;
 use syntax::{build_semantic_error_report, build_syntactic_report};
 
@@ -177,7 +177,7 @@ fn main() -> ExitCode {
     let renamed_errors_not_empty = !renamed_errors.is_empty();
     if renamed_errors_not_empty {
         for e in &renamed_errors {
-            build_semantic_error_report(&file_path, e, source.clone());
+            build_semantic_error_report(e, source.clone());
         }
     }
 
@@ -195,7 +195,7 @@ fn main() -> ExitCode {
     let type_errors = &type_resolver.type_errors;
     if !type_errors.is_empty() {
         for e in type_errors {
-            build_semantic_error_report(&file_path, e, source.clone());
+            build_semantic_error_report(e, source.clone());
         }
         return ExitCode::from(SEMANTIC_ERR_CODE);
     }

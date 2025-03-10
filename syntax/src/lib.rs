@@ -247,6 +247,7 @@ pub mod source;
 pub mod token;
 pub mod typecheck;
 
+#[inline]
 #[allow(clippy::unwrap_used)]
 pub fn build_syntactic_report<T>(error: &Rich<T, SourcedSpan>, source: String)
 where
@@ -266,15 +267,18 @@ where
         .unwrap();
 }
 
-#[allow(clippy::unwrap_used)]
 #[inline]
-pub fn semantic_report_helper(
-    file_path: &String,
-    message: &str,
-    error: &SemanticError,
-    span: &SourcedSpan,
-    source: String,
-) {
+pub fn build_semantic_error_report(error: &SemanticError, source: String) {
+    // determine the error-message
+    let message = match error {
+        SemanticError::TypeMismatch(_, _, _) => "Type Error",
+        SemanticError::DuplicateIdent(_) => "Duplicate Identifier",
+        SemanticError::InvalidNumberOfIndexes(_, _, _) => "Wrong number of indexes",
+        // Handle other error variants the same way
+        _ => "Semantic Error",
+    };
+
+    // build report with this error message
     let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
     Report::build(ariadne::ReportKind::Error, error.span())
         .with_config(config)
@@ -284,40 +288,4 @@ pub fn semantic_report_helper(
         .finish()
         .print((error.span().source_id().clone(), Source::from(source)))
         .unwrap();
-}
-
-pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, source: String) {
-    match error {
-        SemanticError::TypeMismatch(span, _, _) => {
-            semantic_report_helper(file_path, "Type Error", error, span, source);
-        }
-        SemanticError::DuplicateIdent(ident) => {
-            semantic_report_helper(
-                file_path,
-                "Duplicate Identifier",
-                error,
-                &ident.span(),
-                source,
-            );
-        }
-        SemanticError::InvalidNumberOfIndexes(span, _, _) => {
-            semantic_report_helper(file_path, "Wrong number of indexes", error, &span, source);
-        }
-        // Handle other error variants similarly
-        _ => {
-            // Generic error report for other cases
-            let span = match error {
-                SemanticError::ArityMismatch(node, _, _) => node.span().clone(),
-                SemanticError::AssignmentWithBothSidesUnknown(span) => span.clone(),
-                SemanticError::TypeMismatch(span, _, _) => span.clone(),
-                SemanticError::InvalidFreeType(span, _) => span.clone(),
-                SemanticError::MismatchedArgCount(span, _, _) => span.clone(),
-                SemanticError::InvalidIndexType(span, _) => span.clone(),
-                SemanticError::UndefinedIdent(node) => node.span().clone(),
-                SemanticError::ReturnInMain(span) => span.clone(),
-                _ => panic!("Unhandled error variant"),
-            };
-            semantic_report_helper(file_path, "Semantic Error", error, &span, source);
-        }
-    }
 }

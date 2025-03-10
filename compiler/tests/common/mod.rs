@@ -5,7 +5,7 @@ use backend::predefined::generate_predefined;
 use backend::replace_pseudo::replace_pseudo_in_program;
 use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
-use chumsky::{Parser, extra};
+use chumsky::{extra, Parser};
 use middle::ast_transform::lower_program;
 use regex::Regex;
 use std::fs;
@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use syntax::parser::program_parser;
 use syntax::rename::rename;
 use syntax::source::{SourcedSpan, StrSourceId};
-use syntax::token::{Token, lexer};
+use syntax::token::{lexer, Token};
 use syntax::typecheck::typecheck;
 use syntax::{ast, build_semantic_error_report, build_syntactic_report};
 use util::gen_flags::reset_flags_gbl;
@@ -127,14 +127,7 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
     let renamed_errors_not_empty = !renamed_errors.is_empty();
     if renamed_errors_not_empty {
         for e in &renamed_errors {
-            build_semantic_error_report(
-                &path
-                    .to_str()
-                    .expect("should always be able to find it")
-                    .to_owned(),
-                e,
-                source.clone(),
-            );
+            build_semantic_error_report(e, source.clone());
         }
     }
 
@@ -147,14 +140,7 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
     let type_errors = &type_resolver.type_errors;
     if !type_errors.is_empty() {
         for e in type_errors {
-            build_semantic_error_report(
-                &path
-                    .to_str()
-                    .expect("should always be able to find it")
-                    .to_owned(),
-                e,
-                source.clone(),
-            );
+            build_semantic_error_report(e, source.clone());
         }
         return Err(SEMANTIC_ERR_STR.to_owned());
     }
