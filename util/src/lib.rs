@@ -8,8 +8,8 @@
 #![feature(fn_traits)]
 extern crate core;
 
-pub mod apply;
 mod dyn_traits;
+pub mod func;
 pub mod gen_flags;
 pub mod nonempty;
 pub mod recursion;

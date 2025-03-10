@@ -377,19 +377,17 @@ impl LoweringCtx {
         }
     }
 
+    #[allow(clippy::option_if_let_else)]
     #[inline]
     pub fn lower_ident_sn(&mut self, ident: SN<ast::Ident>) -> SN<Ident> {
-        match self.identifier_map.get(ident.inner()) {
-            Some(entry) => {
-                let renamed_name = &entry.renamed_name;
-                renamed_name.clone()
-            }
-            None => {
-                self.add_error(AstLoweringError::UndefinedIdent(ident.clone()));
-                // Return a dummy value so we can maybe very hopefully
-                // allow multiple semantic errors
-                Ident::new_rouge_sn_zero(ident)
-            }
+        if let Some(entry) = self.identifier_map.get(ident.inner()) {
+            let renamed_name = &entry.renamed_name;
+            renamed_name.clone()
+        } else {
+            self.add_error(AstLoweringError::UndefinedIdent(ident.clone()));
+            // Return a dummy value so we can maybe very hopefully
+            // allow multiple semantic errors
+            Ident::new_rouge_sn_zero(ident)
         }
     }
 

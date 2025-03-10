@@ -16,36 +16,10 @@ pub struct Curry2<F, A: ?Sized, B: ?Sized, R: ?Sized> {
 }
 
 mod curry2_impls {
-    use crate::apply::arg::Arg;
-    use crate::apply::curry2::{Applied0, Applied1, Curry2};
-    use crate::apply::f2::{F2Mut, F2Once, F2};
+    use crate::func::curry2::{Applied0, Applied1};
+    use crate::func::f2::{F2Mut, F2Once, F2};
     use crate::typelevel::maybe::{Just, Nothing};
     use std::marker::PhantomData;
-
-    impl<A, B, R, F> Clone for Curry2<F, A, B, R>
-    where
-        A: Arg + Clone,
-        B: Arg,
-        F: Clone + F2Once<A::T, B::T, Output = R>,
-    {
-        #[inline(always)]
-        fn clone(&self) -> Self {
-            Self {
-                f: self.f.clone(),
-                _b: PhantomData,
-                _r: PhantomData,
-                a: self.a.clone(),
-            }
-        }
-    }
-
-    impl<A, B, R, F> Copy for Curry2<F, A, B, R>
-    where
-        A: Arg + Copy,
-        B: Arg,
-        F: Copy + F2Once<A::T, B::T, Output = R>,
-    {
-    }
 
     impl<F, A, B, R> Applied0<F, A, B, R>
     where
@@ -103,6 +77,28 @@ mod curry2_impls {
         }
     }
 
+    impl<F, A, B, R> Clone for Applied0<F, A, B, R>
+    where
+        F: Clone,
+    {
+        #[inline(always)]
+        fn clone(&self) -> Self {
+            Self {
+                f: self.f.clone(),
+                _b: PhantomData,
+                _r: PhantomData,
+                a: self.a.clone(),
+            }
+        }
+    }
+
+    impl<F, A, B, R> Copy for Applied0<F, A, B, R>
+    where
+        F: Copy,
+        A: Copy,
+    {
+    }
+
     impl<F, A, B, R> Applied1<F, A, B, R>
     where
         F: F2Once<A, B, Output = R>,
@@ -130,10 +126,32 @@ mod curry2_impls {
             self.f.call2(self.a.0.clone(), b)
         }
     }
+
+    impl<F, A, B, R> Clone for Applied1<F, A, B, R>
+    where
+        F: Clone,
+        A: Clone,
+    {
+        #[inline(always)]
+        fn clone(&self) -> Self {
+            Self {
+                f: self.f.clone(),
+                _b: PhantomData,
+                _r: PhantomData,
+                a: self.a.clone(),
+            }
+        }
+    }
+    impl<F, A, B, R> Copy for Applied1<F, A, B, R>
+    where
+        F: Copy,
+        A: Copy,
+    {
+    }
 }
 
 mod fn_impls {
-    use crate::apply::curry2::{Applied0, Applied1};
+    use crate::func::curry2::{Applied0, Applied1};
 
     impl<F, A, B, R> FnOnce<(A,)> for Applied0<F, A, B, R>
     where
