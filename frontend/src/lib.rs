@@ -13,6 +13,7 @@ use chumsky::input::Input;
 use chumsky::Parser;
 use std::io::Write;
 
+pub mod multi_item;
 pub mod node;
 pub mod parsing;
 pub mod source;

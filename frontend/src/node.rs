@@ -81,6 +81,11 @@ impl<T, C> Node<T, C> {
     }
 
     #[inline]
+    pub fn into_tuple(self) -> (T, C) {
+        (self.inner, self.context)
+    }
+
+    #[inline]
     pub const fn as_tuple(&self) -> (&T, &C) {
         (&self.inner, &self.context)
     }

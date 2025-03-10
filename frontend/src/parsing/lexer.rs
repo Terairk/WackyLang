@@ -1,7 +1,7 @@
 use crate::alias::InternStr;
+use crate::multi_item::{MultiItem, MultiItemVec};
 use crate::parsing::alias::{LexerExtra, LexerOutput};
 use crate::parsing::ext::{CharExt, ParserExt};
-use crate::parsing::multi_item::{ItemVec, MultiItem};
 use crate::parsing::token::{Delim, Token};
 use crate::parsing::{alias, build_syntactic_report};
 use crate::source::{SourcedSpan, StrSourceId};
@@ -321,7 +321,7 @@ where
             lhs
         },
     )
-    .map(MultiItem::Multi);
+    .map(MultiItem::multi);
 
     let token = choice((
         // parse the exceptions to the "longest match" algorithm first
@@ -346,8 +346,8 @@ where
         // If we encounter an error, skip and attempt to lex the next character as a token instead
         .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
-        .collect::<ItemVec<_>>()
-        .map(ItemVec::into_inner)
+        .collect::<MultiItemVec<_>>()
+        .map(MultiItemVec::into_inner)
         // We must consume the entire source at the end
         .then_ignore(end())
 }

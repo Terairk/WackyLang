@@ -60,6 +60,11 @@ pub enum Stat {
         then_body: StatBlock,
         else_body: StatBlock,
     },
+    /// TODO: remove when loop+break implemented
+    WhileDo {
+        while_cond: SN<Expr>,
+        body: StatBlock,
+    },
     // all loop-like constructs are lowered to a combination of
     // 1) if-then-else
     // 2) loop statement
@@ -202,6 +207,7 @@ mod impls {
     };
     use delegate::delegate;
     use std::fmt;
+    use util::func::f2::F2OnceExt;
     use util::nonempty::NonemptyArray;
 
     impl Expr {
@@ -394,24 +400,39 @@ mod impls {
         /// Note we use the same counter for all identifiers.
         /// Takes in [`SN<ast::Ident>`] as this is what we always get from the AST
         #[inline]
-        fn new_sn(ident: SN<ast::Ident>, counter: &mut usize) -> SN<Self> {
+        #[must_use]
+        const fn new(counter: &mut usize, ident: ast::Ident) -> Self {
             // would rather crash in debug builds than define a saturating
             // so we can change this to u128
             // though I suspect we'd have bigger problems before then
             #[allow(clippy::arithmetic_side_effects)]
             *counter += 1;
-            ident.map_inner(|ident| Self {
+            Self {
                 ident,
                 uuid: *counter,
-            })
+            }
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn new_sn(counter: &mut usize, ident_sn: SN<ast::Ident>) -> SN<Self> {
+            ident_sn.map_inner(Self::new.curry()(counter))
         }
 
         // Function used to create a rogue renamed so we can still build tree even if we have errors
-        pub fn new_rouge_sn_zero(ident: SN<ast::Ident>) -> SN<Self> {
-            ident.map_inner(|ident| Self {
+        #[must_use]
+        #[inline]
+        pub const fn new_rogue_zero(ident: ast::Ident) -> Self {
+            Self {
                 ident,
                 uuid: Self::ZERO_UUID,
-            })
+            }
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn new_rouge_zero_sn(ident_sn: SN<ast::Ident>) -> SN<Self> {
+            ident_sn.map_inner(Self::new_rogue_zero)
         }
     }
 }

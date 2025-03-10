@@ -8,7 +8,6 @@ use std::{fmt, io};
 pub mod ast;
 pub mod ast_frame;
 pub mod lexer;
-pub(crate) mod multi_item;
 pub mod parser;
 pub mod token;
 

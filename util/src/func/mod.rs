@@ -3,7 +3,9 @@
 
 #![allow(clippy::inline_always)]
 
+use crate::func::curry2::Applied1;
 use crate::func::f1::F1Once;
+use crate::func::f2::{F2Once, F2OnceExt};
 use std::ops::Deref;
 
 pub mod compose;
@@ -19,21 +21,58 @@ pub const fn tuple3<T1, T2, T3>(t1: T1, t2: T2, t3: T3) -> (T1, T2, T3) {
     (t1, t2, t3)
 }
 
-/// Type of [`call_deref`]
+/// Type of [`call_ref_uncurried`]
+///
+/// Used by [`f1::F1OnceExt::chain_ref`].
 #[allow(non_camel_case_types)]
-pub type call_deref_t<F, A, B> = fn(f: F, a: A) -> B;
+pub type call_ref_uncurried_t<F, A, B> = fn(f: F, a: A) -> B;
+
+/// Lift a function from `&A -> B` to `A -> B`.
+#[allow(clippy::needless_pass_by_value)]
+#[inline(always)]
+pub fn call_ref_uncurried<F, A, B>(f: F, a: A) -> B
+where
+    F: for<'a> F1Once<&'a A, Output = B>,
+{
+    f.call1_once(&a)
+}
+
+#[allow(clippy::as_conversions)]
+#[inline(always)]
+pub fn call_ref<F, A, B>(f: F) -> Applied1<call_ref_uncurried_t<F, A, B>, F, A, B>
+where
+    F: for<'a> F1Once<&'a A, Output = B>,
+{
+    (call_ref_uncurried as call_ref_uncurried_t<F, A, B>).curry()(f)
+}
+
+/// Type of [`call_deref_uncurried`]
+#[allow(non_camel_case_types)]
+pub type call_deref_uncurried_t<F, A, B> = fn(f: F, a: A) -> B;
 
 /// Lift a function from `&ADeref -> B` to `A -> B`
 /// where `A` can [`Deref::deref`] as `ADeref`
 ///
-/// Used by [`F1Once::chain_ref`].
+/// Used by [`f1::F1OnceExt::chain_deref`].
 #[inline(always)]
-pub fn call_deref<F, A, ADeref: ?Sized, B>(f: F, a: A) -> B
+pub fn call_deref_uncurried<F, A, ADeref: ?Sized, B>(f: F, a: A) -> B
 where
     A: Deref<Target = ADeref>,
     F: for<'a> F1Once<&'a ADeref, Output = B>,
 {
     f.call1_once(&*a)
+}
+
+#[allow(clippy::as_conversions)]
+#[inline(always)]
+pub fn call_deref<F, A, ADeref: ?Sized, B>(
+    f: F,
+) -> Applied1<call_deref_uncurried_t<F, A, B>, F, A, B>
+where
+    A: Deref<Target = ADeref>,
+    F: for<'a> F1Once<&'a ADeref, Output = B>,
+{
+    (call_deref_uncurried as call_deref_uncurried_t<F, A, B>).curry()(f)
 }
 
 pub(super) mod arg {
@@ -55,9 +94,10 @@ pub(super) mod arg {
 }
 
 pub mod f1 {
-    use crate::func::call_deref_t;
     use crate::func::compose::Compose;
     use crate::func::curry2::Applied1;
+    use crate::func::f2::F2OnceExt;
+    use crate::func::{call_deref_uncurried_t, call_ref_uncurried_t};
     use std::ops::Deref;
 
     pub trait F1<A>: F1Mut<A> {
@@ -74,19 +114,31 @@ pub mod f1 {
         fn call1_once(self, a: A) -> Self::Output;
     }
 
+    #[allow(clippy::type_complexity)]
     pub trait F1OnceExt<A>: F1Once<A> {
         fn chain<G, C>(self, g: G) -> Compose<Self, G, Self::Output>
         where
             Self: Sized,
             G: F1Once<Self::Output, Output = C>;
 
-        #[allow(clippy::type_complexity)]
-        fn chain_ref<G, BDeref: ?Sized, C>(
+        fn chain_ref<G, C>(
             self,
             g: G,
         ) -> Compose<
             Self,
-            Applied1<call_deref_t<G, Self::Output, C>, G, Self::Output, C>,
+            Applied1<call_ref_uncurried_t<G, Self::Output, C>, G, Self::Output, C>,
+            Self::Output,
+        >
+        where
+            Self: Sized,
+            G: for<'a> F1Once<&'a Self::Output, Output = C>;
+
+        fn chain_deref<G, BDeref: ?Sized, C>(
+            self,
+            g: G,
+        ) -> Compose<
+            Self,
+            Applied1<call_deref_uncurried_t<G, Self::Output, C>, G, Self::Output, C>,
             Self::Output,
         >
         where
@@ -99,8 +151,7 @@ pub mod f1 {
         use crate::func::compose::Compose;
         use crate::func::curry2::Applied1;
         use crate::func::f1::{F1Mut, F1Once, F1OnceExt, F1};
-        use crate::func::f2::F2OnceExt as _;
-        use crate::func::{call_deref, call_deref_t};
+        use crate::func::{call_deref, call_deref_uncurried_t, call_ref, call_ref_uncurried_t};
         use std::ops::Deref;
 
         impl<F, A, B> F1<A> for F
@@ -135,6 +186,7 @@ pub mod f1 {
             }
         }
 
+        #[allow(clippy::as_conversions)]
         impl<F, A> F1OnceExt<A> for F
         where
             F: F1Once<A>,
@@ -148,14 +200,29 @@ pub mod f1 {
                 Compose::compose(self, g)
             }
 
-            #[allow(clippy::as_conversions)]
             #[inline(always)]
-            fn chain_ref<G, BDeref: ?Sized, C>(
+            fn chain_ref<G, C>(
                 self,
                 g: G,
             ) -> Compose<
                 Self,
-                Applied1<call_deref_t<G, Self::Output, C>, G, Self::Output, C>,
+                Applied1<call_ref_uncurried_t<G, Self::Output, C>, G, Self::Output, C>,
+                Self::Output,
+            >
+            where
+                Self: Sized,
+                G: for<'a> F1Once<&'a Self::Output, Output = C>,
+            {
+                Compose::compose(self, call_ref(g))
+            }
+
+            #[inline(always)]
+            fn chain_deref<G, BDeref: ?Sized, C>(
+                self,
+                g: G,
+            ) -> Compose<
+                Self,
+                Applied1<call_deref_uncurried_t<G, Self::Output, C>, G, Self::Output, C>,
                 Self::Output,
             >
             where
@@ -163,10 +230,7 @@ pub mod f1 {
                 G: for<'any> F1Once<&'any BDeref, Output = C>,
                 Self::Output: Deref<Target = BDeref>,
             {
-                Compose::compose(
-                    self,
-                    (call_deref as call_deref_t<G, Self::Output, C>).curry()(g),
-                )
+                Compose::compose(self, call_deref(g))
             }
         }
     }

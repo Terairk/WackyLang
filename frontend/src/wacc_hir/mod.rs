@@ -22,7 +22,7 @@ type SN<T> = SourcedNode<T>;
 #[derive(Debug, Clone)]
 pub enum AstLoweringError {
     // ArityMismatch(SN<ast::Ident>, usize, usize),
-    // DuplicateIdent(SN<ast::Ident>),
+    DuplicateIdent(SN<ast::Ident>),
     // TypeMismatch(SourcedSpan, SemanticType, SemanticType),
     // AssignmentWithBothSidesUnknown(SourcedSpan),
     // MismatchedArgCount(SourcedSpan, usize, usize),

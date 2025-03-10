@@ -1,3 +1,4 @@
+use crate::multi_item::{MultiItem, MultiItemVec};
 use crate::parsing::ast;
 use crate::source::{SourcedBoxedNode, SourcedNode, SourcedSpan};
 use crate::wacc_hir::hir::{
@@ -5,9 +6,14 @@ use crate::wacc_hir::hir::{
     PairElem, PairElemSelector, PairElemType, Program, RValue, Stat, StatBlock, Type, UnaryOper,
 };
 use crate::wacc_hir::AstLoweringError;
+use chumsky::container::Container;
 use std::collections::HashMap;
 use std::mem;
 use util::ext::BoxedSliceExt as _;
+use util::func::f1::F1OnceExt;
+use util::func::f2::F2OnceExt;
+
+use util::nonempty::NonemptyArray;
 
 // A file-local type alias for better readability of type definitions
 type SN<T> = SourcedNode<T>;
@@ -134,23 +140,132 @@ impl LoweringCtx {
     // ----
 
     pub fn lower_program(&mut self, program: ast::Program) -> Program {
-        todo!()
+        // cannot curry mutable-references and still have FnMut, RIP :(
+        let lowered_funcs = program.funcs.map(|f| self.lower_func(f));
+        let lowered_body = self.lower_stat_block(program.body);
+
+        // return lowered program
+        Program {
+            funcs: lowered_funcs,
+            body: lowered_body,
+        }
     }
 
+    #[inline]
     pub fn lower_func(&mut self, func: ast::Func) -> Func {
-        todo!()
+        let ast::Func {
+            return_type,
+            name,
+            params,
+            body,
+        } = func;
+        Func {
+            return_type: Self::lower_type_sn(&return_type),
+            name,
+            // cannot curry mutable-references and still have FnMut, RIP :(
+            params: params.map(|p| self.lower_func_param(p)),
+            body: self.lower_stat_block(body),
+        }
     }
 
+    #[inline]
     pub fn lower_func_param(&mut self, func_param: ast::FuncParam) -> FuncParam {
-        todo!()
+        let ast::FuncParam { r#type, name } = func_param;
+
+        FuncParam {
+            r#type: Self::lower_type_sn(&r#type),
+            name: self.lower_ident_sn(name),
+        }
     }
 
+    #[allow(clippy::expect_used)]
     pub fn lower_stat_block(&mut self, stat_block: ast::StatBlock) -> StatBlock {
-        todo!()
+        // accumulate lowered statements into output vector
+        let mut lowered_stats: MultiItemVec<SN<Stat>> = MultiItemVec::new();
+        for stat_sn in stat_block.0 {
+            lowered_stats.push_multi_item(self.lower_stat_sn(stat_sn));
+        }
+
+        // there should always be >1 lowered statements by this point
+        StatBlock(NonemptyArray::try_from_boxed_slice(lowered_stats).expect(
+            "Lowering a `StatBlock` should always leave produce at least one lowered `Stat`",
+        ))
     }
 
-    pub fn lower_stat(&mut self, stat: ast::Stat) -> Stat {
-        todo!()
+    #[allow(clippy::shadow_unrelated)]
+    #[allow(clippy::indexing_slicing)]
+    pub fn lower_stat_sn(&mut self, stat_sn: SN<ast::Stat>) -> MultiItem<SN<Stat>> {
+        // decompose statement, and create curried constructor
+        let (stat, span) = stat_sn.into_tuple();
+        let sn_new_flipped = (|c, i| SN::new(i, c)).curry();
+        let stat_sn = sn_new_flipped(span).chain(MultiItem::Item);
+
+        // match on statement, and produce either one spanned-statement or many of them
+        match stat {
+            ast::Stat::Skip => stat_sn(Stat::Skip),
+            ast::Stat::VarDefinition {
+                r#type,
+                name,
+                rvalue,
+            } => {
+                let lowered_type = Self::lower_type_sn(&r#type);
+
+                // Sorry about the lots of clones here
+                // Evaluate the rhs before creating unique name to not allow int x = x
+                // where x is not defined yet
+                // resolved_expr returns a new copy of the initializer with any variables renamed
+                let lowered_rvalue = self.lower_rvalue_sn(rvalue);
+
+                // Check for duplicate id after resolving rvalue
+                // shouldn't panic since we check the key exists
+                if self.identifier_map.contains_key(name.inner())
+                    && self.identifier_map[name.inner()].from_current_block
+                {
+                    self.add_error(AstLoweringError::DuplicateIdent(name.clone()));
+                    // return dummy Stat
+                    return stat_sn(Stat::VarDefinition {
+                        r#type: lowered_type,
+                        name: Ident::new_rouge_zero_sn(name),
+                        rvalue: lowered_rvalue,
+                    });
+                }
+
+                let unique_name = Ident::new_sn(&mut self.counter, name.clone());
+                let map_entry = IDMapEntry::new(unique_name.clone(), true);
+                self.identifier_map.insert(name.inner().clone(), map_entry);
+
+                stat_sn(Stat::VarDefinition {
+                    r#type: lowered_type,
+                    name: unique_name,
+                    rvalue: lowered_rvalue,
+                })
+            }
+            ast::Stat::Assignment { lvalue, rvalue } => stat_sn(Stat::Assignment {
+                lvalue: self.lower_lvalue_sn(lvalue),
+                rvalue: self.lower_rvalue_sn(rvalue),
+            }),
+            ast::Stat::Read(lv) => stat_sn(Stat::Read(self.lower_lvalue_sn(lv))),
+            ast::Stat::Free(e) => stat_sn(Stat::Free(self.lower_expr_sn(e))),
+            ast::Stat::Return(e) => stat_sn(Stat::Return(self.lower_expr_sn(e))),
+            ast::Stat::Exit(e) => stat_sn(Stat::Exit(self.lower_expr_sn(e))),
+            ast::Stat::Print(e) => stat_sn(Stat::Print(self.lower_expr_sn(e))),
+            ast::Stat::Println(e) => stat_sn(Stat::Println(self.lower_expr_sn(e))),
+            ast::Stat::IfThenElse {
+                if_cond,
+                then_body,
+                else_body,
+            } => stat_sn(Stat::IfThenElse {
+                if_cond: self.lower_expr_sn(if_cond),
+                then_body: self.lower_stat_block(then_body),
+                else_body: self.lower_stat_block(else_body),
+            }),
+            // TODO: refactor this branch once loop-break implemented
+            ast::Stat::WhileDo { while_cond, body } => stat_sn(Stat::WhileDo {
+                while_cond: self.lower_expr_sn(while_cond),
+                body: self.lower_stat_block(body),
+            }),
+            ast::Stat::Scoped(block) => MultiItem::multi(self.lower_stat_block(block).0),
+        }
     }
 
     pub fn lower_lvalue(&mut self, lvalue: ast::LValue) -> LValue {
@@ -162,8 +277,13 @@ impl LoweringCtx {
     }
 
     #[inline]
+    pub fn lower_lvalue_sn(&mut self, lvalue_sn: SN<ast::LValue>) -> SN<LValue> {
+        lvalue_sn.map_inner(Self::lower_lvalue.curry()(self))
+    }
+
+    #[inline]
     pub fn lower_lvalue_sbn(&mut self, lvalue_sbn: SBN<ast::LValue>) -> SBN<LValue> {
-        lvalue_sbn.map_inner_unboxed(|lv| self.lower_lvalue(lv))
+        lvalue_sbn.map_inner_unboxed(Self::lower_lvalue.curry()(self))
     }
 
     #[inline]
@@ -177,9 +297,15 @@ impl LoweringCtx {
             ast::RValue::PairElem(p) => RValue::PairElem(self.lower_pair_elem_sn(p)),
             ast::RValue::Call { func_name, args } => RValue::Call {
                 func_name,
+                // cannot curry mutable-references and still have FnMut, RIP :(
                 args: args.map(|e| self.lower_expr_sn(e)),
             },
         }
+    }
+
+    #[inline]
+    pub fn lower_rvalue_sn(&mut self, rvalue_sbn: SN<ast::RValue>) -> SN<RValue> {
+        rvalue_sbn.map_inner(Self::lower_rvalue.curry()(self))
     }
 
     #[inline]
@@ -203,7 +329,7 @@ impl LoweringCtx {
 
     #[inline]
     pub fn lower_pair_elem_sn(&mut self, pair_elem_sn: SN<ast::PairElem>) -> SN<PairElem> {
-        pair_elem_sn.map_inner(|p| self.lower_pair_elem(p))
+        pair_elem_sn.map_inner(Self::lower_pair_elem.curry()(self))
     }
 
     #[inline]
@@ -214,18 +340,19 @@ impl LoweringCtx {
         } = array_elem;
         ArrayElem {
             array_name: self.lower_ident_sn(array_name),
-            indices: indices.map(|x| self.lower_expr_sn(x)),
+            // cannot curry mutable-references and still have FnMut, RIP :(
+            indices: indices.map(|e| self.lower_expr_sn(e)),
         }
     }
 
     #[inline]
     pub fn lower_array_elem_sn(&mut self, array_elem_sn: SN<ast::ArrayElem>) -> SN<ArrayElem> {
-        array_elem_sn.map_inner(|a| self.lower_array_elem(a))
+        array_elem_sn.map_inner(Self::lower_array_elem.curry()(self))
     }
 
     #[inline]
     pub fn lower_array_elem_sbn(&mut self, array_elem_sbn: SBN<ast::ArrayElem>) -> SBN<ArrayElem> {
-        array_elem_sbn.map_inner_unboxed(|a| self.lower_array_elem(a))
+        array_elem_sbn.map_inner_unboxed(Self::lower_array_elem.curry()(self))
     }
 
     pub fn lower_expr(&mut self, expr: ast::Expr) -> Expr {
@@ -260,12 +387,12 @@ impl LoweringCtx {
 
     #[inline]
     pub fn lower_expr_sn(&mut self, expr_sn: SN<ast::Expr>) -> SN<Expr> {
-        expr_sn.map_inner(|e| self.lower_expr(e))
+        expr_sn.map_inner(Self::lower_expr.curry()(self))
     }
 
     #[inline]
     pub fn lower_expr_sbn(&mut self, expr_sbn: SBN<ast::Expr>) -> SBN<Expr> {
-        expr_sbn.map_inner_unboxed(|e| self.lower_expr(e))
+        expr_sbn.map_inner_unboxed(Self::lower_expr.curry()(self))
     }
 
     #[allow(clippy::as_conversions)]
@@ -333,11 +460,11 @@ impl LoweringCtx {
             .map_inner(Self::lower_binary_oper)
     }
 
-    pub fn lower_type(r#type: ast::Type) -> Type {
-        match r#type {
-            ast::Type::BaseType(b) => Type::BaseType(b.map_inner(|b| Self::lower_base_type(&b))),
-            ast::Type::ArrayType(a) => Type::ArrayType(a.map_inner_unboxed(Self::lower_array_type)),
-            ast::Type::PairType(fst, snd) => Type::PairType(
+    pub fn lower_type(r#type: &ast::Type) -> Type {
+        match *r#type {
+            ast::Type::BaseType(ref b) => Type::BaseType(Self::lower_base_type_sn(b)),
+            ast::Type::ArrayType(ref a) => Type::ArrayType(Self::lower_array_type_sbn(a)),
+            ast::Type::PairType(ref fst, ref snd) => Type::PairType(
                 Self::lower_pair_elem_type(fst),
                 Self::lower_pair_elem_type(snd),
             ),
@@ -346,6 +473,11 @@ impl LoweringCtx {
                 r#type
             ),
         }
+    }
+
+    #[inline]
+    pub fn lower_type_sn(type_sn: &SN<ast::Type>) -> SN<Type> {
+        type_sn.transpose_ref().map_inner(Self::lower_type)
     }
 
     #[inline]
@@ -358,22 +490,37 @@ impl LoweringCtx {
         }
     }
 
-    pub fn lower_array_type(array_type: ast::ArrayType) -> ArrayType {
+    #[inline]
+    pub fn lower_base_type_sn(base_type_sn: &SN<ast::BaseType>) -> SN<BaseType> {
+        base_type_sn
+            .transpose_ref()
+            .map_inner(Self::lower_base_type)
+    }
+
+    pub fn lower_array_type(array_type: &ast::ArrayType) -> ArrayType {
         let ast::ArrayType { elem_type } = array_type;
         ArrayType {
             elem_type: Self::lower_type(elem_type),
         }
     }
 
-    pub fn lower_pair_elem_type(pair_elem_type: ast::PairElemType) -> PairElemType {
-        match pair_elem_type {
-            ast::PairElemType::ArrayType(a) => {
-                PairElemType::ArrayType(a.map_inner_unboxed(Self::lower_array_type))
+    #[inline]
+    pub fn lower_array_type_sbn(array_type_sbn: &SBN<ast::ArrayType>) -> SBN<ArrayType> {
+        array_type_sbn
+            .transpose_ref_unboxed()
+            .map_inner(Self::lower_array_type)
+            .box_inner()
+    }
+
+    pub fn lower_pair_elem_type(pair_elem_type: &ast::PairElemType) -> PairElemType {
+        match *pair_elem_type {
+            ast::PairElemType::ArrayType(ref a) => {
+                PairElemType::ArrayType(Self::lower_array_type_sbn(a))
             }
-            ast::PairElemType::BaseType(b) => {
-                PairElemType::BaseType(b.map_inner(|b| Self::lower_base_type(&b)))
+            ast::PairElemType::BaseType(ref b) => {
+                PairElemType::BaseType(Self::lower_base_type_sn(b))
             }
-            ast::PairElemType::Pair(s) => PairElemType::Pair(s),
+            ast::PairElemType::Pair(ref s) => PairElemType::Pair(s.clone()),
         }
     }
 
@@ -387,12 +534,12 @@ impl LoweringCtx {
             self.add_error(AstLoweringError::UndefinedIdent(ident.clone()));
             // Return a dummy value so we can maybe very hopefully
             // allow multiple semantic errors
-            Ident::new_rouge_sn_zero(ident)
+            Ident::new_rouge_zero_sn(ident)
         }
     }
 
     #[inline]
-    fn fold_funcname_sn(&mut self, name: SN<ast::Ident>) -> SN<ast::Ident> {
+    fn lower_funcname_sn(&mut self, name: SN<ast::Ident>) -> SN<ast::Ident> {
         // Use ident part of name and then check if it exists in the function table
         // return name regardless but add an error if it doesn't exist
         let ident = name.inner();

@@ -92,6 +92,13 @@ impl<T> NonemptyArray<T> {
     }
 }
 
+impl<T> From<NonemptyArray<T>> for Box<[T]> {
+    #[inline]
+    fn from(value: NonemptyArray<T>) -> Self {
+        value.into_boxed_slice()
+    }
+}
+
 impl<T> ops::Index<usize> for NonemptyArray<T> {
     type Output = T;
 
