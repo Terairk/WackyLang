@@ -1,3 +1,2 @@
-mod ty_eq;
-
-pub trait TyEq {}
+pub mod is;
+pub mod maybe;

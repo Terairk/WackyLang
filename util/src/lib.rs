@@ -4,6 +4,8 @@
 #![feature(type_alias_impl_trait)]
 #![feature(specialization)]
 #![feature(unboxed_closures)]
+#![feature(const_trait_impl)]
+#![feature(fn_traits)]
 extern crate core;
 
 pub mod apply;
@@ -12,7 +14,7 @@ pub mod gen_flags;
 pub mod nonempty;
 pub mod recursion;
 mod rust_gadt_playground;
-mod typelevel;
+pub mod typelevel;
 
 pub(crate) mod private {
     // sealed traits support
