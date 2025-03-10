@@ -67,7 +67,7 @@ fn eval_unary_op(op: UnaryOp, src: WackValue, dst: WackTempIdent) -> Vec<WackIns
             Ord => {
                 if let WackLiteral::Char(value) = value {
                     vec![Copy {
-                        src: Literal(WackLiteral::Int(i32::from(value.into_u8()))),
+                        src: Literal(WackLiteral::Int(i32::from(value))),
                         dst,
                     }]
                 } else {
@@ -92,7 +92,7 @@ fn eval_unary_op(op: UnaryOp, src: WackValue, dst: WackTempIdent) -> Vec<WackIns
             LNot => {
                 let new_instr = match value {
                     WackLiteral::Bool(value) => {
-                        let negated: WackBool = (!value.into_bool()).into();
+                        let negated: WackBool = (!value).into();
                         Copy {
                             src: Literal(WackLiteral::Bool(negated)),
                             dst,
@@ -115,8 +115,8 @@ fn eval_chr(value: &WackLiteral, dst: WackTempIdent) -> Vec<WackInstr> {
     if let WackLiteral::Int(ref value) = *value {
         // chr has some runtime checks which we can do at compile time
         let new_instr = if (MIN_CHR..=MAX_CHR).contains(value) {
-            // Safe to unwrap because we know the value is within bounds
-            let char = unsafe { WackChar::from_u8_unchecked(*value as u8) };
+            // Safe to unwrap because we know the value is within bounds via parser
+            let char = *value as u8;
             Copy {
                 src: Literal(Char(char)),
                 dst,

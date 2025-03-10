@@ -952,8 +952,8 @@ impl AsmGen {
         use WackValue::{Literal, Var};
         match value {
             Literal(Int(i)) => Imm(i),
-            Literal(Bool(b)) => Imm(i32::from(b.into_u8())),
-            Literal(Char(c)) => Imm(i32::from(c.into_u8())),
+            Literal(Bool(b)) => Imm(i32::from(b)),
+            Literal(Char(c)) => Imm(i32::from(c)),
             // TODO: StringLit, need to add to symbol table with current function probably
             // while keeping track of a unique counter just for string constants
             // so we can emit properly, also this should emit a thing for RIP relative addressing

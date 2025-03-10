@@ -276,6 +276,11 @@ pub enum WackValue {
     Var(WackTempIdent),
 }
 
+pub type WackBool = bool;
+pub type WackChar = u8;
+pub(crate) const TRUE: WackBool = true;
+pub(crate) const FALSE: WackBool = false;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WackLiteral {
     Int(i32),
@@ -317,94 +322,6 @@ pub enum BinaryOp {
     BOr,
     LAnd,
     LOr,
-}
-
-/// A 1-byte representation of a boolean value - the smallest possible.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct WackBool(u8);
-
-// impls related to `WackBool`
-pub mod wack_bool {
-    use crate::wackir::WackBool;
-    use std::mem;
-    use thiserror::Error;
-
-    #[derive(Error, Debug)]
-    #[error("Expected a boolean, found byte `{0}`")]
-    pub struct NonBooleanByteError(u8);
-
-    impl WackBool {
-        pub const TRUE: Self = Self(1);
-        pub const FALSE: Self = Self(0);
-
-        #[allow(clippy::as_conversions)]
-        #[inline]
-        #[must_use]
-        pub const fn from_bool(b: bool) -> Self {
-            Self(b as u8)
-        }
-
-        #[inline]
-        #[must_use]
-        pub const fn into_bool(self) -> bool {
-            // SAFETY: the only way to construct `WackBool` is by making sure it is a boolean.
-            unsafe { mem::transmute(self) }
-        }
-
-        /// # Safety
-        /// Only use this if you are _sure_ the [`u8`] byte is actually a boolean.
-        #[inline]
-        #[must_use]
-        pub const unsafe fn from_u8_unchecked(r#u8: u8) -> Self {
-            Self(r#u8)
-        }
-
-        /// # Errors
-        /// Only [`u8`] bytes which are _actually_ booleans can be used to create [`WackBool`].
-        #[inline]
-        pub const fn try_from_u8(r#u8: u8) -> Result<Self, NonBooleanByteError> {
-            match r#u8 {
-                0 | 1 => Ok(Self(r#u8)),
-                _ => Err(NonBooleanByteError(r#u8)),
-            }
-        }
-
-        #[inline]
-        #[must_use]
-        pub const fn into_u8(self) -> u8 {
-            self.0
-        }
-    }
-
-    impl From<bool> for WackBool {
-        #[inline]
-        fn from(b: bool) -> Self {
-            Self::from_bool(b)
-        }
-    }
-
-    impl From<WackBool> for bool {
-        #[inline]
-        fn from(wack_bool: WackBool) -> Self {
-            wack_bool.into_bool()
-        }
-    }
-
-    impl TryFrom<u8> for WackBool {
-        type Error = NonBooleanByteError;
-        #[inline]
-        fn try_from(value: u8) -> Result<Self, Self::Error> {
-            Self::try_from_u8(value)
-        }
-    }
-
-    impl From<WackBool> for u8 {
-        #[inline]
-        fn from(wack_bool: WackBool) -> Self {
-            wack_bool.into_u8()
-        }
-    }
 }
 
 impl WackInstr {
@@ -482,109 +399,6 @@ impl WackReadType {
     }
 }
 
-/// A 1-byte representation of 7-bit ASCII value - the smallest possible.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct WackChar(u8);
-
-// impls related to `WackChar`
-pub mod wack_char {
-    use crate::wackir::WackChar;
-    use thiserror::Error;
-
-    #[derive(Error, Debug)]
-    #[error("Expected an ASCII character, found non-ASCII character `{0}`")]
-    pub struct NonAsciiCharError(char);
-
-    #[derive(Error, Debug)]
-    #[error("Expected an ASCII byte, found non-ASCII byte `{0}`")]
-    pub struct NonAsciiByteError(u8);
-
-    impl WackChar {
-        /// # Safety
-        /// Only use this if you are _sure_ the [`char`] is actually ASCII.
-        #[inline]
-        #[must_use]
-        pub const unsafe fn from_char_unchecked(r#char: char) -> Self {
-            Self(r#char as u8)
-        }
-
-        /// # Errors
-        /// Only [`char`]s which are _actually_ ASCII can be used to create [`WackChar`].
-        #[inline]
-        pub const fn try_from_char(r#char: char) -> Result<Self, NonAsciiCharError> {
-            match r#char {
-                '\x00'..='\x7F' => Ok(Self(r#char as u8)),
-                _ => Err(NonAsciiCharError(r#char)),
-            }
-        }
-
-        #[allow(clippy::as_conversions)]
-        #[inline]
-        #[must_use]
-        pub const fn into_char(self) -> char {
-            self.0 as char
-        }
-
-        /// # Safety
-        /// Only use this if you are _sure_ the [`u8`] byte is actually ASCII.
-        #[inline]
-        #[must_use]
-        pub const unsafe fn from_u8_unchecked(r#u8: u8) -> Self {
-            Self(r#u8)
-        }
-
-        /// # Errors
-        /// Only [`u8`] bytes which are _actually_ ASCII can be used to create [`WackChar`].
-        #[inline]
-        pub const fn try_from_u8(r#u8: u8) -> Result<Self, NonAsciiByteError> {
-            match r#u8 {
-                0x00..=0x7F => Ok(Self(r#u8)),
-                _ => Err(NonAsciiByteError(r#u8)),
-            }
-        }
-
-        #[inline]
-        #[must_use]
-        pub const fn into_u8(self) -> u8 {
-            self.0
-        }
-    }
-
-    impl TryFrom<char> for WackChar {
-        type Error = NonAsciiCharError;
-
-        #[inline]
-        fn try_from(value: char) -> Result<Self, Self::Error> {
-            Self::try_from_char(value)
-        }
-    }
-
-    impl From<WackChar> for char {
-        #[inline]
-        #[must_use]
-        fn from(value: WackChar) -> Self {
-            value.into_char()
-        }
-    }
-
-    impl TryFrom<u8> for WackChar {
-        type Error = NonAsciiByteError;
-        #[inline]
-        fn try_from(value: u8) -> Result<Self, Self::Error> {
-            Self::try_from_u8(value)
-        }
-    }
-
-    impl From<WackChar> for u8 {
-        #[inline]
-        #[must_use]
-        fn from(value: WackChar) -> Self {
-            value.into_u8()
-        }
-    }
-}
-
 impl From<ast::BinaryOper> for BinaryOp {
     #[inline]
     fn from(binop: ast::BinaryOper) -> Self {
@@ -631,8 +445,8 @@ impl From<ast::Liter> for WackLiteral {
             ast::Liter::IntLiter(i) => Self::Int(i),
             ast::Liter::BoolLiter(b) => Self::Bool(b.into()),
             ast::Liter::CharLiter(c) => {
-                // SAFETY: literal characters from the parser are guaranteed to be ASCII
-                Self::Char(unsafe { WackChar::from_char_unchecked(c) })
+                // Should be ok to do since literal characters from the parser are guaranteed to be ASCII
+                Self::Char(u8::try_from(c).expect("frontend should ensure char is ASCII"))
             }
             ast::Liter::StrLiter(s) => Self::StringLit(s),
             ast::Liter::PairLiter => Self::NullPair,
@@ -956,26 +770,17 @@ mod tests {
         // Test boolean literal conversion
         let bool_liter_true = ast::Liter::BoolLiter(true);
         let bool_liter_false = ast::Liter::BoolLiter(false);
-        assert_eq!(
-            WackLiteral::from(bool_liter_true),
-            WackLiteral::Bool(WackBool::TRUE)
-        );
+        assert_eq!(WackLiteral::from(bool_liter_true), WackLiteral::Bool(TRUE));
         assert_eq!(
             WackLiteral::from(bool_liter_false),
-            WackLiteral::Bool(WackBool::FALSE)
+            WackLiteral::Bool(FALSE)
         );
 
         // Test char literal conversion
         let char_liter = ast::Liter::CharLiter('A');
         let char_liter2 = ast::Liter::CharLiter('a');
-        assert_eq!(
-            WackLiteral::from(char_liter),
-            WackLiteral::Char(unsafe { WackChar::from_u8_unchecked(65) })
-        ); // ASCII value of 'A'
-        assert_eq!(
-            WackLiteral::from(char_liter2),
-            WackLiteral::Char(unsafe { WackChar::from_u8_unchecked(97) })
-        ); // ASCII value of 'a'
+        assert_eq!(WackLiteral::from(char_liter), WackLiteral::Char(65)); // ASCII value of 'A'
+        assert_eq!(WackLiteral::from(char_liter2), WackLiteral::Char(97)); // ASCII value of 'a'
 
         // Test pair literal conversion
         let pair_liter = ast::Liter::PairLiter;
