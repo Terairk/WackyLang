@@ -22,7 +22,7 @@ pub struct Node<T, C = ()> {
 impl<T, C> Node<T, C> {
     /// Create a new node with the given inner value and context.
     #[inline]
-    pub fn new(inner: T, context: C) -> Self {
+    pub const fn new(inner: T, context: C) -> Self {
         Self { inner, context }
     }
 
@@ -32,7 +32,7 @@ impl<T, C> Node<T, C> {
     }
 
     #[inline]
-    pub fn inner_mut(&mut self) -> &mut T {
+    pub const fn inner_mut(&mut self) -> &mut T {
         &mut self.inner
     }
 
@@ -52,6 +52,22 @@ impl<T, C> Node<T, C> {
             inner: f(self.inner),
             context: self.context,
         }
+    }
+
+    #[inline]
+    pub fn transpose_ref(&self) -> Node<&T, C>
+    where
+        C: Clone,
+    {
+        Node::new(&self.inner, self.context.clone())
+    }
+
+    #[inline]
+    pub fn transpose_mut(&mut self) -> Node<&mut T, C>
+    where
+        C: Clone,
+    {
+        Node::new(&mut self.inner, self.context.clone())
     }
 
     #[inline]
@@ -153,7 +169,7 @@ impl<T, C> BoxedNode<T, C> {
     }
 
     #[inline]
-    pub fn transpose_ref(&self) -> Node<&T, C>
+    pub fn transpose_ref_unboxed(&self) -> Node<&T, C>
     where
         C: Clone,
     {
@@ -161,7 +177,7 @@ impl<T, C> BoxedNode<T, C> {
     }
 
     #[inline]
-    pub fn transpose_mut(&mut self) -> Node<&mut T, C>
+    pub fn transpose_mut_unboxed(&mut self) -> Node<&mut T, C>
     where
         C: Clone,
     {

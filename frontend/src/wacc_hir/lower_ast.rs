@@ -1,14 +1,13 @@
 use crate::parsing::ast;
-use crate::parsing::ast_frame::ExprFrame;
 use crate::source::{SourcedBoxedNode, SourcedNode, SourcedSpan};
 use crate::wacc_hir::hir::{
     ArrayElem, ArrayType, BaseType, BinaryOper, Expr, Func, FuncParam, Ident, LValue, Liter,
     PairElem, PairElemSelector, PairElemType, Program, RValue, Stat, StatBlock, Type, UnaryOper,
 };
 use crate::wacc_hir::AstLoweringError;
-use recursion::CollapsibleExt;
 use std::collections::HashMap;
 use std::mem;
+use util::ext::BoxedSliceExt as _;
 
 // A file-local type alias for better readability of type definitions
 type SN<T> = SourcedNode<T>;
@@ -155,11 +154,32 @@ impl LoweringCtx {
     }
 
     pub fn lower_lvalue(&mut self, lvalue: ast::LValue) -> LValue {
-        todo!()
+        match lvalue {
+            ast::LValue::Ident(i) => LValue::Ident(self.lower_ident_sn(i)),
+            ast::LValue::ArrayElem(a) => LValue::ArrayElem(self.lower_array_elem_sn(a)),
+            ast::LValue::PairElem(p) => LValue::PairElem(self.lower_pair_elem_sn(p)),
+        }
     }
 
+    #[inline]
+    pub fn lower_lvalue_sbn(&mut self, lvalue_sbn: SBN<ast::LValue>) -> SBN<LValue> {
+        lvalue_sbn.map_inner_unboxed(|lv| self.lower_lvalue(lv))
+    }
+
+    #[inline]
     pub fn lower_rvalue(&mut self, rvalue: ast::RValue) -> RValue {
-        todo!()
+        match rvalue {
+            ast::RValue::Expr(e) => RValue::Expr(self.lower_expr_sn(e)),
+            ast::RValue::ArrayLiter(a) => RValue::ArrayLiter(a.map(|e| self.lower_expr_sn(e))),
+            ast::RValue::NewPair(le, re) => {
+                RValue::NewPair(self.lower_expr_sn(le), self.lower_expr_sn(re))
+            }
+            ast::RValue::PairElem(p) => RValue::PairElem(self.lower_pair_elem_sn(p)),
+            ast::RValue::Call { func_name, args } => RValue::Call {
+                func_name,
+                args: args.map(|e| self.lower_expr_sn(e)),
+            },
+        }
     }
 
     #[inline]
@@ -172,43 +192,80 @@ impl LoweringCtx {
         }
     }
 
+    #[inline]
     pub fn lower_pair_elem(&mut self, pair_elem: ast::PairElem) -> PairElem {
-        todo!()
+        let ast::PairElem(selector, lvalue) = pair_elem;
+        PairElem(
+            Self::lower_pair_elem_selector(&selector),
+            self.lower_lvalue_sbn(lvalue),
+        )
     }
 
+    #[inline]
+    pub fn lower_pair_elem_sn(&mut self, pair_elem_sn: SN<ast::PairElem>) -> SN<PairElem> {
+        pair_elem_sn.map_inner(|p| self.lower_pair_elem(p))
+    }
+
+    #[inline]
     pub fn lower_array_elem(&mut self, array_elem: ast::ArrayElem) -> ArrayElem {
-        todo!()
+        let ast::ArrayElem {
+            array_name,
+            indices,
+        } = array_elem;
+        ArrayElem {
+            array_name: self.lower_ident_sn(array_name),
+            indices: indices.map(|x| self.lower_expr_sn(x)),
+        }
     }
 
-    pub fn lower_expr(&mut self, expr: &ast::Expr) -> Expr {
-        expr.collapse_frames(|frame: ExprFrame<Expr>| match frame {
-            ExprFrame::Liter(l) => Expr::Liter(l.map_inner(|l| Self::lower_liter(&l))),
-            ExprFrame::ArrayElem(a) => todo!(),
-            ExprFrame::Ident(i) => Expr::Ident(self.lower_ident_sn(i)),
-            ExprFrame::Unary(op, e) => Expr::Unary(
-                op.map_inner(|op| Self::lower_unary_oper(&op)),
-                e.box_inner(),
+    #[inline]
+    pub fn lower_array_elem_sn(&mut self, array_elem_sn: SN<ast::ArrayElem>) -> SN<ArrayElem> {
+        array_elem_sn.map_inner(|a| self.lower_array_elem(a))
+    }
+
+    #[inline]
+    pub fn lower_array_elem_sbn(&mut self, array_elem_sbn: SBN<ast::ArrayElem>) -> SBN<ArrayElem> {
+        array_elem_sbn.map_inner_unboxed(|a| self.lower_array_elem(a))
+    }
+
+    pub fn lower_expr(&mut self, expr: ast::Expr) -> Expr {
+        match expr {
+            ast::Expr::Liter(l) => Expr::Liter(Self::lower_liter_sn(&l)),
+            ast::Expr::Ident(i) => Expr::Ident(self.lower_ident_sn(i)),
+            ast::Expr::ArrayElem(a) => Expr::ArrayElem(self.lower_array_elem_sbn(a)),
+            ast::Expr::Unary(op, e) => {
+                Expr::Unary(Self::lower_unary_oper_sn(&op), self.lower_expr_sbn(e))
+            }
+            ast::Expr::Binary(le, op, re) => Expr::Binary(
+                self.lower_expr_sbn(le),
+                Self::lower_binary_oper_sn(&op),
+                self.lower_expr_sbn(re),
             ),
-            ExprFrame::Binary(le, op, re) => Expr::Binary(
-                le.box_inner(),
-                op.map_inner(|op| Self::lower_binary_oper(&op)),
-                re.box_inner(),
-            ),
-            ExprFrame::Paren(e) => e.into_inner(),
-            ExprFrame::IfThenElse {
+            ast::Expr::Paren(e) => self.lower_expr(e.into_inner_unboxed()),
+            ast::Expr::IfThenElse {
                 if_cond,
                 then_val,
                 else_val,
             } => Expr::IfThenElse {
-                if_cond: if_cond.box_inner(),
-                then_val: then_val.box_inner(),
-                else_val: else_val.box_inner(),
+                if_cond: self.lower_expr_sbn(if_cond),
+                then_val: self.lower_expr_sbn(then_val),
+                else_val: self.lower_expr_sbn(else_val),
             },
-            ExprFrame::Error(_) => unreachable!(
+            ast::Expr::Error(_) => unreachable!(
                 "The error-expression {:?} should not be present in the AST past the parsing stage",
-                r#frame
+                expr
             ),
-        })
+        }
+    }
+
+    #[inline]
+    pub fn lower_expr_sn(&mut self, expr_sn: SN<ast::Expr>) -> SN<Expr> {
+        expr_sn.map_inner(|e| self.lower_expr(e))
+    }
+
+    #[inline]
+    pub fn lower_expr_sbn(&mut self, expr_sbn: SBN<ast::Expr>) -> SBN<Expr> {
+        expr_sbn.map_inner_unboxed(|e| self.lower_expr(e))
     }
 
     #[allow(clippy::as_conversions)]
@@ -224,6 +281,11 @@ impl LoweringCtx {
     }
 
     #[inline]
+    pub fn lower_liter_sn(liter: &SN<ast::Liter>) -> SN<Liter> {
+        liter.transpose_ref().map_inner(Self::lower_liter)
+    }
+
+    #[inline]
     pub const fn lower_unary_oper(unary_oper: &ast::UnaryOper) -> UnaryOper {
         match *unary_oper {
             ast::UnaryOper::BNot => UnaryOper::BNot,
@@ -233,6 +295,13 @@ impl LoweringCtx {
             ast::UnaryOper::Ord => UnaryOper::Ord,
             ast::UnaryOper::Chr => UnaryOper::Chr,
         }
+    }
+
+    #[inline]
+    pub fn lower_unary_oper_sn(unary_oper_sn: &SN<ast::UnaryOper>) -> SN<UnaryOper> {
+        unary_oper_sn
+            .transpose_ref()
+            .map_inner(Self::lower_unary_oper)
     }
 
     #[inline]
@@ -255,6 +324,13 @@ impl LoweringCtx {
             ast::BinaryOper::LAnd => BinaryOper::LAnd,
             ast::BinaryOper::LOr => BinaryOper::LOr,
         }
+    }
+
+    #[inline]
+    pub fn lower_binary_oper_sn(binary_oper_sn: &SN<ast::BinaryOper>) -> SN<BinaryOper> {
+        binary_oper_sn
+            .transpose_ref()
+            .map_inner(Self::lower_binary_oper)
     }
 
     pub fn lower_type(r#type: ast::Type) -> Type {

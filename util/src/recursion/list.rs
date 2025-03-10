@@ -6,11 +6,11 @@ pub enum ListFrame<X, XS> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-pub struct CollapsibleSlice<'a, T>(&'a [T]);
+pub struct CollapsibleSlice<'a, T>(pub &'a [T]);
 
 mod impls {
     use crate::nonempty::NonemptyArray;
-    use crate::recursion::{CollapsibleSlice, ListFrame};
+    use crate::recursion::list::{CollapsibleSlice, ListFrame};
     use recursion::{Collapsible, MappableFrame, PartiallyApplied};
 
     impl<X> MappableFrame for ListFrame<X, PartiallyApplied> {

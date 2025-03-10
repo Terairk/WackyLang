@@ -153,7 +153,7 @@ pub enum ExprFrame<A> {
 // }
 
 mod impls {
-    use crate::parsing::ast::Expr;
+    use crate::parsing::ast::{ArrayElem, Expr};
     use crate::parsing::ast_frame::{ArrayElemFrame, ExprFrame};
     use recursion::{Collapsible, Expandable, MappableFrame, PartiallyApplied};
 
@@ -199,6 +199,20 @@ mod impls {
         }
     }
 
+    impl Collapsible for &'_ ArrayElem {
+        type FrameToken = ArrayElemFrame<PartiallyApplied>;
+
+        #[inline]
+        fn into_frame(self) -> <Self::FrameToken as MappableFrame>::Frame<Self> {
+            let ArrayElem {
+                array_name,
+                indices,
+            } = self;
+
+            todo!()
+        }
+    }
+
     impl Collapsible for &'_ Expr {
         type FrameToken = ExprFrame<PartiallyApplied>;
 
@@ -208,19 +222,23 @@ mod impls {
                 Expr::Liter(ref l) => ExprFrame::Liter(l.clone()),
                 Expr::Ident(ref i) => ExprFrame::Ident(i.clone()),
                 Expr::ArrayElem(ref a) => unimplemented!(),
-                Expr::Unary(ref op, ref e) => ExprFrame::Unary(op.clone(), e.transpose_ref()),
-                Expr::Binary(ref le, ref op, ref re) => {
-                    ExprFrame::Binary(le.transpose_ref(), op.clone(), re.transpose_ref())
+                Expr::Unary(ref op, ref e) => {
+                    ExprFrame::Unary(op.clone(), e.transpose_ref_unboxed())
                 }
-                Expr::Paren(ref e) => ExprFrame::Paren(e.transpose_ref()),
+                Expr::Binary(ref le, ref op, ref re) => ExprFrame::Binary(
+                    le.transpose_ref_unboxed(),
+                    op.clone(),
+                    re.transpose_ref_unboxed(),
+                ),
+                Expr::Paren(ref e) => ExprFrame::Paren(e.transpose_ref_unboxed()),
                 Expr::IfThenElse {
                     ref if_cond,
                     ref then_val,
                     ref else_val,
                 } => ExprFrame::IfThenElse {
-                    if_cond: if_cond.transpose_ref(),
-                    then_val: then_val.transpose_ref(),
-                    else_val: else_val.transpose_ref(),
+                    if_cond: if_cond.transpose_ref_unboxed(),
+                    then_val: then_val.transpose_ref_unboxed(),
+                    else_val: else_val.transpose_ref_unboxed(),
                 },
                 Expr::Error(ref e) => ExprFrame::Error(e.clone()),
             }

@@ -1,3 +1,4 @@
+use fn_pipe::FnMutPipe;
 use std::{ops, slice};
 use thiserror::Error;
 
@@ -82,6 +83,12 @@ impl<T> NonemptyArray<T> {
     #[must_use]
     pub fn map<U, F: FnMut(T) -> U>(self, f: F) -> NonemptyArray<U> {
         NonemptyArray(self.0.into_iter().map(f).collect())
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn pipe<U, P: FnMutPipe(T) -> U>(self, mut p: P) -> NonemptyArray<U> {
+        self.map(|x| p.run_mut((x,)))
     }
 }
 
