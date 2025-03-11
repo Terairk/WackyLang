@@ -63,6 +63,7 @@ pub trait Equality: Into<Type> + private::Sealed {
 }
 
 pub trait Specificity: Equality {
+    /// See [`Type::partial_specificity_cmp`].
     #[inline(always)]
     fn partial_specificity_cmp<Target>(&self, target: &Target) -> Option<cmp::Ordering>
     where
@@ -71,10 +72,28 @@ pub trait Specificity: Equality {
     {
         Type::partial_specificity_cmp(&self.to_type(), &target.to_type())
     }
+
+    /// See [`Type::greatest_lower_bound`].
+    #[inline(always)]
+    fn greatest_lower_bound<Target>(&self, target: &Target) -> Option<Type>
+    where
+        Self: Clone,
+        Target: Equality + Clone,
+    {
+        Type::greatest_lower_bound(&self.to_type(), &target.to_type())
+    }
 }
 
 pub trait Weakening: Equality {
-    fn weakens_to(&self, target: &Type) -> bool;
+    /// See [`Type::weakens_to`].
+    #[inline(always)]
+    fn weakens_to<Target>(&self, target: &Target) -> bool
+    where
+        Self: Clone,
+        Target: Equality + Clone,
+    {
+        Type::weakens_to(&self.to_type(), &target.to_type())
+    }
 }
 
 /// A type is compatible with another type if-and-only if:
@@ -88,13 +107,14 @@ pub trait CompatibleWith: Weakening {
 /// [`PartialEq`], [`PartialOrd`] and so on based on the [`Equality`], [`Specificity`], etc., definitions.
 #[derive(Clone, Debug)]
 #[repr(transparent)]
-pub struct TypeOps<T: Equality>(pub T);
+pub struct TypeOps<T>(pub T);
 
 mod impls {
     use crate::wacc_thir::types::{
-        ArrayType, BaseType, Equality, PairType, Specificity, Type, TypeOps,
+        ArrayType, BaseType, Equality, PairType, Specificity, Type, TypeOps, Weakening,
     };
     use std::cmp;
+    use std::ops::Add;
 
     impl Type {
         pub const INT: Self = Self::BaseType(BaseType::Int);
@@ -219,9 +239,117 @@ mod impls {
             }
         }
 
-        // pub fn weakens_to(&self, target: &Type) -> bool {
-        //
-        // }
+        /// Finds a Greatest-Lower-Bound (GLB) on two [`Type`]s if it exists, according to the type-[`Specificity`]
+        /// partial order; where more __specific__ [`Type`]s are [`cmp::Ordering::Less`] than more __general__ [`Type`]s.
+        ///
+        /// This means `GLB(t1, t2)` (if it exists) will be the __most general type__ that is
+        /// __at least__ as specific as __both__ `t1` and `t2` (hence Greatest-Lower-Bound).
+        ///
+        /// For example, for `t1 = pair(any, int)` and `t2 = pair(int, any)` we have `GLB(t1, t2) = pair(int, int)`.
+        #[must_use]
+        #[inline]
+        pub fn greatest_lower_bound(&self, other: &Self) -> Option<Self> {
+            match self.partial_specificity_cmp(other) {
+                // handle the easy case that they are directly comparable
+                Some(cmp) => Some(match cmp {
+                    // if `t1 <= t2` then `t1` is the greatest-lower-bound s.t. `t1 <= t1, t2`
+                    cmp::Ordering::Less | cmp::Ordering::Equal => self.clone(),
+                    // if `t1 > t2` then `t2` is the greatest-lower-bound s.t. `t2 <= t1, t2`
+                    cmp::Ordering::Greater => other.clone(),
+                }),
+
+                // handle the case of incomparable types
+                None => match (self, other) {
+                    // an array-type can only have a Greatest-Lower-Bound (GLB) with another
+                    // array type, and only if their respective inner element types have a GLB
+                    (Self::ArrayType(self_boxed), Self::ArrayType(target_boxed)) => {
+                        // ensure inner elements have a GLB
+                        let inner_glb = Self::greatest_lower_bound(
+                            &self_boxed.elem_type,
+                            &target_boxed.elem_type,
+                        )?;
+
+                        // construct array-GLB
+                        Some(Self::array_type(inner_glb))
+                    }
+
+                    // a pair-type can only have a Greatest-Lower-Bound (GLB) with another
+                    // pair type, and only if BOTH of their respective inner element types have GLBs
+                    (Self::PairType(self_boxed), Self::PairType(target_boxed)) => {
+                        // dereference boxed types
+                        let self_ref = self_boxed.as_ref();
+                        let target_ref = target_boxed.as_ref();
+
+                        // ensure both inner elements have a GLB
+                        let fst_glb =
+                            Self::greatest_lower_bound(&self_ref.fst_type, &target_ref.fst_type)?;
+                        let snd_glb =
+                            Self::greatest_lower_bound(&self_ref.snd_type, &target_ref.snd_type)?;
+
+                        // construct pair-GLB
+                        Some(Self::pair_type(fst_glb, snd_glb))
+                    }
+
+                    // All other types do not have a GLB, due to type-shape mismatches
+                    _ => None,
+                },
+            }
+        }
+
+        /// Checks if [`Type`] can weaken to another [`target`] [`Type`], which usually occurs
+        /// due to `string`-weakening and `pair`-erasure.
+        #[inline]
+        #[must_use]
+        pub fn weakens_to(&self, target: &Self) -> bool {
+            match (self, target) {
+                // Array-weakening rules
+                (Self::ArrayType(self_boxed), target) => {
+                    match (&self_boxed.elem_type, target) {
+                        // `char[]` array-type weakens to `string` type
+                        (Self::BaseType(BaseType::Char), Self::BaseType(BaseType::String)) => true,
+
+                        // no other array-types weaken to any other type
+                        _ => false,
+                    }
+                }
+
+                // Pair-weakening rules
+                (Self::PairType(self_boxed), target) => {
+                    let self_ref = self_boxed.as_ref();
+                    match (self_ref, target) {
+                        (_, Self::PairType(target_boxed)) => {
+                            let target_ref = target_boxed.as_ref();
+                            match (
+                                (&self_ref.fst_type, &self_ref.snd_type),
+                                (&target_ref.fst_type, &target_ref.snd_type),
+                            ) {
+                                // Erased-pair-type `pair(any, any)` weakens to any pair type `pair(t1, t2)`,
+                                // and vice-versa any pair type `pair(t1, t2)` weakens to erased-pair-type `pair(any, any)`.
+                                ((Self::Any, Self::Any), _) | (_, (Self::Any, Self::Any)) => true,
+
+                                // no other pair-types weaken to any other pair-type
+                                _ => false,
+                            }
+                        }
+
+                        // no other pair-types weaken to any other type
+                        _ => false,
+                    }
+                }
+
+                // no other types weaken to any other type
+                _ => false,
+            }
+        }
+
+        /// A type is compatible with another type if-and-only if:
+        /// 1) it is equal to the target type, or
+        /// 2) it weakens to the target type.
+        #[must_use]
+        #[inline]
+        pub fn compatible_with(&self, target: &Self) -> bool {
+            self == target || self.weakens_to(target)
+        }
     }
 
     impl From<BaseType> for Type {
@@ -245,6 +373,13 @@ mod impls {
         }
     }
 
+    impl<T: Equality> From<TypeOps<T>> for Type {
+        #[inline(always)]
+        fn from(value: TypeOps<T>) -> Self {
+            value.0.into()
+        }
+    }
+
     impl BaseType {}
 
     impl ArrayType {
@@ -255,23 +390,6 @@ mod impls {
         #[must_use]
         pub const fn new(elem_type: Type) -> Self {
             Self { elem_type }
-        }
-
-        #[inline]
-        #[must_use]
-        pub const fn weakens_to(&self, target: &Type) -> bool {
-            match (self, target) {
-                // `char[]` type weakens to `string` type
-                (
-                    Self {
-                        elem_type: Type::BaseType(BaseType::Char),
-                    },
-                    Type::BaseType(BaseType::String),
-                ) => true,
-
-                // no other array types weaken to any other type
-                _ => false,
-            }
         }
     }
 
@@ -291,9 +409,11 @@ mod impls {
     impl Equality for BaseType {}
     impl Equality for ArrayType {}
     impl Equality for PairType {}
+    impl<T: Equality> Equality for TypeOps<T> {}
 
-    // blanket specificity implementation for any type-equal object
+    // blanket specificity + weakening implementation for any type-equal object
     impl<T: Equality> Specificity for T {}
+    impl<T: Equality> Weakening for T {}
 
     // newtype blanket implementation of ops
     impl<T: Equality + Clone, Rhs: Equality + Clone> PartialEq<Rhs> for TypeOps<T> {
@@ -302,18 +422,51 @@ mod impls {
             self.0.equal_to(other)
         }
     }
-    impl<T: Equality + Clone> PartialEq<Self> for TypeOps<T> {
-        #[inline(always)]
-        fn eq(&self, other: &Self) -> bool {
-            self == &other.0
-        }
-    }
     impl<T: Equality + Clone> Eq for TypeOps<T> {}
     impl<T: Specificity + Clone, Rhs: Equality + Clone> PartialOrd<Rhs> for TypeOps<T> {
         #[inline(always)]
         fn partial_cmp(&self, other: &Rhs) -> Option<cmp::Ordering> {
             self.0.partial_specificity_cmp(other)
         }
+    }
+    impl<T: Specificity + Clone, Rhs: Equality + Clone> Add<Rhs> for TypeOps<T> {
+        type Output = TypeOps<Option<Type>>;
+
+        #[inline(always)]
+        fn add(self, rhs: Rhs) -> Self::Output {
+            TypeOps(self.0.greatest_lower_bound(&rhs))
+        }
+    }
+    impl<T: Specificity + Clone, Rhs: Equality + Clone> Add<Rhs> for TypeOps<Option<T>> {
+        type Output = TypeOps<Option<Type>>;
+
+        #[inline(always)]
+        fn add(self, rhs: Rhs) -> Self::Output {
+            TypeOps(self.0.and_then(|lhs| lhs.greatest_lower_bound(&rhs)))
+        }
+    }
+    impl<T: Specificity + Clone, Rhs: Equality + Clone> Add<TypeOps<Option<Rhs>>>
+        for TypeOps<Option<T>>
+    {
+        type Output = TypeOps<Option<Type>>;
+        #[inline(always)]
+        fn add(self, rhs: TypeOps<Option<Rhs>>) -> Self::Output {
+            TypeOps(match (self.0, rhs.0) {
+                (Some(lhs), Some(rhs)) => lhs.greatest_lower_bound(&rhs),
+                _ => None,
+            })
+        }
+    }
+
+    fn test() {
+        let t1 = Type::from(BaseType::Char);
+        let t2 = Type::from(BaseType::Char);
+        let t3 = Type::from(BaseType::Char);
+        let t4 = Type::from(BaseType::Char);
+        let t5 = Type::from(BaseType::Char);
+        let t6 = Type::from(BaseType::Char);
+
+        let out = (t1.ops() + t2 + t3) + (t4.ops() + t5 + t6);
     }
 
     // A type is compatible with another type if-and-only if:
