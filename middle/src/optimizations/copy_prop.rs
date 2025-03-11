@@ -1,4 +1,4 @@
-use super::cfg::CFG;
-pub fn copy_propagation(cfg: CFG) -> CFG {
+use super::cfg::EmptyCFG;
+pub fn copy_propagation(cfg: EmptyCFG) -> EmptyCFG {
     unimplemented!()
 }
