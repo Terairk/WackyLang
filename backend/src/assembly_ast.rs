@@ -242,17 +242,23 @@ impl From<UnaryOp> for AsmUnaryOperator {
     }
 }
 
-impl Instruction for AsmInstruction {
-    #[inline]
-    fn simplify(&self) -> SimpleInstr {
-        use AsmInstruction::{Jmp, JmpCC, Label, Ret};
-        match *self {
-            Label(ref name) => SimpleInstr::Label(name.clone().into()),
-            JmpCC { ref label, .. } => SimpleInstr::ConditionalJump(label.clone().into()),
-            Jmp(ref name, LABEL) => SimpleInstr::UnconditionalJump(name.clone().into()),
-            Jmp(_, FUNCTION) => SimpleInstr::ErrorJump,
-            Ret => SimpleInstr::Return,
-            _ => SimpleInstr::Other,
-        }
-    }
-}
+// TODO: fix this for AsmInstruction's, need to change String to include an id
+// or change the String conversion to include the id
+// Idea 1) AsmString(String, usize) and ignore usize when emission
+// Idea 2) I store the usize in the String and then extract it back when constructing the cfg
+// I personally like idea 1 better
+
+// impl Instruction for AsmInstruction {
+//     #[inline]
+//     fn simplify(&self) -> SimpleInstr {
+//         use AsmInstruction::{Jmp, JmpCC, Label, Ret};
+//         match *self {
+//             Label(ref name) => SimpleInstr::Label(name.clone().into()),
+//             JmpCC { ref label, .. } => SimpleInstr::ConditionalJump(label.clone().into()),
+//             Jmp(ref name, LABEL) => SimpleInstr::UnconditionalJump(name.clone().into()),
+//             Jmp(_, FUNCTION) => SimpleInstr::ErrorJump,
+//             Ret => SimpleInstr::Return,
+//             _ => SimpleInstr::Other,
+//         }
+//     }
+// }

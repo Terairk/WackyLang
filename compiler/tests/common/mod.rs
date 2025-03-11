@@ -95,6 +95,7 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
         .copy_propagation(COPY_PROP)
         .eliminate_unreachable_code(RM_UNREACHABLE)
         .eliminate_dead_stores(RM_DEAD_STORES)
+        .print_cfg(false)
         .build();
 
     // println!("Compiling: {}", path.display());

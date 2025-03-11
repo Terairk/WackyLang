@@ -1,5 +1,5 @@
 use internment::ArcIntern;
-use middle::optimizations::make_cfg;
+use middle::optimizations::{eliminate_unreachable_code, make_cfg};
 use middle::wackir::{WackGlobIdent, WackInstr, WackLiteral, WackTempIdent, WackValue};
 
 fn main() {
@@ -22,8 +22,7 @@ fn main() {
         WackInstr::Return(WackValue::Var(x_ident)),
     ];
     let cfg = make_cfg(wack_instructions, "function_name");
-    // let cfg =
-    //     CFG::<WackInstr, ()>::from_instructions("function_name".to_owned(), wack_instructions);
+    // let cfg = eliminate_unreachable_code(cfg);
 
     // Print CFG visualization
     if let Ok(png_path) = cfg.print_graphviz() {

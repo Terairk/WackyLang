@@ -4,6 +4,6 @@ compile
 ./*.wacc
 *.s
 *.core
-*.wacc
+.wacc
 *.png
 *.dot

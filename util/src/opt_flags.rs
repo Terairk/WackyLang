@@ -13,6 +13,9 @@ pub struct OptimizationConfig {
 
     /// Eliminate dead stores
     eliminate_dead_stores: bool,
+
+    /// Print the CFG
+    print_cfg: bool,
 }
 
 impl OptimizationConfig {
@@ -39,5 +42,10 @@ impl OptimizationConfig {
     #[inline]
     pub const fn has_eliminate_dead_stores(&self) -> bool {
         self.eliminate_dead_stores
+    }
+
+    #[inline]
+    pub const fn should_print_cfg(&self) -> bool {
+        self.print_cfg
     }
 }

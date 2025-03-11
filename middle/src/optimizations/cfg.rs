@@ -1,17 +1,22 @@
-use util::{CFG, Instruction, SimpleInstr};
+use internment::ArcIntern;
+use util::{CFG, Instruction, SimpleInstr, cfg::Location};
 // temporary bCFG cus I want to leave everything the same
 
-use crate::wackir::WackInstr;
+use crate::wackir::{WackInstr, WackTempIdent};
 
 // TODO: Change the CFG to the proper CFG type
 // I'll figure this out as I go along
 
 pub type EmptyCFG = CFG<WackInstr, ()>;
 
+#[must_use]
+#[inline]
 pub fn make_cfg(instrs: Vec<WackInstr>, func_name: &str) -> EmptyCFG {
     CFG::<WackInstr, ()>::from_instructions(func_name.to_owned(), instrs)
 }
 
+#[must_use]
+#[inline]
 pub fn cfg_to_instrs(cfg: EmptyCFG) -> Vec<WackInstr> {
     CFG::to_instructions(cfg)
 }
@@ -33,5 +38,14 @@ impl Instruction for WackInstr {
             Return(..) => SimpleInstr::Return,
             _ => SimpleInstr::Other,
         }
+    }
+}
+
+impl From<WackTempIdent> for Location {
+    #[inline]
+    fn from(ident: WackTempIdent) -> Self {
+        let interned_string: ArcIntern<str> = ident.clone().into();
+        let id = ident.get_id();
+        Self::new(interned_string, id)
     }
 }

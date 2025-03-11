@@ -99,6 +99,10 @@ struct Args {
     #[arg(long = "rm-dead-stores")]
     eliminate_dead_stores: bool,
 
+    /// Whether to print the CFG
+    #[arg(long = "print-cfg")]
+    print_cfg: bool,
+
     /// Enable all optimizations
     #[arg(long = "O")]
     optimize: bool,
@@ -114,6 +118,7 @@ impl Args {
             .copy_propagation(self.optimize || self.copy_propagation)
             .eliminate_unreachable_code(self.optimize || self.eliminate_unreachable_code)
             .eliminate_dead_stores(self.optimize || self.eliminate_dead_stores)
+            .print_cfg(self.print_cfg)
             .build()
     }
 }

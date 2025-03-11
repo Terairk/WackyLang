@@ -12,6 +12,7 @@ pub mod rust_gadt_playground;
 // Public Re-exports
 pub use cfg::CFG;
 pub use cfg::Instruction;
+pub use cfg::Location;
 pub use cfg::SimpleInstr;
 
 // pub(crate) mod private {

@@ -641,6 +641,10 @@ pub mod wack_temp_ident {
         pub fn create_new(ident: &str, counter: &mut usize) -> Self {
             Self(Ident::from_str(ident), *counter)
         }
+
+        pub fn get_id(&self) -> usize {
+            self.1
+        }
     }
 }
 
