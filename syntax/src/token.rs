@@ -3,7 +3,7 @@
 use crate::ast::Ident;
 use crate::container::{ItemVec, MultiItem};
 use crate::ext::ParserExt as _;
-use crate::{alias, ast, ext::CharExt as _, private};
+use crate::{alias, ext::CharExt as _, private};
 use chumsky::combinator::{MapWith, ToSlice};
 use chumsky::container::Container as _;
 use chumsky::extra::ParserExtra;

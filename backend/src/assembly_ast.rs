@@ -38,6 +38,7 @@
 
 use middle::wackir::UnaryOp;
 use std::fmt::Debug;
+use util::{Instruction, SimpleInstr};
 pub type IsFunction = bool;
 // This is a flag to guide code emission to know if it should add a .L_
 pub const FUNCTION: IsFunction = true;
@@ -237,6 +238,21 @@ impl From<UnaryOp> for AsmUnaryOperator {
         match op {
             UnaryOp::LNot => Self::Not,
             _ => panic!("Invalid ASM unary operator"),
+        }
+    }
+}
+
+impl Instruction for AsmInstruction {
+    #[inline]
+    fn simplify(&self) -> SimpleInstr {
+        use AsmInstruction::{Jmp, JmpCC, Label, Ret};
+        match *self {
+            Label(ref name) => SimpleInstr::Label(name.clone().into()),
+            JmpCC { ref label, .. } => SimpleInstr::ConditionalJump(label.clone().into()),
+            Jmp(ref name, LABEL) => SimpleInstr::UnconditionalJump(name.clone().into()),
+            Jmp(_, FUNCTION) => SimpleInstr::ErrorJump,
+            Ret => SimpleInstr::Return,
+            _ => SimpleInstr::Other,
         }
     }
 }

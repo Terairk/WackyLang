@@ -1,7 +1,10 @@
 use std::{
     collections::HashMap,
-    fmt::{self, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter},
+    fs::File,
+    io::Write,
     mem,
+    process::Command,
 };
 
 /*  General structure I'm using written in ASDL Syntax
@@ -39,12 +42,15 @@ pub enum SimpleInstr {
 }
 
 /// Trait used for instructions that can be used in a CFG
-pub trait Instruction: Sized + Clone {
+pub trait Instruction: Sized + Clone + Debug {
     /// Convert instruction to a simplified form for CFG analysis
     fn simplify(&self) -> SimpleInstr;
 
     /// Format instruction for display
-    fn format(&self, f: &mut Formatter<'_>) -> fmt::Result;
+    #[inline]
+    fn format(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{self:?}")
+    }
 }
 
 /// Node ID in the control flow graph
@@ -81,7 +87,7 @@ pub struct CFG<T, V> {
     pub debug_label: String,
 }
 
-impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
+impl<T: Instruction + Clone + Debug, V: Clone + Default + Debug> CFG<T, V> {
     /// Create a new CFG from a list of instructions
     // TODO: check if we can take ownership of the instructions
     pub fn from_instructions(debug_label: String, instructions: &[T]) -> CFG<T, ()> {
@@ -176,16 +182,16 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
             };
 
             // Get the last instruction of the block
-            if let None = self.basic_blocks.get(&id) {
+            if !self.basic_blocks.contains_key(&id) {
                 continue;
             }
-            // Safety: We just checked that the block exists
-            let block = self.basic_blocks.get(&id).unwrap();
-            if let None = block.instructions.last() {
+            // We just checked that the block exists so shouldn't panic
+            let block = &self.basic_blocks[&id];
+            if block.instructions.last().is_none() {
                 continue;
             }
-            // Safety: We just checked that the block is not empty
-            let (_, last_instr) = block.instructions.last().unwrap();
+            // We just checked that the block is not empty
+            let (_, ref last_instr) = *block.instructions.last().unwrap();
             match last_instr.simplify() {
                 Return | ErrorJump => {
                     // TODO: check if we handle ErrorJump is handled this way
@@ -194,14 +200,14 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
                 }
                 UnconditionalJump(target) => {
                     if let Some(target_id) = label_map.get(&target) {
-                        self.add_edge(NodeId::Block(id), target_id.clone());
+                        self.add_edge(NodeId::Block(id), *target_id);
                     }
                 }
                 ConditionalJump(target) => {
                     // Add edge to the target block ie the one if we fail the condition
                     self.add_edge(NodeId::Block(id), next_id);
                     if let Some(target_id) = label_map.get(&target) {
-                        self.add_edge(NodeId::Block(id), target_id.clone());
+                        self.add_edge(NodeId::Block(id), *target_id);
                     }
                 }
                 _ => {
@@ -212,6 +218,7 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
     }
 
     /// Add an edge between two nodes
+    #[inline]
     pub fn add_edge(&mut self, pred: NodeId, succ: NodeId) {
         match pred {
             NodeId::Entry => {
@@ -229,7 +236,7 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
             NodeId::Exit => {}
         }
 
-        match &succ {
+        match succ {
             NodeId::Entry => {}
             NodeId::Block(id) => {
                 if let Some(block) = self.basic_blocks.get_mut(&id) {
@@ -247,16 +254,17 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
     }
 
     /// Removes an edge between two nodes
+    #[inline]
     pub fn remove_edge(&mut self, pred: NodeId, succ: NodeId) {
         match pred {
             NodeId::Entry => {
                 // Uses vec which is O(n) to remove an element
                 // Perhaps we can use a better data structure
-                self.entry_succs.retain(|id| *id != succ);
+                self.entry_succs.retain(|node_id| *node_id != succ);
             }
             NodeId::Block(id) => {
                 if let Some(block) = self.basic_blocks.get_mut(&id) {
-                    block.succs.retain(|id| *id != succ);
+                    block.succs.retain(|node_id| *node_id != succ);
                 }
             }
             NodeId::Exit => {}
@@ -266,11 +274,11 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
             NodeId::Entry => {}
             NodeId::Block(id) => {
                 if let Some(block) = self.basic_blocks.get_mut(&id) {
-                    block.preds.retain(|id| *id != pred);
+                    block.preds.retain(|node_id| *node_id != pred);
                 }
             }
             NodeId::Exit => {
-                self.exit_preds.retain(|id| *id != pred);
+                self.exit_preds.retain(|node_id| *node_id != pred);
             }
         }
     }
@@ -281,14 +289,180 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
     pub fn get_succs(&self, node_id: NodeId) -> Vec<NodeId> {
         match node_id {
             NodeId::Entry => self.entry_succs.clone(),
-            NodeId::Block(id) => {
-                if let Some(block) = self.basic_blocks.get(&id) {
-                    block.succs.clone()
-                } else {
-                    Vec::new()
+            NodeId::Block(id) => self
+                .basic_blocks
+                .get(&id)
+                .map_or_else(Vec::new, |block| block.succs.clone()),
+            NodeId::Exit => Vec::new(),
+        }
+    }
+
+    /// Get the predecessors of a node
+    #[must_use]
+    #[inline]
+    pub fn get_preds(&self, node_id: NodeId) -> Vec<NodeId> {
+        match node_id {
+            NodeId::Entry => Vec::new(),
+            NodeId::Block(id) => self
+                .basic_blocks
+                .get(&id)
+                .map_or_else(Vec::new, |block| block.preds.clone()),
+            NodeId::Exit => self.exit_preds.clone(),
+        }
+    }
+
+    /// Get the value of a basic block
+    #[must_use]
+    #[inline]
+    pub fn get_block_value(&self, block_id: usize) -> Option<&V> {
+        self.basic_blocks.get(&block_id).map(|block| &block.value)
+    }
+
+    /// Update a basic block
+    #[inline]
+    pub fn update_basic_block(&mut self, block_id: usize, new_block: BasicBlock<T, V>) {
+        self.basic_blocks.insert(block_id, new_block);
+    }
+
+    /// Convert back to a list of instructions
+    #[must_use]
+    #[inline]
+    pub fn to_instructions(&self) -> Vec<T> {
+        let mut result = Vec::new();
+        let mut ids: Vec<usize> = self.basic_blocks.keys().copied().collect();
+        ids.sort_unstable();
+
+        for id in ids {
+            if let Some(block) = self.basic_blocks.get(&id) {
+                for (_, instr) in block.instructions.clone() {
+                    result.push(instr);
                 }
             }
-            NodeId::Exit => Vec::new(),
+        }
+
+        result
+    }
+
+    /// Initialize annotations with a default value
+    // TODO: Figure out if we can take ownership of self instead to minimise clones
+    #[must_use]
+    #[inline]
+    pub fn initialize_annotation<W: Clone + Default>(&self, dummy_val: &W) -> CFG<T, W> {
+        let mut new_blocks = HashMap::new();
+
+        for (&idx, block) in &self.basic_blocks {
+            let new_instructions = block
+                .instructions
+                .iter()
+                .map(|(_, i)| (dummy_val.clone(), i.clone()))
+                .collect();
+
+            new_blocks.insert(
+                idx,
+                BasicBlock {
+                    id: block.id,
+                    instructions: new_instructions,
+                    preds: block.preds.clone(),
+                    succs: block.succs.clone(),
+                    value: dummy_val.clone(),
+                },
+            );
+        }
+
+        CFG {
+            basic_blocks: new_blocks,
+            entry_succs: self.entry_succs.clone(),
+            exit_preds: self.exit_preds.clone(),
+            debug_label: self.debug_label.clone(),
+        }
+    }
+
+    /// Strip annotations
+    #[must_use]
+    #[inline]
+    pub fn strip_annotations(&self) -> CFG<T, ()> {
+        self.initialize_annotation(&())
+    }
+
+    /// Generate a GraphViz DOT file and render it as PNG
+    // TODO: check if this works later on
+    #[must_use]
+    #[inline]
+    pub fn print_graphviz(&self) -> Result<String, std::io::Error> {
+        let filename = format!("{}.dot", self.debug_label.replace(" ", "_"));
+        let mut file = File::create(&filename)?;
+
+        writeln!(file, "digraph {{")?;
+        writeln!(file, "  labeljust=l")?;
+        writeln!(file, "  node[shape=\"box\"]")?;
+        writeln!(file, "  entry[label=\"ENTRY\"]")?;
+        writeln!(file, "  exit[label=\"EXIT\"]")?;
+
+        // Write blocks
+        for (&id, block) in &self.basic_blocks {
+            writeln!(file, "  block{id}[label=<")?;
+            writeln!(file, "    <table>")?;
+            writeln!(
+                file,
+                "      <tr><td colspan=\"2\"><b>{}</b></td></tr>",
+                block.id
+            )?;
+
+            // Write instructions
+            // honestly: I have no idea how to fix this clippy lint
+            // if i do &(ref, ref) - i get another clippy lint
+            #[allow(clippy::pattern_type_mismatch)]
+            for (val, instr) in &block.instructions {
+                write!(file, "      <tr><td align=\"left\">")?;
+                let instr_buf = format!("{instr:?}");
+                // Escape HTML characters
+                let escaped = instr_buf.replace("<", "&lt;").replace(">", "&gt;");
+                write!(file, "{escaped}")?;
+                write!(file, "</td><td align=\"left\">")?;
+
+                // Format the value
+                let val_buf = format!("{val:?}");
+                write!(file, "{val_buf}")?;
+                writeln!(file, "</td></tr>")?;
+            }
+
+            // Write block value
+            write!(file, "      <tr><td colspan=\"2\">")?;
+            let val_buf = format!("{:?}", block.value);
+            write!(file, "{val_buf}")?;
+            writeln!(file, "</td></tr>")?;
+
+            writeln!(file, "    </table>>]")?;
+        }
+
+        // Write edges from entry
+        for succ in &self.entry_succs {
+            writeln!(file, "  entry -> {succ:?}")?;
+        }
+
+        // Write edges between blocks
+        for (&id, block) in &self.basic_blocks {
+            for succ in &block.succs {
+                writeln!(file, "  block{id} -> {succ}")?;
+            }
+        }
+
+        writeln!(file, "}}")?;
+
+        // Generate PNG
+        let png_filename = filename.replace(".dot", ".png");
+        let status = Command::new("dot")
+            .args(["-Tpng", &filename, "-o", &png_filename])
+            .status()?;
+
+        if status.success() {
+            let _ = std::fs::remove_file(&filename);
+            Ok(png_filename)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to generate PNG with GraphViz",
+            ))
         }
     }
 }
@@ -297,10 +471,25 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
 impl Display for NodeId {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
+        match *self {
             Self::Entry => write!(f, "Entry"),
             Self::Block(id) => write!(f, "Block {id}"),
             Self::Exit => write!(f, "Exit"),
         }
     }
 }
+
+// Example usage
+//
+// fn main() {
+//     let wack_instructions: Vec<WackInstruction> = /* ... */;
+//     let cfg = ControlFlowGraph::from_instructions("function_name".to_string(), &wack_instructions);
+//
+//     // Print CFG visualization
+//     if let Ok(png_path) = cfg.print_graphviz(|val, f| write!(f, "{:?}", val)) {
+//         println!("Generated CFG visualization: {}", png_path);
+//     }
+//
+//     // Convert back to instructions
+//     let optimized_instructions = cfg.to_instructions();
+// }

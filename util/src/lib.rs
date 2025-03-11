@@ -9,6 +9,11 @@ pub mod nonempty;
 pub mod opt_flags;
 pub mod rust_gadt_playground;
 
+// Public Re-exports
+pub use cfg::CFG;
+pub use cfg::Instruction;
+pub use cfg::SimpleInstr;
+
 // pub(crate) mod private {
 //     // sealed traits support
 //     pub trait Sealed {}

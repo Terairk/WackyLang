@@ -65,8 +65,8 @@ pub(crate) mod ast_lowering_ctx {
     };
     use crate::types::{WackFuncType, WackPointerType, WackType};
     use crate::wackir::{
-        BinaryOp, FALSE, TRUE, WackBool, WackFunction, WackGlobIdent, WackInstr, WackLiteral,
-        WackPrintType, WackReadType, WackTempIdent, WackValue,
+        BinaryOp, FALSE, TRUE, WackFunction, WackGlobIdent, WackInstr, WackLiteral, WackPrintType,
+        WackReadType, WackTempIdent, WackValue,
     };
     use extend::ext;
     use std::collections::HashMap;

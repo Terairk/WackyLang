@@ -530,10 +530,11 @@ pub mod wack_temp_ident {
     use crate::ast_transform::AstLoweringCtx;
     use crate::ast_transform::ast_lowering_ctx::With;
     use crate::wackir::WackTempIdent;
+    use internment::ArcIntern;
     use std::fmt;
     use std::fmt::{Debug, Formatter};
     use std::hash::{Hash, Hasher};
-    use syntax::ast;
+    use syntax::ast::{self, Ident};
     use syntax::rename::RenamedName;
 
     impl Debug for WackTempIdent {
@@ -594,6 +595,13 @@ pub mod wack_temp_ident {
         #[inline]
         fn from(mid_ident: &'a WackTempIdent) -> &'a str {
             mid_ident.0.inner()
+        }
+    }
+
+    impl From<WackTempIdent> for ArcIntern<str> {
+        #[inline]
+        fn from(mid_ident: WackTempIdent) -> ArcIntern<str> {
+            mid_ident.0.into_inner()
         }
     }
 }
