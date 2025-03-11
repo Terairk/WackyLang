@@ -1,7 +1,8 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 use std::collections::HashMap;
 
-use crate::ast::{Expr, Func, FuncParam, Ident, Program, RValue, Stat, StatBlock};
+use crate::ast::Ident;
+use crate::ast::{Expr, Func, FuncParam, Program, RValue, Stat, StatBlock};
 use crate::error::SemanticError;
 use crate::fold_program::Folder;
 use crate::fold_program::{BoxedSliceFold as _, NonEmptyFold as _};
@@ -10,7 +11,6 @@ use crate::types::{SemanticType, Type};
 use std::fmt;
 use std::hash::Hash;
 use std::mem;
-
 /* This file contains information pertaining to the renaming side of our compiler
  * The renaming phase is responsible for renaming all variables to unique_names
  * Usually using a counter i.e x -> x@1, y -> y@2 etc

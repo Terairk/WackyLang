@@ -7,6 +7,7 @@ use chumsky::error::Rich;
 use chumsky::input::{Input, WithContext};
 use chumsky::{Parser, extra};
 use middle::ast_transform::lower_program;
+use middle::optimizations::optimize;
 use regex::Regex;
 use std::fs;
 use std::fs::create_dir_all;
@@ -18,10 +19,35 @@ use syntax::token::{Token, lexer};
 use syntax::typecheck::typecheck;
 use syntax::{ast, build_semantic_error_report, build_syntactic_report};
 use util::gen_flags::reset_flags_gbl;
+use util::opt_flags::OptimizationConfig;
 
 static SYNTAX_ERR_STR: &str = "Syntax error(s) found!";
 static SEMANTIC_ERR_STR: &str = "Semantic error(s) found!";
 static NO_OUTPUT_STR: &str = "No output/exit to compare if provided in a file";
+
+#[cfg(feature = "const-fold")]
+const CONST_FOLD: bool = true;
+
+#[cfg(not(feature = "const-fold"))]
+const CONST_FOLD: bool = false;
+
+#[cfg(feature = "copy-prop")]
+const COPY_PROP: bool = true;
+
+#[cfg(not(feature = "copy-prop"))]
+const COPY_PROP: bool = false;
+
+#[cfg(feature = "rm-unreachable")]
+const RM_UNREACHABLE: bool = true;
+
+#[cfg(not(feature = "rm-unreachable"))]
+const RM_UNREACHABLE: bool = false;
+
+#[cfg(feature = "rm-deadstores")]
+const RM_DEAD_STORES: bool = true;
+
+#[cfg(not(feature = "rm-deadstores"))]
+const RM_DEAD_STORES: bool = false;
 
 // type aliases, because Rust's type inference can't yet handle this, and typing the same
 // stuff over and over is very annoying and unreadable :)
@@ -64,6 +90,16 @@ pub fn get_test_files(dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
 }
 pub fn compile_single_test(path: &Path) -> Result<String, String> {
     reset_flags_gbl();
+    let opt_config = OptimizationConfig::builder()
+        .fold_constants(CONST_FOLD)
+        .copy_propagation(COPY_PROP)
+        .eliminate_unreachable_code(RM_UNREACHABLE)
+        .eliminate_dead_stores(RM_DEAD_STORES)
+        .print_cfg(false)
+        .build();
+
+    // println!("Compiling: {}", path.display());
+    // println!("Optimization Config: {:#?}", opt_config);
 
     let source = match fs::read_to_string(path) {
         Ok(content) => content,
@@ -170,6 +206,7 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
     // TODO: add string constant pass to either this pass or assembly pass
     // may need to modify my Wacky IR / Assembly Ast
     let (wacky_ir, counter, symbol_table) = lower_program(typed_ast, type_resolver);
+    let wacky_ir = optimize(wacky_ir, opt_config);
 
     // -------------------------------------------------------------------------
     //                          Assembly Pass

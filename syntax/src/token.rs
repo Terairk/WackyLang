@@ -1,8 +1,9 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
+use crate::ast::Ident;
 use crate::container::{ItemVec, MultiItem};
 use crate::ext::ParserExt as _;
-use crate::{alias, ast, ext::CharExt as _, private};
+use crate::{alias, ext::CharExt as _, private};
 use chumsky::combinator::{MapWith, ToSlice};
 use chumsky::container::Container as _;
 use chumsky::extra::ParserExtra;
@@ -83,7 +84,7 @@ pub enum InvalidCharReason {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Token {
     // literals
-    Ident(ast::Ident),
+    Ident(Ident),
     IntLiter(i32),
     CharLiter(char),
     StrLiter(ArcIntern<str>),
@@ -300,7 +301,7 @@ where
 
     // WACC identifiers are C-style, so we can use the default `text::ident` parser
     let ident = text::ident()
-        .pipe((ast::Ident::from_str, Token::Ident))
+        .pipe((Ident::from_str, Token::Ident))
         .span_tuple()
         .map(MultiItem::Item)
         .labelled("<ident>")

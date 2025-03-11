@@ -13,14 +13,33 @@ middle = { workspace = true }
 backend = { workspace = true }
 ariadne = { workspace = true }
 util = { workspace = true }
+# Only used for testing graphviz output
+internment = { workspace = true, features = ["arc"] }
 
 chumsky = { workspace = true, features = [
-    "std",
-    "stacker",
-    "memoization",
-    "pratt",
-    "regex",
-    "nightly",
+  "std",
+  "stacker",
+  "memoization",
+  "pratt",
+  "regex",
+  "nightly",
 ] }
 clap = { workspace = true, features = ["derive"] }
 regex = { workspace = true }
+
+# Default binary 
+[[bin]]
+name = "compiler"
+path = "src/main.rs"
+
+# Binary used for testing various features such as graphviz
+[[bin]]
+name = "graphviz"
+path = "src/bin/graphviz_output.rs"
+
+# Used for testing the compiler with different optimization flags
+[features]
+const-fold = []
+copy-prop = []
+rm-unreachable = []
+rm-deadstores = []

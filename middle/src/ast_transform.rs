@@ -65,7 +65,7 @@ pub(crate) mod ast_lowering_ctx {
     };
     use crate::types::{WackFuncType, WackPointerType, WackType};
     use crate::wackir::{
-        BinaryOp, WackBool, WackFunction, WackGlobIdent, WackInstr, WackLiteral, WackPrintType,
+        BinaryOp, FALSE, TRUE, WackFunction, WackGlobIdent, WackInstr, WackLiteral, WackPrintType,
         WackReadType, WackTempIdent, WackValue,
     };
     use extend::ext;
@@ -1087,7 +1087,7 @@ pub(crate) mod ast_lowering_ctx {
 
             // Both expressions evaluate to False so dst to False
             instr.push(Instr::Copy {
-                src: WackValue::Literal(WackLiteral::Bool(WackBool::FALSE)),
+                src: WackValue::Literal(WackLiteral::Bool(FALSE)),
                 dst: dst.clone(),
             });
             // Jump over the true branch
@@ -1096,7 +1096,7 @@ pub(crate) mod ast_lowering_ctx {
             // True branch
             instr.push(Instr::Label(true_label));
             instr.push(Instr::Copy {
-                src: WackValue::Literal(WackLiteral::Bool(WackBool::TRUE)),
+                src: WackValue::Literal(WackLiteral::Bool(TRUE)),
                 dst: dst.clone(),
             });
 
@@ -1139,7 +1139,7 @@ pub(crate) mod ast_lowering_ctx {
 
             // Both expressions evaluate to True so dst to True
             instr.push(Instr::Copy {
-                src: WackValue::Literal(WackLiteral::Bool(WackBool::TRUE)),
+                src: WackValue::Literal(WackLiteral::Bool(TRUE)),
                 dst: dst.clone(),
             });
 
@@ -1148,7 +1148,7 @@ pub(crate) mod ast_lowering_ctx {
 
             instr.push(Instr::Label(false_label));
             instr.push(Instr::Copy {
-                src: WackValue::Literal(WackLiteral::Bool(WackBool::FALSE)),
+                src: WackValue::Literal(WackLiteral::Bool(FALSE)),
                 dst: dst.clone(),
             });
             instr.push(Instr::Label(end_label));
