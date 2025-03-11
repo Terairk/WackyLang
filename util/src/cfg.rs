@@ -33,7 +33,7 @@ pub struct Location((ArcIntern<str>, usize));
 impl Location {
     #[must_use]
     #[inline]
-    pub fn new(name: ArcIntern<str>, id: usize) -> Self {
+    pub const fn new(name: ArcIntern<str>, id: usize) -> Self {
         Self((name, id))
     }
 }
@@ -493,7 +493,7 @@ impl<T: Instruction + Clone + Display, V: Clone + Default + Debug> CFG<T, V> {
 
         if status.success() {
             // Maybe we shouldn't remove the dot file
-            // let _ = std::fs::remove_file(&filename);
+            let _ = std::fs::remove_file(&filename);
             Ok(png_filename)
         } else {
             Err(std::io::Error::new(

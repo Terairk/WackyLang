@@ -1,0 +1,10 @@
+begin
+  int x = 2147483 ;
+  println x ;
+  x = 2147483 * 1000 ;
+  println x ;
+  x = 2147483000 * 1000 ;
+  println x ;
+  x = 2147483000 * 1000 ; #err here?
+  println x 
+end
