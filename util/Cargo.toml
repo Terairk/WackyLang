@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 # macro dependencies
 extend = { workspace = true }
+enum_primitive = { workspace = true }
 
 # utility dependencies
 thiserror = { workspace = true }

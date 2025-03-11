@@ -3,4 +3,6 @@
 //! TODO: complete this documentation
 //!
 //!
-mod thir;
+pub mod lower_hir;
+pub mod thir;
+pub mod types;

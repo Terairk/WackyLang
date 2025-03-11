@@ -6,7 +6,6 @@
 #![feature(unboxed_closures)]
 #![feature(const_trait_impl)]
 #![feature(fn_traits)]
-extern crate core;
 
 mod dyn_traits;
 pub mod func;

@@ -1,5 +1,6 @@
 use crate::parsing::ast;
 use crate::wacc_hir::hir;
+use crate::wacc_thir::types::Type;
 use thiserror::Error;
 use util::nonempty::NonemptyArray;
 
@@ -78,28 +79,35 @@ pub enum RValue {
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ArrayLiter {
-    liter_values: Box<[Expr]>,
-    r#type: Type,
+    pub liter_values: Box<[Expr]>,
+    pub r#type: Type,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct NewPair {
-    fst: Expr,
-    snd: Expr,
-    r#type: Type,
+    pub fst: Expr,
+    pub snd: Expr,
+    pub r#type: Type,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct PairElem {
-    pair_elem: (hir::PairElemSelector, Box<LValue>),
-    r#type: Type,
+    pub pair_elem: (hir::PairElemSelector, Box<LValue>),
+    pub r#type: Type,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct ArrayElem {
-    pub array_name: Ident,
-    pub indices: NonemptyArray<Expr>,
-    pub r#type: Type,
+pub enum ArrayElem {
+    FirstAccess {
+        array_name: Ident,
+        index: Expr,
+        r#type: Type,
+    },
+    NestedAccess {
+        array_elem: Box<ArrayElem>,
+        index: Expr,
+        r#type: Type,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -120,50 +128,20 @@ pub enum Expr {
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 #[allow(clippy::enum_variant_names)]
 pub struct Liter {
-    liter: hir::Liter,
-    r#type: Type,
+    pub liter: hir::Liter,
+    pub r#type: Type,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct UnaryExpr {
-    expr: (hir::UnaryOper, Expr),
-    r#type: Type,
+    pub expr: (hir::UnaryOper, Expr),
+    pub r#type: Type,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct BinaryExpr {
-    expr: (hir::BinaryOper, Expr),
-    r#type: Type,
-}
-
-#[allow(clippy::enum_variant_names)]
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub enum Type {
-    BaseType(BaseType),
-    ArrayType(Box<ArrayType>),
-    PairType(PairElemType, PairElemType),
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub enum BaseType {
-    Int,
-    Bool,
-    Char,
-    String,
-    // type representing unknown/potentially erroneous types
-    Any,
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct ArrayType {
-    pub elem_type: Type,
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub enum PairElemType {
-    ArrayType(Box<ArrayType>),
-    BaseType(BaseType),
-    Pair,
+    pub expr: (hir::BinaryOper, Expr),
+    pub r#type: Type,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -176,9 +154,10 @@ pub struct Ident {
 mod impls {
     use crate::parsing::ast;
     use crate::wacc_thir::thir::{
-        ArrayElem, ArrayType, EmptyStatVecError, Expr, Func, Ident, LValue, Program, RValue, Stat,
-        StatBlock, Type,
+        ArrayElem, EmptyStatVecError, Expr, Func, Ident, LValue, Liter, Program, RValue, Stat,
+        StatBlock,
     };
+    use crate::wacc_thir::types::Type;
     use delegate::delegate;
     use std::fmt;
     use util::nonempty::NonemptyArray;
@@ -199,13 +178,18 @@ mod impls {
                 r#type,
             }
         }
-    }
 
-    impl ArrayType {
         #[must_use]
         #[inline]
-        pub const fn new(elem_type: Type) -> Self {
-            Self { elem_type }
+        pub fn r#type(&self) -> Type {
+            match *self {
+                Self::Liter(Liter { ref r#type, .. })
+                | Self::Ident(Ident { ref r#type, .. })
+                | Self::IfThenElse { ref r#type, .. } => r#type.clone(),
+                Self::ArrayElem(ref boxed) => (&*boxed).r#type(),
+                Self::Unary(ref boxed) => (&*boxed).r#type.clone(),
+                Self::Binary(ref boxed) => (&*boxed).r#type.clone(),
+            }
         }
     }
 
@@ -338,11 +322,31 @@ mod impls {
     impl ArrayElem {
         #[must_use]
         #[inline]
-        pub const fn new(array_name: Ident, indices: NonemptyArray<Expr>, r#type: Type) -> Self {
-            Self {
+        pub const fn first_access(array_name: Ident, index: Expr, r#type: Type) -> Self {
+            Self::FirstAccess {
                 array_name,
-                indices,
+                index,
                 r#type,
+            }
+        }
+
+        #[must_use]
+        #[inline]
+        pub const fn nested_access(array_elem: Box<Self>, index: Expr, r#type: Type) -> Self {
+            Self::NestedAccess {
+                array_elem,
+                index,
+                r#type,
+            }
+        }
+
+        #[inline]
+        #[must_use]
+        pub fn r#type(&self) -> Type {
+            match *self {
+                Self::FirstAccess { ref r#type, .. } | Self::NestedAccess { ref r#type, .. } => {
+                    r#type.clone()
+                }
             }
         }
     }

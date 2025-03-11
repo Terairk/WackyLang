@@ -139,7 +139,7 @@ impl IDMapEntry {
 // struct responsible for traversing/folding the AST
 // holds state relevant for the renaming phase
 struct LoweringCtx {
-    pub func_symbol_table: FuncSymbolTable,
+    func_symbol_table: FuncSymbolTable,
     errors: Vec<AstLoweringError>,
     in_main: bool,
     counter: usize,

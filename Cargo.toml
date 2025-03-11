@@ -43,6 +43,7 @@ delegate = "0.13"
 impl-trait-for-tuples = "0.2"
 clap = "4.5"
 bitflags = "2.8"
+enum_primitive = "0.1"
 # Utility dependencies
 itertools = "0.14"
 thiserror = "2"

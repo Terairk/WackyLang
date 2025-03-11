@@ -15,7 +15,7 @@ use std::io::Write;
 use thiserror::Error;
 
 pub mod hir;
-mod lower_ast;
+pub mod lower_ast;
 
 #[derive(Debug, Error)]
 pub enum AstLoweringPhaseError {

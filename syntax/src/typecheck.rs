@@ -258,6 +258,7 @@ impl TypeResolver {
             SemanticType::Error(expr.span())
         }
     }
+
     fn binary_expect(
         &mut self,
         lhs: SN<Expr<RenamedName, SemanticType>>,
