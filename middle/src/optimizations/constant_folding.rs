@@ -8,16 +8,7 @@ use binary_op::eval_binary_op;
 use unary_op::eval_unary_op;
 use util::gen_flags::insert_flag_gbl;
 
-// TODO: figure out what I want to do with runtime errors such as invalid value passed to ord
-// and divide by zero. Any compile time errors caused by this won't have source info though
-// A few ideas include:
-// 1) Compile Time Error via a Panic (simple)
-// 2) Compile Time Error via changing signatures to Result<T, E> (more complex) - maybe anyhow?
-// 3) Generate a Jmp to a runtime error handler (complex) - need to remove runtime checks
-// For now I'll just ignore it and let the runtime handle it. I'm leaning more towards 3) though
-// because it's the most flexible and allows for more complex error handling in the future
-// Seems more inline with the extensions specification. It's a little complex to figure out right
-// now.
+// TODO: add some checks for ARRAY_ACCESS and NULL checks in various places
 
 /// Constant folds a function. Turns unary and binary operations with constant operands into a
 /// single copy instruction

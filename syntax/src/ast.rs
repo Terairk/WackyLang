@@ -191,6 +191,75 @@ pub enum BinaryOper {
     LOr,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct Ident(ArcIntern<str>);
+
+// impls related to `Ident`
+pub mod ident_impls {
+    use crate::ast::Ident;
+    use internment::ArcIntern;
+    use std::fmt;
+    use std::ops::Deref;
+
+    impl Ident {
+        #[allow(clippy::should_implement_trait)]
+        #[must_use]
+        #[inline]
+        pub fn from_str(s: &str) -> Self {
+            Self(ArcIntern::from(s))
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn from_boxed_str(s: Box<str>) -> Self {
+            Self(ArcIntern::from(s))
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn from_string(s: String) -> Self {
+            Self::from_boxed_str(s.into_boxed_str())
+        }
+
+        #[must_use]
+        #[inline]
+        pub const fn inner(&self) -> &ArcIntern<str> {
+            &self.0
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn into_inner(self) -> ArcIntern<str> {
+            self.0
+        }
+    }
+
+    impl fmt::Display for Ident {
+        #[inline]
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            <str as fmt::Display>::fmt(&self.0, f)
+        }
+    }
+
+    impl Deref for Ident {
+        type Target = str;
+
+        #[allow(clippy::explicit_deref_methods)]
+        #[inline]
+        fn deref(&self) -> &Self::Target {
+            self.0.deref()
+        }
+    }
+
+    impl From<Ident> for String {
+        #[inline]
+        fn from(ident: Ident) -> Self {
+            ident.0.to_string()
+        }
+    }
+}
+
 /* ===================== DEBUG IMPLS ===================== */
 impl Debug for Liter {
     #[inline]
@@ -435,75 +504,6 @@ impl RValue<Ident, ()> {
             func_name,
             args,
             return_type: (),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-pub struct Ident(ArcIntern<str>);
-
-// impls related to `Ident`
-mod ident_impls {
-    use crate::ast::Ident;
-    use internment::ArcIntern;
-    use std::fmt;
-    use std::ops::Deref;
-
-    impl Ident {
-        #[allow(clippy::should_implement_trait)]
-        #[must_use]
-        #[inline]
-        pub fn from_str(s: &str) -> Self {
-            Self(ArcIntern::from(s))
-        }
-
-        #[must_use]
-        #[inline]
-        pub fn from_boxed_str(s: Box<str>) -> Self {
-            Self(ArcIntern::from(s))
-        }
-
-        #[must_use]
-        #[inline]
-        pub fn from_string(s: String) -> Self {
-            Self::from_boxed_str(s.into_boxed_str())
-        }
-
-        #[must_use]
-        #[inline]
-        pub const fn inner(&self) -> &ArcIntern<str> {
-            &self.0
-        }
-
-        #[must_use]
-        #[inline]
-        pub fn into_inner(self) -> ArcIntern<str> {
-            self.0
-        }
-    }
-
-    impl fmt::Display for Ident {
-        #[inline]
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            <str as fmt::Display>::fmt(&self.0, f)
-        }
-    }
-
-    impl Deref for Ident {
-        type Target = str;
-
-        #[allow(clippy::explicit_deref_methods)]
-        #[inline]
-        fn deref(&self) -> &Self::Target {
-            self.0.deref()
-        }
-    }
-
-    impl From<Ident> for String {
-        #[inline]
-        fn from(ident: Ident) -> Self {
-            ident.0.to_string()
         }
     }
 }

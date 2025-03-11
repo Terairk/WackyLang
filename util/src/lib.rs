@@ -3,6 +3,7 @@
 // #![feature(stmt_expr_attributes)]
 // #![feature(specialization)]
 
+pub mod cfg;
 pub mod gen_flags;
 pub mod nonempty;
 pub mod opt_flags;

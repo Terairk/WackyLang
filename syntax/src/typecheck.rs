@@ -1,3 +1,4 @@
+use crate::ast::Ident;
 use crate::ast::*;
 use crate::error::SemanticError;
 use crate::error::SemanticError::{
