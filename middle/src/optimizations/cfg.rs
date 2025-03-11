@@ -9,11 +9,11 @@ pub type CFG = bCFG<WackInstr, ()>;
 pub type EmptyCFG = bCFG<WackInstr, ()>;
 
 pub fn make_cfg(instrs: Vec<WackInstr>, func_name: &str) -> EmptyCFG {
-    bCFG::<WackInstr, ()>::from_instructions(func_name.to_owned(), &instrs)
+    bCFG::<WackInstr, ()>::from_instructions(func_name.to_owned(), instrs)
 }
 
 pub fn cfg_to_instrs(cfg: EmptyCFG) -> Vec<WackInstr> {
-    bCFG::to_instructions(&cfg)
+    bCFG::to_instructions(cfg)
 }
 
 // Implementation of the Instruction trait for WackInstr

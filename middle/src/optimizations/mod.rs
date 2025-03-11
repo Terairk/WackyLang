@@ -5,13 +5,15 @@ mod dead_store_elim;
 mod unreachable_code_elim;
 
 use crate::wackir::{WackInstr, WackProgram};
-use cfg::{cfg_to_instrs, make_cfg};
 use constant_folding::constant_fold_function;
 use copy_prop::copy_propagation;
 use dead_store_elim::eliminate_dead_stores;
 use std::mem;
 use unreachable_code_elim::eliminate_unreachable_code;
 use util::opt_flags::OptimizationConfig;
+
+// Public Re-exports
+pub use cfg::{cfg_to_instrs, make_cfg};
 
 /// Optimizes an entire WackIR program.
 #[must_use]

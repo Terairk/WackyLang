@@ -97,7 +97,7 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
     // TODO: check if we can take ownership of the instructions
     #[must_use]
     #[inline]
-    pub fn from_instructions(debug_label: String, instructions: &[T]) -> CFG<T, ()> {
+    pub fn from_instructions(debug_label: String, instructions: Vec<T>) -> CFG<T, ()> {
         let basic_blocks = Self::partition_into_basic_blocks(instructions);
         let mut cfg = CFG {
             basic_blocks,
@@ -111,7 +111,7 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
     }
 
     // TODO: take ownership of the instructions maybe
-    fn partition_into_basic_blocks(instructions: &[T]) -> HashMap<usize, BasicBlock<T, ()>> {
+    fn partition_into_basic_blocks(instructions: Vec<T>) -> HashMap<usize, BasicBlock<T, ()>> {
         let mut finished_blocks = Vec::new();
         let mut current_block = Vec::new();
 
@@ -126,13 +126,13 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
                     if !current_block.is_empty() {
                         finished_blocks.push(mem::take(&mut current_block));
                     }
-                    current_block.push(instr.clone());
+                    current_block.push(instr);
                 }
                 ConditionalJump(_) | UnconditionalJump(_) | ErrorJump | Return => {
-                    current_block.push(instr.clone());
+                    current_block.push(instr);
                     finished_blocks.push(mem::take(&mut current_block));
                 }
-                Other => current_block.push(instr.clone()),
+                Other => current_block.push(instr),
             }
         }
 
@@ -334,14 +334,28 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
     /// Convert back to a list of instructions
     #[must_use]
     #[inline]
-    pub fn to_instructions(&self) -> Vec<T> {
-        let mut result = Vec::new();
+    pub fn to_instructions(self) -> Vec<T> {
+        // Pre-allocate capacity for efficiency
+        let total_instructions = self
+            .basic_blocks
+            .values()
+            .map(|block| block.instructions.len())
+            .sum();
+        let mut result = Vec::with_capacity(total_instructions);
+
+        // Sort the basic blocks by ID
         let mut ids: Vec<usize> = self.basic_blocks.keys().copied().collect();
         ids.sort_unstable();
 
+        // Consume self by moving basic blocks out
+        let mut basic_blocks = self.basic_blocks;
+
+        // Process blocks in order
         for id in ids {
-            if let Some(block) = self.basic_blocks.get(&id) {
-                for (_, instr) in block.instructions.clone() {
+            if let Some(block) = basic_blocks.get_mut(&id) {
+                // We use mem::take to avoid cloning the instructions
+                let block_instrs = mem::take(&mut block.instructions);
+                for (_, instr) in block_instrs {
                     result.push(instr);
                 }
             }

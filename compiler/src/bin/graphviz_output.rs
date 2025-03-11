@@ -1,6 +1,6 @@
 use internment::ArcIntern;
+use middle::optimizations::make_cfg;
 use middle::wackir::{WackGlobIdent, WackInstr, WackLiteral, WackTempIdent, WackValue};
-use util::CFG;
 
 fn main() {
     let mut counter = 0;
@@ -18,14 +18,15 @@ fn main() {
             args: vec![],
             dst: x_ident.clone(),
         },
-        WackInstr::Label(target_ident.clone()),
+        WackInstr::Label(target_ident),
         WackInstr::Return(WackValue::Var(x_ident)),
     ];
-    let cfg =
-        CFG::<WackInstr, ()>::from_instructions("function_name".to_string(), &wack_instructions);
+    let cfg = make_cfg(wack_instructions, "function_name");
+    // let cfg =
+    //     CFG::<WackInstr, ()>::from_instructions("function_name".to_owned(), wack_instructions);
 
     // Print CFG visualization
     if let Ok(png_path) = cfg.print_graphviz() {
-        println!("Generated CFG visualization: {}", png_path);
+        println!("Generated CFG visualization: {png_path}");
     }
 }
