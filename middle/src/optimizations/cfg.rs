@@ -1,17 +1,19 @@
-use util::{Instruction, SimpleInstr};
+use util::{CFG as bCFG, Instruction, SimpleInstr};
+// temporary bCFG cus I want to leave everything the same
 
 use crate::wackir::WackInstr;
 
 // TODO: Change the CFG to the proper CFG type
 // I'll figure this out as I go along
-pub type CFG = Vec<WackInstr>;
+pub type CFG = bCFG<WackInstr, ()>;
+pub type EmptyCFG = bCFG<WackInstr, ()>;
 
-pub fn make_cfg(instrs: Vec<WackInstr>) -> CFG {
-    instrs
+pub fn make_cfg(instrs: Vec<WackInstr>, func_name: &str) -> EmptyCFG {
+    bCFG::<WackInstr, ()>::from_instructions(func_name.to_owned(), &instrs)
 }
 
-pub fn cfg_to_instrs(cfg: CFG) -> Vec<WackInstr> {
-    cfg
+pub fn cfg_to_instrs(cfg: EmptyCFG) -> Vec<WackInstr> {
+    bCFG::to_instructions(&cfg)
 }
 
 // Implementation of the Instruction trait for WackInstr

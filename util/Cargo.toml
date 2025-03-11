@@ -18,7 +18,7 @@ thiserror = { workspace = true }
 bitflags = { workspace = true }
 once_cell = { workspace = true }
 internment = { workspace = true, features = ["arc"] }
-
+derive_more = { workspace = true }
 # for now we only use bon in this crate 
 # but if we use it elsewhere, include it in the workspace
 bon = "3.4.0"

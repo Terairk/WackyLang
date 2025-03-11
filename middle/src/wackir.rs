@@ -81,6 +81,7 @@
  * However I might change them to regular old Strings if i do a lot of modification etc
  * */
 
+use derive_more::Display;
 use internment::ArcIntern;
 use std::fmt::{self, Debug};
 use std::hash::Hash;
@@ -105,9 +106,6 @@ pub struct WackFunction {
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum WackInstr {
-    // TODO: at the end of this, remove redundant instructions
-    // TODO: change any `src` and `dst` from "WackValue" bc it might not make sense to e.g. to "store" into a constant value
-    // TODO: add code-docs to these instructions
     /// This instruction returns a value from within a function body.
     Return(WackValue),
 
@@ -251,28 +249,38 @@ pub enum WackInstr {
 
 /// A type-argument to the read instruction: this is a type-hint purely, the underlying data
 /// could be of any type - for decoupling concerns since it doesn't need to be nested
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Display)]
 pub enum WackReadType {
+    #[display("int")]
     Int,
+    #[display("char")]
     Char,
 }
 
 /// A type-argument to the print instruction: this is a type-hint purely, the underlying data
 /// could be of any type - for decoupling concerns since it doesn't need to be nested
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Display)]
 pub enum WackPrintType {
+    #[display("int")]
     Int,
+    #[display("bool")]
     Bool,
+    #[display("char")]
     Char,
+    #[display("string")]
     StringOrCharArray,
+    #[display("array[]")]
     OtherArray,
     /// If null-ptr, must print "nil"
+    #[display("pair")]
     Pair,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Display)]
 pub enum WackValue {
+    #[display("{_0}")]
     Literal(WackLiteral), // Literals are all constants
+    #[display("{_0}")]
     Var(WackTempIdent),
 }
 
@@ -293,34 +301,56 @@ pub enum WackLiteral {
 // I know that these are the same as the ones in ast.rs but I'm not sure if I want to
 // couple them together or not. For now I'll separate them just in case I need to move
 // Len, Ord, Chr somewhere else
-#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+#[derive(Clone, Debug, PartialEq, Eq, Copy, Display)]
 pub enum UnaryOp {
+    #[display("!")]
     BNot,
+    #[display("!")]
     LNot,
+    #[display("-")]
     Negate,
+    #[display("len")]
     Len,
+    #[display("ord")]
     Ord,
+    #[display("chr")]
     Chr,
 }
 
 // See UnaryOperator explanation above
-#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+#[derive(Clone, Debug, PartialEq, Eq, Copy, Display)]
 pub enum BinaryOp {
+    #[display("*")]
     Mul,
+    #[display("/")]
     Div,
+    #[display("%")]
     Mod,
+    #[display("+")]
     Add,
+    #[display("-")]
     Sub,
+    #[display(">")]
     Gt,
+    #[display(">=")]
     Gte,
+    #[display("<")]
     Lt,
+    #[display("<=")]
     Lte,
+    #[display("==")]
     Eq,
+    #[display("!=")]
     Neq,
+    #[display("&")]
     BAnd,
+    #[display("^")]
     BXor,
+    #[display("|")]
     BOr,
+    #[display("&&")]
     LAnd,
+    #[display("||")]
     LOr,
 }
 
@@ -456,8 +486,9 @@ impl From<ast::Liter> for WackLiteral {
 
 /// An identified used for global-scope items like functions, who's names
 /// do not need to be generated using an increasing counter.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Display)]
 #[repr(transparent)]
+#[display("{_0}")]
 pub struct WackGlobIdent(ArcIntern<str>);
 
 // impls relating to `WackGlobIdent`
@@ -522,7 +553,8 @@ mod wack_glob_ident {
 ///
 /// Invariant: The usize's are unique so should reuse the global counter when possible.
 ///            DO NOT UNDER ANY CIRCUMSTANCES USE THE SAME usize FOR TWO DIFFERENT IDENTIFIERS!!
-#[derive(Clone)]
+#[derive(Clone, Display)]
+#[display("{_0}")]
 pub struct WackTempIdent(ast::Ident, usize);
 
 // impls relating to `WackTempIdent`
@@ -604,6 +636,12 @@ pub mod wack_temp_ident {
             mid_ident.0.into_inner()
         }
     }
+
+    impl WackTempIdent {
+        pub fn create_new(ident: &str, counter: &mut usize) -> Self {
+            Self(Ident::from_str(ident), *counter)
+        }
+    }
 }
 
 /* ====================== PRETTY PRINTER ====================== */
@@ -657,9 +695,7 @@ impl fmt::Debug for WackInstr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Return(val) => write!(f, "Return({:?})", val),
-            // Self::ZeroExtend { src, dst } => {
-            //     write!(f, "ZeroExtend {{ src: {:?}, dst: {:?} }}", src, dst)
-            // } // TODO: uncomment when its _actually_ needed
+
             Self::Unary { op, src, dst } => write!(
                 f,
                 "Unary {{ op: {:?}, src: {:?}, dst: {:?} }}",
@@ -704,11 +740,6 @@ impl fmt::Debug for WackInstr {
                 "CopyToOffset {{ src: {:?}, dst_ptr: {:?}, offset: {:?} }}",
                 src, dst_ptr, offset
             ),
-            // Self::CopyFromOffset { src, offset, dst } => write!(
-            //     f,
-            //     "CopyFromOffset {{ src: {:?}, offset: {:?}, dst: {:?} }}",
-            //     src, offset, dst
-            // ), // TODO: uncomment when its _actually_ needed
             Self::Jump(target) => write!(f, "Jump({:?})", target),
             Self::JumpIfZero { condition, target } => write!(
                 f,
@@ -759,6 +790,106 @@ impl fmt::Debug for WackInstr {
                 write!(f, "Alloc {{ size: {:?}, dst_ptr: {:?} }}", size, dst_ptr)
             }
             Self::NullPtrGuard(ptr) => write!(f, "NullPtrGuard {{ ptr: {:?} }}", ptr),
+        }
+    }
+}
+
+impl fmt::Display for WackLiteral {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Int(i) => write!(f, "{}", i),
+            Self::Bool(b) => {
+                if *b {
+                    write!(f, "true")
+                } else {
+                    write!(f, "false")
+                }
+            }
+            Self::Char(c) => write!(f, "'{}'", *c as char),
+            Self::StringLit(s) => write!(f, "\"{}\"", s),
+            Self::NullPair => write!(f, "null"),
+        }
+    }
+}
+
+impl fmt::Display for WackInstr {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Return(val) => write!(f, "Return {val}"),
+
+            Self::Unary { op, src, dst } => {
+                write!(f, "{dst} = {op} {src}")
+            }
+            Self::Binary {
+                op,
+                src1,
+                src2,
+                dst,
+            } => write!(f, "{dst} = {src1} {op} {src2}"),
+            Self::Copy { src, dst } => {
+                write!(f, "{dst} = {src}")
+            }
+            Self::Load { src_ptr, dst } => {
+                write!(f, "{dst} = *{src_ptr}")
+            }
+
+            Self::AddPtr {
+                src_ptr,
+                index,
+                scale,
+                offset,
+                dst_ptr,
+            } => write!(f, "{dst_ptr} = {src_ptr} + {index} * {scale} + {offset}",),
+            Self::CopyToOffset {
+                src,
+                dst_ptr,
+                offset,
+            } => write!(f, "memcpy({dst_ptr} + {offset}, {src}, sizeof(src)",),
+            Self::Jump(target) => write!(f, "Jump({target})"),
+            Self::JumpIfZero { condition, target } => {
+                write!(f, "Jump {target} if not {condition}")
+            }
+            Self::JumpIfNotZero { condition, target } => write!(f, "Jump {target} if {condition}"),
+            Self::JumpToHandler(fun_name) => write!(f, "JumpToFunc({fun_name})"),
+            Self::Label(label) => write!(f, "{label}:"),
+            Self::FunCall {
+                fun_name,
+                args,
+                dst,
+            } => {
+                let args_str = args
+                    .iter()
+                    .map(|arg| arg.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "{dst} = {fun_name}({args_str})")
+            }
+            Self::Read { dst, ty } => {
+                write!(f, "{dst} = read {ty}")
+            }
+            Self::FreeChecked(val) => write!(f, "free({val})"),
+            Self::FreeUnchecked(val) => write!(f, "free({val})"),
+            Self::Exit(val) => write!(f, "exit({val})"),
+            Self::Print { src, ty } => {
+                write!(f, "print_{ty} ({src})")
+            }
+            Self::Println { src, ty } => {
+                write!(f, "println_{ty} ({src})")
+            }
+            Self::ArrayAccess {
+                src_array_ptr,
+                index,
+                scale: _scale,
+                dst_elem_ptr,
+            } => {
+                write!(f, "{dst_elem_ptr} = {src_array_ptr}[{index}]")
+            }
+            Self::Alloc { size, dst_ptr } => {
+                write!(f, "{dst_ptr} = malloc({size})")
+            }
+            Self::NullPtrGuard(ptr) => write!(f, "IsNullPtr({ptr})"),
         }
     }
 }

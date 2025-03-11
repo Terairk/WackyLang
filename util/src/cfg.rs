@@ -24,6 +24,7 @@ use std::{
  * basic blocks */
 // TODO: figure out how I handle my rogue jumps to error handlers here
 
+use derive_more::Display;
 use internment::ArcIntern;
 // Location is either a Label or a Function
 type Location = ArcIntern<str>;
@@ -31,7 +32,7 @@ type Location = ArcIntern<str>;
 use SimpleInstr::{ConditionalJump, ErrorJump, Label, Other, Return, UnconditionalJump};
 
 /// A simplified instruction type that can represent both Wack and AssemblyIR
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SimpleInstr {
     Label(Location),
     ConditionalJump(Location),
@@ -54,10 +55,14 @@ pub trait Instruction: Sized + Clone + Debug {
 }
 
 /// Node ID in the control flow graph
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// NOTE: don't change the display on these unless you want to change the graphviz function
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display)]
 pub enum NodeId {
+    #[display("entry")]
     Entry,
+    #[display("block{_0}")]
     Block(usize),
+    #[display("exit")]
     Exit,
 }
 
@@ -87,9 +92,11 @@ pub struct CFG<T, V> {
     pub debug_label: String,
 }
 
-impl<T: Instruction + Clone + Debug, V: Clone + Default + Debug> CFG<T, V> {
+impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
     /// Create a new CFG from a list of instructions
     // TODO: check if we can take ownership of the instructions
+    #[must_use]
+    #[inline]
     pub fn from_instructions(debug_label: String, instructions: &[T]) -> CFG<T, ()> {
         let basic_blocks = Self::partition_into_basic_blocks(instructions);
         let mut cfg = CFG {
@@ -383,7 +390,11 @@ impl<T: Instruction + Clone + Debug, V: Clone + Default + Debug> CFG<T, V> {
     pub fn strip_annotations(&self) -> CFG<T, ()> {
         self.initialize_annotation(&())
     }
+}
 
+// Display for Instructions cus nicer formatting, Debug for V cus () doesn't implement Display but
+// implements Debug
+impl<T: Instruction + Clone + Display, V: Clone + Default + Debug> CFG<T, V> {
     /// Generate a GraphViz DOT file and render it as PNG
     // TODO: check if this works later on
     #[must_use]
@@ -414,7 +425,7 @@ impl<T: Instruction + Clone + Debug, V: Clone + Default + Debug> CFG<T, V> {
             #[allow(clippy::pattern_type_mismatch)]
             for (val, instr) in &block.instructions {
                 write!(file, "      <tr><td align=\"left\">")?;
-                let instr_buf = format!("{instr:?}");
+                let instr_buf = format!("{instr}");
                 // Escape HTML characters
                 let escaped = instr_buf.replace("<", "&lt;").replace(">", "&gt;");
                 write!(file, "{escaped}")?;
@@ -422,6 +433,8 @@ impl<T: Instruction + Clone + Debug, V: Clone + Default + Debug> CFG<T, V> {
 
                 // Format the value
                 let val_buf = format!("{val:?}");
+                // Debug print the value for value since it maybe () which doesn't implement
+                // Display
                 write!(file, "{val_buf}")?;
                 writeln!(file, "</td></tr>")?;
             }
@@ -437,7 +450,7 @@ impl<T: Instruction + Clone + Debug, V: Clone + Default + Debug> CFG<T, V> {
 
         // Write edges from entry
         for succ in &self.entry_succs {
-            writeln!(file, "  entry -> {succ:?}")?;
+            writeln!(file, "  entry -> {succ}")?;
         }
 
         // Write edges between blocks
@@ -456,6 +469,7 @@ impl<T: Instruction + Clone + Debug, V: Clone + Default + Debug> CFG<T, V> {
             .status()?;
 
         if status.success() {
+            // Maybe we shouldn't remove the dot file
             let _ = std::fs::remove_file(&filename);
             Ok(png_filename)
         } else {
@@ -463,18 +477,6 @@ impl<T: Instruction + Clone + Debug, V: Clone + Default + Debug> CFG<T, V> {
                 std::io::ErrorKind::Other,
                 "Failed to generate PNG with GraphViz",
             ))
-        }
-    }
-}
-
-/* ===================== Impl's for Types ==================== */
-impl Display for NodeId {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match *self {
-            Self::Entry => write!(f, "Entry"),
-            Self::Block(id) => write!(f, "Block {id}"),
-            Self::Exit => write!(f, "Exit"),
         }
     }
 }

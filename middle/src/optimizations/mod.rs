@@ -20,19 +20,23 @@ pub fn optimize(program: WackProgram, config: OptimizationConfig) -> WackProgram
     let mut optimized_program = program;
 
     // optimize main body
-    optimized_program.main_body = optimize_fun(optimized_program.main_body, config);
+    optimized_program.main_body = optimize_fun(optimized_program.main_body, "main", config);
 
     // optimize user functions
     for fun in optimized_program.functions.iter_mut() {
         // use mem::take to avoid cloning the function body
         let body = mem::take(&mut fun.body);
-        fun.body = optimize_fun(body, config);
+        fun.body = optimize_fun(body, (&fun.name).into(), config);
     }
 
     optimized_program
 }
 
-fn optimize_fun(mut function_body: Vec<WackInstr>, config: OptimizationConfig) -> Vec<WackInstr> {
+fn optimize_fun(
+    mut function_body: Vec<WackInstr>,
+    func_name: &str,
+    config: OptimizationConfig,
+) -> Vec<WackInstr> {
     if function_body.is_empty() {
         return function_body;
     }
@@ -48,7 +52,7 @@ fn optimize_fun(mut function_body: Vec<WackInstr>, config: OptimizationConfig) -
             current_body
         };
 
-        let mut cfg = make_cfg(post_constant_folding);
+        let mut cfg = make_cfg(post_constant_folding, func_name);
 
         if config.has_eliminate_unreachable_code() {
             cfg = eliminate_unreachable_code(cfg);
