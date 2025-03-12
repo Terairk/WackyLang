@@ -11,12 +11,32 @@ use WackInstr::{
 };
 
 use super::cfg::EmptyCFG;
-pub fn copy_propagation(cfg: EmptyCFG) -> EmptyCFG {
-    let annotated_cfg = find_reaching_copies(&cfg);
+// TODO: make this more efficient to reduce the clones on the reaching copies and instructions
+pub fn copy_propagation(cfg: &EmptyCFG) -> EmptyCFG {
+    let annotated_cfg = find_reaching_copies(cfg);
+
     // Rewrite each block in the annotated CFG with the reaching copies
+    let mut transformed_cfg = annotated_cfg;
+
+    // Rewrite instructions using the reaching copies information
+    for block in transformed_cfg.basic_blocks.values_mut() {
+        // Use the rewrite_instruction function on each instruction
+        block.instructions = block
+            .instructions
+            .iter()
+            .filter_map(|(reaching_copies, instr)| {
+                let result = rewrite_instruction(reaching_copies, instr.clone());
+                if result.is_some() {
+                    Some((reaching_copies.clone(), result.unwrap()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+    }
 
     // Strip annotations from the CFG
-    unimplemented!()
+    transformed_cfg.strip_annotations()
 }
 
 // Struct representing a Reaching Copy
@@ -315,11 +335,10 @@ fn replace_operand(op: WackValue, reaching_copies: &ReachingCopies) -> WackValue
     op
 }
 
-fn rewrite_instruction(instr: (ReachingCopies, WackInstr)) -> Option<WackInstr> {
-    let (reaching_copies, instr) = instr;
+fn rewrite_instruction(reaching_copies: &ReachingCopies, instr: WackInstr) -> Option<WackInstr> {
     match instr {
         Copy { src, dst } => {
-            for copy in &reaching_copies {
+            for copy in reaching_copies {
                 // if x = y already exists, we can remove the copy
                 // if we have x = y, and we enounter y = x, we can remove the copy
                 let dst = WackValue::Var(dst.clone());

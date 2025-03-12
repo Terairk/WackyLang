@@ -71,7 +71,7 @@ fn optimize_fun(
         }
 
         if config.has_copy_propagation() {
-            cfg = copy_propagation(cfg);
+            cfg = copy_propagation(&cfg);
         }
 
         if config.has_eliminate_dead_stores() {
