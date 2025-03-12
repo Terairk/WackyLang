@@ -5,4 +5,5 @@
 //!
 pub mod lower_hir;
 pub mod thir;
+mod type_set;
 pub mod types;

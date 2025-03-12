@@ -140,7 +140,7 @@ pub struct UnaryExpr {
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct BinaryExpr {
-    pub expr: (hir::BinaryOper, Expr),
+    pub expr: (Expr, hir::BinaryOper, Expr),
     pub r#type: Type,
 }
 
@@ -154,8 +154,8 @@ pub struct Ident {
 mod impls {
     use crate::parsing::ast;
     use crate::wacc_thir::thir::{
-        ArrayElem, EmptyStatVecError, Expr, Func, Ident, LValue, Liter, Program, RValue, Stat,
-        StatBlock,
+        ArrayElem, ArrayLiter, EmptyStatVecError, Expr, Func, Ident, LValue, Liter, NewPair,
+        PairElem, Program, RValue, Stat, StatBlock,
     };
     use crate::wacc_thir::types::Type;
     use delegate::delegate;
@@ -307,6 +307,16 @@ mod impls {
         }
     }
 
+    impl LValue {
+        pub fn r#type(&self) -> Type {
+            match *self {
+                LValue::ArrayElem(ref elem) => elem.r#type(),
+                LValue::Ident(Ident { ref r#type, .. })
+                | LValue::PairElem(PairElem { ref r#type, .. }) => r#type.clone(),
+            }
+        }
+    }
+
     impl RValue {
         #[must_use]
         #[inline]
@@ -315,6 +325,19 @@ mod impls {
                 return_type,
                 func_name,
                 args,
+            }
+        }
+
+        pub fn r#type(&self) -> Type {
+            match *self {
+                RValue::Expr(ref e) => e.r#type(),
+                RValue::PairElem(PairElem { ref r#type, .. })
+                | RValue::ArrayLiter(ArrayLiter { ref r#type, .. })
+                | RValue::NewPair(NewPair { ref r#type, .. })
+                | RValue::Call {
+                    return_type: ref r#type,
+                    ..
+                } => r#type.clone(),
             }
         }
     }

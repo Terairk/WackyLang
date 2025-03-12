@@ -99,8 +99,16 @@ pub trait Weakening: Equality {
 /// A type is compatible with another type if-and-only if:
 /// 1) it is equal to the target type, or
 /// 2) it weakens to the target type.
-pub trait CompatibleWith: Weakening {
-    fn compatible_with(&self, target: &Type) -> bool;
+pub trait Compatibility: Equality {
+    /// See [`Type::compatible_with`].
+    #[inline(always)]
+    fn compatible_with<Target>(&self, target: &Target) -> bool
+    where
+        Self: Clone,
+        Target: Equality + Clone,
+    {
+        Type::compatible_with(&self.to_type(), &target.to_type())
+    }
 }
 
 /// A newtype for any type-equal objects which implements various overloadable operations like
@@ -111,7 +119,8 @@ pub struct TypeOps<T>(pub T);
 
 mod impls {
     use crate::wacc_thir::types::{
-        ArrayType, BaseType, Equality, PairType, Specificity, Type, TypeOps, Weakening,
+        ArrayType, BaseType, Compatibility, Equality, PairType, Specificity, Type, TypeOps,
+        Weakening,
     };
     use std::cmp;
     use std::ops::Add;
@@ -350,6 +359,13 @@ mod impls {
         pub fn compatible_with(&self, target: &Self) -> bool {
             self == target || self.weakens_to(target)
         }
+
+        // Tries to compute the Lowest-Common-Ancestor of two types, where
+        // the resulting type
+        //
+        //
+        // First tries to compute the Greatest-Lower-Bound (GLB)
+        // pub fn lowest_common_ancestor(&self, other: &Self) -> Option<Self> {}
     }
 
     impl From<BaseType> for Type {
@@ -414,6 +430,7 @@ mod impls {
     // blanket specificity + weakening implementation for any type-equal object
     impl<T: Equality> Specificity for T {}
     impl<T: Equality> Weakening for T {}
+    impl<T: Equality> Compatibility for T {}
 
     // newtype blanket implementation of ops
     impl<T: Equality + Clone, Rhs: Equality + Clone> PartialEq<Rhs> for TypeOps<T> {

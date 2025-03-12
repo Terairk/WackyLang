@@ -784,9 +784,9 @@ impl Folder for TypeResolver {
 
                 // resolve then/else values and types
                 let resolved_then_val = self.fold_expr(then_val.clone());
-                let resolved_then_val_type = resolved_then_val.clone().get_type(self);
+                let resolved_then_val_type = resolved_then_val.get_type(self);
                 let resolved_else_val = self.fold_expr(else_val.clone());
-                let resolved_else_val_type = resolved_else_val.clone().get_type(self);
+                let resolved_else_val_type = resolved_else_val.get_type(self);
 
                 // Do not coerce into error-type/any-type if can be avoided
                 let bad_coerce_target = |t: &SemanticType| match t {

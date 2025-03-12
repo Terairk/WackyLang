@@ -443,8 +443,8 @@ impl LoweringCtx {
     }
 
     #[inline]
-    pub fn lower_rvalue_sn(&mut self, rvalue_sbn: SN<ast::RValue>) -> SN<RValue> {
-        rvalue_sbn.map_inner(Self::lower_rvalue.curry()(self))
+    pub fn lower_rvalue_sn(&mut self, rvalue_sn: SN<ast::RValue>) -> SN<RValue> {
+        rvalue_sn.map_inner(Self::lower_rvalue.curry()(self))
     }
 
     #[inline]
