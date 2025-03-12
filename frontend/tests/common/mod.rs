@@ -48,7 +48,7 @@ pub fn run_single_test(path: &Path) -> Result<String, String> {
     let source = source.as_str(); // reduce repetitive &str borrowings
 
     // Perform lexing (syntax analysis)
-    let source_id = StrSourceId::repl();
+    let source_id = StrSourceId::from_path(path);
     let lexing_result = lexing_phase(
         source,
         source_id.clone(),

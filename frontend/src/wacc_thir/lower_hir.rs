@@ -211,16 +211,9 @@ impl HirLoweringCtx {
     }
 
     fn pair_inner_erasable(from: &Type, to: &Type) -> bool {
-        if let Type::PairType(_) = from {
-            if to == &Type::erased_pair() {
-                return true;
-            }
-        } else if let Type::PairType(_) = to {
-            if from == &Type::erased_pair() {
-                return true;
-            }
+        if let (Type::PairType(_), Type::PairType(_)) = (from, to) {
+            return to == &Type::erased_pair() || from == &Type::erased_pair() || from == to;
         }
-
         from == to
     }
 
@@ -239,6 +232,7 @@ impl HirLoweringCtx {
             (Type::BaseType(a), Type::BaseType(b)) => a == b,
             (Type::ArrayType(a), Type::ArrayType(b)) => {
                 a.elem_type == b.elem_type || // arrays are invariant
+
                     Self::pair_inner_erasable(&a.elem_type, &b.elem_type) ||
                     a.elem_type == Type::Any
             }
@@ -256,15 +250,13 @@ impl HirLoweringCtx {
     }
 
     #[inline]
-    fn try_coerce_into(
-        &mut self,
-        from: (RValue, SourcedSpan),
-        to: Type,
-    ) -> Result<RValue, (RValue, Type)> {
-        let (from, from_span) = from;
-
+    fn try_coerce_into(&mut self, from: RValue, to: Type) -> Result<RValue, (RValue, Type)> {
         // grab resolved type, and make sure this is a legal coersion
         let resolved_type = from.r#type();
+
+        // if special case of arrays, make sure inner elements are coercible
+        // if let (Type::ArrayType(a), Type::BaseType(b)) = (resolved_type, to) {}elements
+
         if !Self::can_coerce_into(&resolved_type, &to) {
             return Err((from, resolved_type));
         }
@@ -272,7 +264,7 @@ impl HirLoweringCtx {
         // make sure we are not coercing to `AnyType` as this looses type information
         if to == Type::Any {
             return Ok(from);
-        };
+        }
 
         Ok(match from {
             RValue::Expr(expr) => RValue::Expr(expr.map_type(|_| to)),
@@ -420,19 +412,18 @@ impl HirLoweringCtx {
                 let resolved_rvalue = self.lower_rvalue_sn(rvalue.clone());
 
                 // try to coerce the resolved rvalue, or add error
-                let resolved_rvalue = match self
-                    .try_coerce_into((resolved_rvalue, rvalue.span()), expected_type.clone())
-                {
-                    Ok(new) => new,
-                    Err((old, resolved_type)) => {
-                        self.add_error(HirLoweringError::TypeMismatch {
-                            span: rvalue.span(),
-                            actual: resolved_type,
-                            expected: expected_type.clone(),
-                        });
-                        old
-                    }
-                };
+                let resolved_rvalue =
+                    match self.try_coerce_into(resolved_rvalue, expected_type.clone()) {
+                        Ok(new) => new,
+                        Err((old, resolved_type)) => {
+                            self.add_error(HirLoweringError::TypeMismatch {
+                                span: rvalue.span(),
+                                actual: resolved_type,
+                                expected: expected_type.clone(),
+                            });
+                            old
+                        }
+                    };
 
                 // insert into symbol table and return folded variable definition
                 self.hir_ident_symbol_table
@@ -460,30 +451,28 @@ impl HirLoweringCtx {
                     ));
                 } else {
                     // try to coerce, or fail and emmit error
-                    resolved_rvalue = match self.try_coerce_into(
-                        (resolved_rvalue, rvalue.span()),
-                        resolved_lval_type.clone(),
-                    ) {
-                        Ok(new) => {
-                            // if coersion was successful, refine the LHS aswell. This is useful to
-                            // reclaim useful type information for cases of both-directional nested lhs-lhs
-                            // e.g. `fst snd ident = snd arr[3]`, we need to know the type of each stage of that
-                            let resolved_rval_type = new.r#type();
-                            resolved_lvalue =
-                                self.refine_lvalue_type(resolved_lvalue, resolved_rval_type);
+                    resolved_rvalue =
+                        match self.try_coerce_into(resolved_rvalue, resolved_lval_type.clone()) {
+                            Ok(new) => {
+                                // if coersion was successful, refine the LHS aswell. This is useful to
+                                // reclaim useful type information for cases of both-directional nested lhs-lhs
+                                // e.g. `fst snd ident = snd arr[3]`, we need to know the type of each stage of that
+                                let resolved_rval_type = new.r#type();
+                                resolved_lvalue =
+                                    self.refine_lvalue_type(resolved_lvalue, resolved_rval_type);
 
-                            // return new type
-                            new
-                        }
-                        Err((old, resolved_rval_type)) => {
-                            self.add_error(HirLoweringError::TypeMismatch {
-                                span: rvalue.span(),
-                                actual: resolved_rval_type,
-                                expected: resolved_lval_type,
-                            });
-                            old
-                        }
-                    };
+                                // return new type
+                                new
+                            }
+                            Err((old, resolved_rval_type)) => {
+                                self.add_error(HirLoweringError::TypeMismatch {
+                                    span: rvalue.span(),
+                                    actual: resolved_rval_type,
+                                    expected: resolved_lval_type,
+                                });
+                                old
+                            }
+                        };
                 }
                 Stat::Assignment {
                     lvalue: resolved_lvalue,
@@ -649,7 +638,7 @@ impl HirLoweringCtx {
                 RValue::PairElem(self.lower_pair_elem_sn(pair_elem))
             }
             hir::RValue::Call { func_name, args } => {
-                let resolved_return_type = self.func_symbol_table.lookup_func_return_type(&func_name).expect("the function call should always resolve, if the prior HIR stage is correct");
+                let resolved_return_type = self.func_symbol_table.lookup_func_return_type(&func_name).expect(format!("the function call to `{:?}` should always resolve, if the prior HIR stage is correct", &func_name).as_str());
                 let expected_args_types =
                     self.func_symbol_table.lookup_func_args(&func_name).expect(
                         "the function parameters should always resolve if the prior HIR is correct",

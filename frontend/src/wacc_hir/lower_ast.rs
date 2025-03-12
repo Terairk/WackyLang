@@ -434,11 +434,19 @@ impl LoweringCtx {
                 RValue::NewPair(self.lower_expr_sn(le), self.lower_expr_sn(re))
             }
             ast::RValue::PairElem(p) => RValue::PairElem(self.lower_pair_elem_sn(p)),
-            ast::RValue::Call { func_name, args } => RValue::Call {
-                func_name,
-                // cannot curry mutable-references and still have FnMut, RIP :(
-                args: args.map(|e| self.lower_expr_sn(e)),
-            },
+            ast::RValue::Call { func_name, args } => {
+                // check that the function exits
+                if !self.func_symbol_table.functions.contains_key(&func_name) {
+                    self.add_error(AstLoweringError::UndefinedIdent(func_name.clone()));
+                }
+
+                // lower the call - even if erroneous
+                RValue::Call {
+                    func_name,
+                    // cannot curry mutable-references and still have FnMut, RIP :(
+                    args: args.map(|e| self.lower_expr_sn(e)),
+                }
+            }
         }
     }
 
