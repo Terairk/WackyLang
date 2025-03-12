@@ -4,13 +4,14 @@ use derive_more::Display;
 use util::{CFG, cfg::BasicBlock, cfg::NodeId};
 
 use crate::wackir::{WackInstr, WackTempIdent, WackValue};
+
 use WackInstr::{
     AddPtr, Alloc, ArrayAccess, Binary, Copy, CopyToOffset, Exit, FreeChecked, FreeUnchecked,
     FunCall, Jump, JumpIfNotZero, JumpIfZero, JumpToHandler, Label, Load, NullPtrGuard, Print,
     Println, Read, Return, Unary,
 };
 
-use super::cfg::{EmptyCFG, reverse_postorder_block_ids};
+use super::cfg::{EmptyCFG, get_dst, reverse_postorder_block_ids};
 // TODO: make this more efficient to reduce the clones on the reaching copies and instructions
 pub fn copy_propagation(cfg: &EmptyCFG) -> EmptyCFG {
     let annotated_cfg = find_reaching_copies(cfg);
@@ -158,31 +159,6 @@ fn find_all_copy_instructions(cfg: &EmptyCFG) -> ReachingCopies {
     }
 
     copies
-}
-
-fn get_dst(instr: &WackInstr) -> Option<&WackTempIdent> {
-    match *instr {
-        Return(_) => None,
-        Unary { ref dst, .. }
-        | Binary { ref dst, .. }
-        | FunCall { ref dst, .. }
-        | Copy { ref dst, .. }
-        | Read { ref dst, .. }
-        | Load { ref dst, .. } => Some(dst),
-        AddPtr { ref dst_ptr, .. }
-        | CopyToOffset { ref dst_ptr, .. }
-        | Alloc { ref dst_ptr, .. } => Some(dst_ptr),
-        ArrayAccess {
-            ref dst_elem_ptr, ..
-        } => Some(dst_elem_ptr),
-        Jump(_) | JumpIfZero { .. } | JumpIfNotZero { .. } | JumpToHandler(_) | Label(_) => None,
-        FreeUnchecked(_)
-        | FreeChecked(_)
-        | NullPtrGuard(_)
-        | Print { .. }
-        | Println { .. }
-        | Exit(_) => None,
-    }
 }
 
 /// Iterative algorithm to find all reaching copies within the CFG

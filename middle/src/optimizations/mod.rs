@@ -75,7 +75,7 @@ fn optimize_fun(
         }
 
         if config.has_eliminate_dead_stores() {
-            cfg = eliminate_dead_stores(cfg);
+            cfg = eliminate_dead_stores(&cfg);
         }
 
         let optimized_fun_body = cfg_to_instrs(cfg);

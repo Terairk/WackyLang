@@ -1,4 +1,4 @@
-use super::cfg::EmptyCFG;
+use super::cfg::{EmptyCFG, get_dst, reverse_postorder_block_ids};
 
 use std::collections::{HashMap, HashSet};
 
@@ -12,13 +12,106 @@ use WackInstr::{
     Println, Read, Return, Unary,
 };
 
-pub(crate) fn eliminate_dead_stores(cfg: EmptyCFG) -> EmptyCFG {
-    todo!()
+pub(crate) fn eliminate_dead_stores(cfg: &EmptyCFG) -> EmptyCFG {
+    // Get annotated CFG with live variables
+    let mut annotated_cfg = find_live_variables(cfg);
+
+    // Create new CFG with dead stores removed
+    for block in annotated_cfg.basic_blocks.values_mut() {
+        block.instructions = block
+            .instructions
+            .iter()
+            .filter_map(|(live_vars, instr)| {
+                if is_dead_store(live_vars, instr) {
+                    None
+                } else {
+                    Some((live_vars.clone(), instr.clone()))
+                }
+            })
+            .collect();
+    }
+
+    // Strip annotations
+
+    annotated_cfg.strip_annotations()
 }
 
 type LiveVariables = HashSet<WackTempIdent>;
 type LiveCFG = CFG<WackInstr, LiveVariables>;
 type LiveBasicBlock = BasicBlock<WackInstr, LiveVariables>;
+
+/// Iterative algorithm using backwards dataflow analysis
+// TODO: make this take ownership to reduce cloning
+// Still have to make new CFG but it'll use more moves
+// Could also use cfg.initialize_annotations() but have to figure out worklist
+fn find_live_variables(cfg: &EmptyCFG) -> LiveCFG {
+    let mut worklist = Vec::new();
+
+    // Create a new LiveCFG
+    let mut live_cfg = LiveCFG {
+        basic_blocks: HashMap::new(),
+        entry_succs: cfg.entry_succs.clone(),
+        exit_preds: cfg.exit_preds.clone(),
+        debug_label: cfg.debug_label.clone(),
+    };
+
+    // Initialize live variables for each block
+    for (&block_id, block) in &cfg.basic_blocks {
+        // Create a new block with initial annotations
+        let live_block = BasicBlock {
+            id: block.id,
+            instructions: block
+                .instructions
+                .iter()
+                .map(|(_, instr)| (LiveVariables::new(), instr.clone()))
+                .collect(),
+            preds: block.preds.clone(),
+            succs: block.succs.clone(),
+            value: LiveVariables::new(),
+        };
+
+        // Add the block to the liveCFG
+        live_cfg.basic_blocks.insert(block_id, live_block);
+
+        // Add block to worklist
+        worklist.push(block_id);
+    }
+
+    // Sort blocks in postorder to improve efficiency
+    worklist = reverse_postorder_block_ids(&cfg, &worklist, false);
+
+    // Iterate until the worklist is empty
+    while let Some(block_id) = worklist.pop() {
+        let block = live_cfg.basic_blocks.get(&block_id).unwrap().clone();
+        let old_annotation = block.value.clone();
+
+        // Compute incoming copies using meet operator
+        // TODO: check if we do meet or transfer first
+        let live_vars_at_exit = meet(&block, &live_cfg);
+
+        // Apply transfer function and update the block in the CFG
+        let new_block = transfer(block, live_vars_at_exit);
+        live_cfg.update_basic_block(block_id, new_block);
+
+        // If the live variables have changed, update the block and add predecessors to the worklist
+        let updated_block = live_cfg.basic_blocks.get(&block_id).unwrap();
+        if live_cfg.get_block_value(block_id).unwrap() != &old_annotation {
+            for &pred_id in &updated_block.preds {
+                match pred_id {
+                    NodeId::Entry => {}
+                    NodeId::Exit => panic!("Exit node should not be a predecessor"),
+                    NodeId::Block(id) => {
+                        if !worklist.contains(&id) {
+                            worklist.push(id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    live_cfg
+}
 
 /// Transfer function for live variable analysis
 ///
@@ -159,4 +252,18 @@ fn meet(block: &LiveBasicBlock, cfg: &LiveCFG) -> LiveVariables {
         }
     }
     live_vars
+}
+
+fn is_dead_store(live_vars: &LiveVariables, instr: &WackInstr) -> bool {
+    match *instr {
+        FunCall { .. } => false,
+        _ => {
+            // Check if instr has a destination and if it is not live
+            if let Some(dst) = get_dst(instr) {
+                !live_vars.contains(dst)
+            } else {
+                false
+            }
+        }
+    }
 }

@@ -8,6 +8,11 @@ use util::{
 // temporary bCFG cus I want to leave everything the same
 
 use crate::wackir::{WackInstr, WackTempIdent};
+use WackInstr::{
+    AddPtr, Alloc, ArrayAccess, Binary, Copy, CopyToOffset, Exit, FreeChecked, FreeUnchecked,
+    FunCall, Jump, JumpIfNotZero, JumpIfZero, JumpToHandler, Label, Load, NullPtrGuard, Print,
+    Println, Read, Return, Unary,
+};
 
 // TODO: Change the CFG to the proper CFG type
 // I'll figure this out as I go along
@@ -123,4 +128,29 @@ pub fn visit_dfs(
 
     // Add node to postorder after visiting all its successors
     postorder.push(node);
+}
+
+pub fn get_dst(instr: &WackInstr) -> Option<&WackTempIdent> {
+    match *instr {
+        Return(_) => None,
+        Unary { ref dst, .. }
+        | Binary { ref dst, .. }
+        | FunCall { ref dst, .. }
+        | Copy { ref dst, .. }
+        | Read { ref dst, .. }
+        | Load { ref dst, .. } => Some(dst),
+        AddPtr { ref dst_ptr, .. }
+        | CopyToOffset { ref dst_ptr, .. }
+        | Alloc { ref dst_ptr, .. } => Some(dst_ptr),
+        ArrayAccess {
+            ref dst_elem_ptr, ..
+        } => Some(dst_elem_ptr),
+        Jump(_) | JumpIfZero { .. } | JumpIfNotZero { .. } | JumpToHandler(_) | Label(_) => None,
+        FreeUnchecked(_)
+        | FreeChecked(_)
+        | NullPtrGuard(_)
+        | Print { .. }
+        | Println { .. }
+        | Exit(_) => None,
+    }
 }
