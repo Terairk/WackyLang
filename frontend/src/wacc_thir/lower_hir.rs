@@ -3,8 +3,8 @@ use crate::wacc_hir::hir;
 use crate::wacc_hir::hir::PairElemSelector;
 use crate::wacc_hir::lower_ast::FuncSymbolTable;
 use crate::wacc_thir::thir::{
-    ArrayElem, ArrayLiter, BinaryExpr, Expr, Ident, LValue, Liter, NewPair, PairElem, RValue, Stat,
-    StatBlock, UnaryExpr,
+    ArrayElem, ArrayLiter, BinaryExpr, Expr, Func, Ident, LValue, Liter, NewPair, PairElem,
+    Program, RValue, Stat, StatBlock, UnaryExpr,
 };
 use crate::wacc_thir::types::{BaseType, PairType, Type};
 use ariadne::Span as _;
@@ -178,113 +178,47 @@ impl HirLoweringCtx {
         todo!()
     }
 
-    //
-    // #[inline]
-    // pub fn lookup_symbol_table(&self, renamed_name: &SN<RenamedName>) -> SemanticType {
-    //     if let Some(semantic_type) = self.symid_table.get(renamed_name.inner()) {
-    //         semantic_type.clone()
-    //     } else {
-    //         SemanticType::Error(renamed_name.span())
-    //     }
-    // }
-
     // ----
 
-    //     pub fn lower_program(&mut self, program: ast::Program) -> Program {
-    //     // Build function table
-    //     if let Err(err) = Self::build_func_table(&mut self.func_symbol_table, &program) {
-    //         self.add_error(err);
-    //     }
-    //
-    //     // cannot curry mutable-references and still have FnMut, RIP :(
-    //     let lowered_funcs = program.funcs.map(|f| self.lower_func(f));
-    //     let lowered_body = self.lower_stat_block(program.body);
-    //
-    //     // return lowered program
-    //     Program {
-    //         funcs: lowered_funcs,
-    //         body: lowered_body,
-    //     }
-    // }
-    //
-    // /// When you enter a new function, you create a new scope just for the args,
-    // /// Then you create another scope for the body of the function
-    // /// We also keep track if we're in the main function
-    // #[inline]
-    // pub fn lower_func(&mut self, func: ast::Func) -> Func {
-    //     let ast::Func {
-    //         return_type,
-    //         name,
-    //         params,
-    //         body,
-    //     } = func;
-    //
-    //     // perform lowering within temporary-map context
-    //     self.in_main = false;
-    //     let new_map = self.copy_id_map_with_false();
-    //     let old_id_map = mem::replace(&mut self.identifier_map, new_map);
-    //     let return_type = Self::lower_type_sn(&return_type); // Type remains unchanged
-    //     // cannot curry mutable-references and still have FnMut, RIP :(
-    //     let params = params.map(|p| self.lower_func_param(p));
-    //     let body = self.with_temporary_map(|slf| slf.lower_stat_block(body));
-    //     self.identifier_map = old_id_map;
-    //     self.in_main = true;
-    //
-    //     // construct output function
-    //     Func {
-    //         return_type,
-    //         name,
-    //         params,
-    //         body,
-    //     }
-    // }
-    //
-    // #[allow(clippy::indexing_slicing)]
-    // #[inline]
-    // pub fn lower_func_param(&mut self, func_param: ast::FuncParam) -> FuncParam {
-    //     let ast::FuncParam { r#type, name } = func_param;
-    //
-    //     // shouldn't panic since we check the key exists
-    //     let lowered_type = Self::lower_type_sn(&r#type);
-    //     if self.identifier_map.contains_key(name.inner())
-    //         && self.identifier_map[name.inner()].from_current_block
-    //     {
-    //         self.add_error(AstLoweringError::DuplicateIdent(name.clone()));
-    //         // return dummy Stat
-    //         return FuncParam {
-    //             r#type: lowered_type,
-    //             name: Ident::new_rouge_zero_sn(name),
-    //         };
-    //     }
-    //
-    //     // insert new identifier corresponding to function parameter
-    //     let unique_name = Ident::new_sn(&mut self.counter, name.clone());
-    //     let map_entry = IDMapEntry::new(unique_name.clone(), true);
-    //     self.identifier_map.insert(name.inner().clone(), map_entry);
-    //
-    //     // return the renamed function parameter
-    //     FuncParam {
-    //         r#type: lowered_type,
-    //         name: unique_name,
-    //     }
-    // }
+    pub fn lower_program(&mut self, program: hir::Program) -> Program {
+        let folded_funcs = program.funcs.map(|func| self.lower_func(func));
+        let folded_body = self.lower_stat_block(program.body);
+
+        Program {
+            funcs: folded_funcs,
+            body: folded_body,
+        }
+    }
+
+    #[inline]
+    pub fn lower_func(&mut self, func: hir::Func) -> Func {
+        self.current_func_hir_return_type = Some(func.return_type.inner().clone());
+        let func = Func {
+            return_type: Self::lower_type(&func.return_type), // Type remains unchanged
+            name: func.name.into_inner(),
+            params: func.params.map(|param| self.lower_func_param(param)),
+            body: self.lower_stat_block(func.body),
+        };
+        self.current_func_hir_return_type = None;
+        func
+    }
+
+    #[allow(clippy::indexing_slicing)]
+    #[inline]
+    pub fn lower_func_param(&mut self, param: hir::FuncParam) -> Ident {
+        let lowered_type = Self::lower_type(&param.r#type);
+        self.hir_ident_symbol_table
+            .insert(param.name.inner().clone(), lowered_type.clone());
+        Ident {
+            ident: param.name.into_inner(),
+            r#type: lowered_type,
+        }
+    }
 
     #[allow(clippy::expect_used)]
+    #[inline]
     pub fn lower_stat_block(&mut self, stat_block: hir::StatBlock) -> StatBlock {
-        // // lower everything within a temporarily-renamed context
-        // self.with_temporary_map(|slf| {
-        //     // accumulate lowered statements into output vector
-        //     let mut lowered_stats: MultiItemVec<SN<Stat>> = MultiItemVec::new();
-        //     for stat_sn in stat_block.0 {
-        //         lowered_stats.push_multi_item(slf.lower_stat_sn(stat_sn));
-        //     }
-        //
-        //     // there should always be >=1 lowered statements by this point
-        //     StatBlock(NonemptyArray::try_from_boxed_slice(lowered_stats).expect(
-        //         "Lowering a `StatBlock` should always leave produce at least one lowered `Stat`",
-        //     ))
-        // })
-        todo!()
+        StatBlock(stat_block.0.map(|stat| self.lower_stat(stat.into_inner())))
     }
 
     #[allow(clippy::too_many_lines)]
