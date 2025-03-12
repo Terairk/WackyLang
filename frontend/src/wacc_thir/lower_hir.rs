@@ -128,56 +128,109 @@ impl HirLoweringCtx {
         from: (RValue, SourcedSpan),
         to: Type,
     ) -> Result<RValue, (RValue, Type)> {
-        // // grab resolved type, and make sure this is a legal coersion
-        // let resolved_type = self.get_type(resolver);
-        // if !resolved_type.can_coerce_into(&to) {
-        //     return Err((self, resolved_type));
-        // }
-        //
-        // // make sure we are not coercing to `AnyType` as this looses type information
-        // if to == SemanticType::AnyType {
-        //     return Ok(self);
-        // };
-        //
-        // Ok(self.map_inner(|inner| match inner {
-        //     RValue::Expr(expr, _t) => RValue::Expr(expr, to),
-        //     RValue::ArrayLiter(arr_lit, _t) => RValue::ArrayLiter(arr_lit, to),
-        //     RValue::NewPair(fst, snd, _from) => RValue::NewPair(fst, snd, to),
-        //     RValue::PairElem(pair, _t) => {
-        //         RValue::PairElem(pair.refine_pair_elem_type(to.clone(), resolver), to)
-        //     }
-        //     RValue::Call {
-        //         func_name,
-        //         args,
-        //         return_type: _return_type,
-        //     } => RValue::Call {
-        //         func_name,
-        //         args,
-        //         return_type: to,
-        //     },
-        // }))
+        let (from, from_span) = from;
 
-        todo!()
+        // grab resolved type, and make sure this is a legal coersion
+        let resolved_type = from.r#type();
+        if !Self::can_coerce_into(&resolved_type, &to) {
+            return Err((from, resolved_type));
+        }
+
+        // make sure we are not coercing to `AnyType` as this looses type information
+        if to == Type::Any {
+            return Ok(from);
+        };
+
+        Ok(match from {
+            RValue::Expr(expr) => RValue::Expr(expr.map_type(|_| to)),
+            RValue::ArrayLiter(ArrayLiter { liter_values, .. }) => RValue::ArrayLiter(ArrayLiter {
+                liter_values,
+                r#type: to,
+            }),
+            RValue::NewPair(NewPair { fst, snd, .. }) => RValue::NewPair(NewPair {
+                fst,
+                snd,
+                r#type: to,
+            }),
+            RValue::PairElem(pair_elem) => {
+                RValue::PairElem(self.refine_pair_elem_type(pair_elem, to))
+            }
+            RValue::Call {
+                func_name,
+                args,
+                return_type: _return_type,
+            } => RValue::Call {
+                func_name,
+                args,
+                return_type: to,
+            },
+        })
     }
 
-    fn refine_lvalue_type(&mut self, lvalue: (LValue, SourcedSpan), refinement_ty: Type) -> LValue {
-        // // make sure we are not coercing to `AnyType` as this looses type information
-        // if refinement_ty == SemanticType::AnyType {
-        //     return self;
-        // };
-        //
-        // self.map_inner(|lvalue| match lvalue {
-        //     LValue::Ident(ident, _t) => LValue::Ident(ident, refinement_ty),
-        //     LValue::ArrayElem(array_elem, _t) => LValue::ArrayElem(array_elem, refinement_ty),
-        //     LValue::PairElem(pair_elem, _t) => LValue::PairElem(
-        //         pair_elem.refine_pair_elem_type(refinement_ty.clone(), resolver),
-        //         refinement_ty,
-        //     ),
-        // })
+    fn refine_lvalue_type(&mut self, lvalue: LValue, refinement_ty: Type) -> LValue {
+        // make sure we are not coercing to `AnyType` as this looses type information
+        if refinement_ty == Type::Any {
+            return lvalue;
+        };
 
-        todo!()
+        match lvalue {
+            LValue::Ident(Ident { ident, .. }) => LValue::Ident(Ident {
+                ident,
+                r#type: refinement_ty,
+            }),
+            LValue::ArrayElem(a) => LValue::ArrayElem(a.map_type(|_| refinement_ty)),
+            LValue::PairElem(p) => LValue::PairElem(self.refine_pair_elem_type(p, refinement_ty)),
+        }
     }
 
+    fn refine_pair_elem_type(&mut self, pair_elem: PairElem, refinement_ty: Type) -> PairElem {
+        // make sure we are not coercing to `AnyType` as this looses type information
+        if refinement_ty == Type::Any {
+            return pair_elem;
+        };
+
+        let (selector, lvalue) = pair_elem.pair_elem;
+        let (fst_ty, snd_ty) = match &selector {
+            PairElemSelector::Fst => {
+                // refinement type becomes FST-type
+                let fst_ty = refinement_ty.clone();
+
+                // if there is any type in lvalue for SND-type, use it, or use any as fallback
+                let snd_ty = match lvalue.r#type() {
+                    Type::PairType(boxed) => {
+                        let PairType { snd_type, .. } = *boxed;
+                        snd_type
+                    }
+                    _ => Type::Any,
+                };
+                (fst_ty, snd_ty)
+            }
+            PairElemSelector::Snd => {
+                // refinement type becomes SND-type
+                let snd_ty = refinement_ty.clone();
+
+                // if there is any type in lvalue for FST-type, use it, or use any as fallback
+                let fst_ty = match lvalue.r#type() {
+                    Type::PairType(boxed) => {
+                        let PairType { fst_type, .. } = *boxed;
+                        fst_type
+                    }
+                    _ => Type::Any,
+                };
+                (fst_ty, snd_ty)
+            }
+        };
+
+        // reconstruct inner type, and use it as a refinement type for lvalue
+        let nested_refinement_ty = Type::pair_type(fst_ty, snd_ty);
+        let refined_lvalue = Box::new(self.refine_lvalue_type(*lvalue, nested_refinement_ty));
+
+        // reconstruct pair type
+        PairElem {
+            pair_elem: (selector, refined_lvalue),
+            r#type: refinement_ty,
+        }
+    }
     // ----
 
     pub fn lower_program(&mut self, program: hir::Program) -> Program {
@@ -283,10 +336,8 @@ impl HirLoweringCtx {
                             // reclaim useful type information for cases of both-directional nested lhs-lhs
                             // e.g. `fst snd ident = snd arr[3]`, we need to know the type of each stage of that
                             let resolved_rval_type = new.r#type();
-                            resolved_lvalue = self.refine_lvalue_type(
-                                (resolved_lvalue, lvalue.span()),
-                                resolved_rval_type,
-                            );
+                            resolved_lvalue =
+                                self.refine_lvalue_type(resolved_lvalue, resolved_rval_type);
 
                             // return new type
                             new
@@ -990,48 +1041,4 @@ impl HirLoweringCtx {
             r#type: actual_type.clone(),
         }
     }
-
-    #[inline]
-    pub fn expect_ident_sn(&mut self, ident_sn: SN<hir::Ident>, expected_type: Type) -> Ident {
-        let Ident {
-            ident,
-            r#type: actual_type,
-        } = self.lookup_ident_sn(ident_sn.clone());
-
-        // TODO: replace coercability checking rather than naiive type-equality
-        //       and ensure we are swapping in the right types with most precision
-        if expected_type == actual_type.clone() {
-            Ident {
-                // TODO: ensure type-swapping is correct
-                ident,
-                r#type: actual_type,
-            }
-        } else {
-            self.add_error(HirLoweringError::TypeMismatch {
-                span: ident_sn.span(),
-                actual: expected_type,
-                expected: actual_type.clone(),
-            });
-
-            // the identifier is of type `Any` at this point, which casts to all other types
-            Ident {
-                ident,
-                r#type: Type::Any,
-            }
-        }
-    }
-    //
-    // #[inline]
-    // fn lower_funcname_sn(&mut self, name: SN<ast::Ident>) -> SN<ast::Ident> {
-    //     // Use ident part of name and then check if it exists in the function table
-    //     // return name regardless but add an error if it doesn't exist
-    //     let ident = name.inner();
-    //     if self.func_symbol_table.functions.contains_key(ident) {
-    //     } else {
-    //         self.add_error(AstLoweringError::UndefinedIdent(name.clone()));
-    //         // Return a dummy value so we can maybe very hopefully
-    //         // allow multiple semantic errors
-    //     }
-    //     name
-    // }
 }

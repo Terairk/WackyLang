@@ -154,8 +154,8 @@ pub struct Ident {
 mod impls {
     use crate::parsing::ast;
     use crate::wacc_thir::thir::{
-        ArrayElem, ArrayLiter, EmptyStatVecError, Expr, Func, Ident, LValue, Liter, NewPair,
-        PairElem, Program, RValue, Stat, StatBlock,
+        ArrayElem, ArrayLiter, BinaryExpr, EmptyStatVecError, Expr, Func, Ident, LValue, Liter,
+        NewPair, PairElem, Program, RValue, Stat, StatBlock, UnaryExpr,
     };
     use crate::wacc_thir::types::Type;
     use delegate::delegate;
@@ -189,6 +189,51 @@ mod impls {
                 Self::ArrayElem(ref boxed) => (&*boxed).r#type(),
                 Self::Unary(ref boxed) => (&*boxed).r#type.clone(),
                 Self::Binary(ref boxed) => (&*boxed).r#type.clone(),
+            }
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn map_type<F>(self, f: F) -> Self
+        where
+            F: FnOnce(&Self) -> Type,
+        {
+            let new_type = f(&self);
+            match self {
+                Expr::Liter(Liter { liter, .. }) => Expr::Liter(Liter {
+                    liter,
+                    r#type: new_type,
+                }),
+                Expr::Ident(Ident { ident, .. }) => Expr::Ident(Ident {
+                    ident,
+                    r#type: new_type,
+                }),
+                Expr::ArrayElem(a) => Expr::ArrayElem(Box::new((*a).map_type(|_| new_type))),
+                Expr::Unary(boxed) => {
+                    let UnaryExpr { expr, .. } = *boxed;
+                    Expr::Unary(Box::new(UnaryExpr {
+                        expr,
+                        r#type: new_type,
+                    }))
+                }
+                Expr::Binary(boxed) => {
+                    let BinaryExpr { expr, .. } = *boxed;
+                    Expr::Binary(Box::new(BinaryExpr {
+                        expr,
+                        r#type: new_type,
+                    }))
+                }
+                Expr::IfThenElse {
+                    if_cond,
+                    then_val,
+                    else_val,
+                    ..
+                } => Expr::IfThenElse {
+                    if_cond,
+                    then_val,
+                    else_val,
+                    r#type: new_type,
+                },
             }
         }
     }
@@ -370,6 +415,31 @@ mod impls {
                 Self::FirstAccess { ref r#type, .. } | Self::NestedAccess { ref r#type, .. } => {
                     r#type.clone()
                 }
+            }
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn map_type<F>(self, f: F) -> Self
+        where
+            F: FnOnce(&Self) -> Type,
+        {
+            let new_type = f(&self);
+            match self {
+                ArrayElem::FirstAccess {
+                    array_name, index, ..
+                } => ArrayElem::FirstAccess {
+                    array_name,
+                    index,
+                    r#type: new_type,
+                },
+                ArrayElem::NestedAccess {
+                    array_elem, index, ..
+                } => ArrayElem::NestedAccess {
+                    array_elem,
+                    index,
+                    r#type: new_type,
+                },
             }
         }
     }
