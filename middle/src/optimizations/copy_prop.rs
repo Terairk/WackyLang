@@ -4,7 +4,11 @@ use derive_more::Display;
 use util::{CFG, cfg::BasicBlock};
 
 use crate::wackir::{WackInstr, WackTempIdent, WackValue};
-use WackInstr::{Binary, Copy, FunCall, Unary};
+use WackInstr::{
+    AddPtr, Alloc, ArrayAccess, Binary, Copy, CopyToOffset, Exit, FreeChecked, FreeUnchecked,
+    FunCall, Jump, JumpIfNotZero, JumpIfZero, JumpToHandler, Label, Load, NullPtrGuard, Print,
+    Println, Read, Return, Unary,
+};
 
 use super::cfg::EmptyCFG;
 pub fn copy_propagation(cfg: EmptyCFG) -> EmptyCFG {
@@ -23,6 +27,15 @@ struct CP {
     dst: WackValue,
 }
 
+impl CP {
+    fn new(src: WackValue, dst: WackTempIdent) -> Self {
+        Self {
+            src,
+            dst: WackValue::Var(dst),
+        }
+    }
+}
+
 type ReachingCopies = HashSet<CP>;
 type ReachingCFG = CFG<WackInstr, ReachingCopies>;
 
@@ -33,48 +46,73 @@ type ReachingCFG = CFG<WackInstr, ReachingCopies>;
 /// Transfer function takes all the Copy instructions that reach
 /// the beginning of a basic block and calculates which copies reach each
 /// individual instruction within block. Also goes to the end of the block
-// fn transfer(
-//     mut block: BasicBlock<WackInstr, ReachingCopies>,
-//     initial_copies: ReachingCopies,
-// ) -> BasicBlock<WackInstr, ReachingCopies> {
-//     let mut current_copies = initial_copies;
-//
-//     // TODO: change the design to not use a tuple struct
-//     // as it's less clear without comments
-//     for mut instr in block.instructions {
-//         // Annotate the instruction with the current copy
-//         instr.0 = current_copies.clone();
-//
-//         // Update current copies based on the instruction
-//         //
-//         match instr.1 {
-//             Copy { src, dst } => {
-//                 let cp = CP {
-//                     src,
-//                     dst: WackValue::Var(dst),
-//                 };
-//                 if current_copies.contains(&cp) {
-//                     continue;
-//                 }
-//
-//                 // if say x = y, we remove all copies that have x as a destination
-//                 let dst = WackValue::Var(dst);
-//                 current_copies.retain(|cp| cp.dst != dst);
-//                 current_copies.retain(|cp| cp.src != dst);
-//             }
-//             _ => panic!("Only Copy instructions should be in the reaching copies"),
-//         }
-//     }
-//
-//     block
-// }
+fn transfer(
+    mut block: BasicBlock<WackInstr, ReachingCopies>,
+    initial_copies: ReachingCopies,
+) -> BasicBlock<WackInstr, ReachingCopies> {
+    let mut current_copies = initial_copies;
+
+    // TODO: change the design to not use a tuple struct
+    // as it's less clear without comments
+    for instr in &mut block.instructions {
+        // Annotate the instruction with the current copy
+        instr.0 = current_copies.clone();
+
+        // Update current copies based on the instruction
+        //
+        match instr.1 {
+            Copy { ref src, ref dst } => {
+                let cp = CP::new(src.clone(), dst.clone());
+                if current_copies.contains(&cp) {
+                    continue;
+                }
+
+                // if say x = y, we remove all copies that have x as a destination
+                update_reaching_copies(&mut current_copies, dst);
+                // Add the new copy
+                current_copies.insert(cp);
+            }
+            FunCall { ref dst, .. } => {
+                // Remove all copies that have the destination as a destination
+                update_reaching_copies(&mut current_copies, dst);
+            }
+            Unary { ref dst, .. } => {
+                // Remove all copies that have the destination as a destination
+                update_reaching_copies(&mut current_copies, dst);
+            }
+            Binary { ref dst, .. } => {
+                // Remove all copies that have the destination as a destination
+                update_reaching_copies(&mut current_copies, dst);
+            }
+
+            _ => panic!("Only Copy instructions should be in the reaching copies"),
+        }
+    }
+
+    block
+}
 
 // Update the reaching copies based on what's updated
-// This WackTempIdent
-fn filter_updated(copies: &ReachingCopies, updated: &WackTempIdent) {
-    todo!()
+fn update_reaching_copies(copies: &mut ReachingCopies, updated: &WackTempIdent) {
+    // Remove all copies that have the updated variable as a destination
+    let updated = WackValue::Var(updated.clone());
+    copies.retain(|cp| cp.dst != updated);
+    copies.retain(|cp| cp.src != updated);
 }
 
 fn find_reaching_copies(cfg: EmptyCFG) -> ReachingCFG {
     todo!()
 }
+//
+// fn get_dst(instr: &WackInstr) -> Option<&WackTempIdent> {
+//     match *instr {
+//         Return(_) => None,
+//         Unary { ref dst, .. }
+//         | Binary { ref dst, .. }
+//         | FunCall { ref dst, .. }
+//         | Copy { ref dst, .. }
+//         | Load { ref dst, .. } => Some(dst),
+//         AddPtr { ref dst_ptr, .. } | CopyToOffset { ref dst_ptr, .. } => Some(dst_ptr),
+//         _ => None,
+//     }
+// }

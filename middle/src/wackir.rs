@@ -130,20 +130,13 @@ pub enum WackInstr {
         dst: WackTempIdent, // you can only store into an identifier
     },
 
-    // /// USAGE: `dst = &src`
-    // ///
-    // /// NOTE: [`src`] must be a variable, not constant.
-    // GetAddress {
-    //     src: WackValue,
-    //     dst: WackValue,
-    // }, // TODO: uncomment when its _actually_ needed
     //
     /// USAGE: `dst = *src_ptr`
     ///
     /// NOTE: [`src_ptr`] must be a pointer/memory address.h
     Load {
         src_ptr: WackValue,
-        dst: WackTempIdent, // you can only store into an identifier
+        dst: WackTempIdent,
     },
 
     // /// USAGE: `*dst_ptr = src`
@@ -167,7 +160,7 @@ pub enum WackInstr {
         index: WackValue,
         scale: usize,
         offset: i32,
-        dst_ptr: WackTempIdent, // you can only store into an identifier
+        dst_ptr: WackTempIdent,
     },
 
     /// Copies the bytes of scalar value represented by [`src`], to the memory location (plus offset)
@@ -176,7 +169,7 @@ pub enum WackInstr {
     /// It can be seen as an automated version of C's `memcpy`.
     CopyToOffset {
         src: WackValue,
-        dst_ptr: WackValue, // you can only store into an identifier
+        dst_ptr: WackTempIdent,
         offset: i32,
     },
 
@@ -190,27 +183,27 @@ pub enum WackInstr {
         src_array_ptr: WackValue,
         index: WackValue,
         scale: usize,
-        dst_elem_ptr: WackTempIdent, // you can only store into an identifier
+        dst_elem_ptr: WackTempIdent,
     },
 
     Jump(WackTempIdent),
     JumpIfZero {
         condition: WackValue,
-        target: WackTempIdent, // you can only store into an identifier
+        target: WackTempIdent,
     },
     JumpIfNotZero {
         condition: WackValue,
-        target: WackTempIdent, // you can only store into an identifier
+        target: WackTempIdent,
     },
     JumpToHandler(PredefinedFunction), // Jump to a runtime error handler
     Label(WackTempIdent),
     FunCall {
         fun_name: WackGlobIdent,
         args: Vec<WackValue>,
-        dst: WackTempIdent, // you can only store into an identifier
+        dst: WackTempIdent,
     },
     Read {
-        dst: WackTempIdent, // you can only store into an identifier
+        dst: WackTempIdent,
         ty: WackReadType,
     },
 
