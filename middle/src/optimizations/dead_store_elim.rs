@@ -1,4 +1,142 @@
 use super::cfg::EmptyCFG;
+
+use std::collections::{HashMap, HashSet};
+
+use derive_more::Display;
+use util::{CFG, cfg::BasicBlock, cfg::NodeId};
+
+use crate::wackir::{WackInstr, WackTempIdent, WackValue};
+use WackInstr::{
+    AddPtr, Alloc, ArrayAccess, Binary, Copy, CopyToOffset, Exit, FreeChecked, FreeUnchecked,
+    FunCall, Jump, JumpIfNotZero, JumpIfZero, JumpToHandler, Label, Load, NullPtrGuard, Print,
+    Println, Read, Return, Unary,
+};
+
 pub(crate) fn eliminate_dead_stores(cfg: EmptyCFG) -> EmptyCFG {
     todo!()
+}
+
+type LiveVariables = HashSet<WackTempIdent>;
+type LiveCFG = CFG<WackInstr, LiveVariables>;
+type LiveBasicBlock = BasicBlock<WackInstr, LiveVariables>;
+
+/// Transfer function for live variable analysis
+///
+/// Takes a basic block and the live variables at the end of the block,
+/// and computes the live variables at each instruction and at the beginning of the block
+/// Basically kills any destinations and adds any sources
+fn transfer(mut block: LiveBasicBlock, end_live_variables: LiveVariables) -> LiveBasicBlock {
+    fn remove_var(var: &WackTempIdent, var_set: &mut LiveVariables) {
+        var_set.remove(var);
+    }
+
+    fn add_var(var: &WackValue, var_set: &mut LiveVariables) {
+        if let WackValue::Var(ref v) = *var {
+            var_set.insert(v.clone());
+        }
+    }
+
+    fn add_vars(used_vals: &[WackValue], var_set: &mut LiveVariables) {
+        for val in used_vals {
+            add_var(val, var_set);
+        }
+    }
+
+    let mut current_live_vars = end_live_variables;
+
+    // Process instructions in reverse order
+    for instr in block.instructions.iter_mut().rev() {
+        // Annotate the instructions with the current live variables
+        instr.0 = current_live_vars.clone();
+
+        // Update live variables based on the instruction
+        match instr.1 {
+            Binary {
+                ref dst,
+                ref src1,
+                ref src2,
+                ..
+            } => {
+                remove_var(dst, &mut current_live_vars);
+                add_var(src1, &mut current_live_vars);
+                add_var(src2, &mut current_live_vars);
+            }
+            Unary {
+                ref dst, ref src, ..
+            } => {
+                remove_var(dst, &mut current_live_vars);
+                add_var(src, &mut current_live_vars);
+            }
+            JumpIfZero { ref condition, .. } => {
+                add_var(condition, &mut current_live_vars);
+            }
+            JumpIfNotZero { ref condition, .. } => {
+                add_var(condition, &mut current_live_vars);
+            }
+            Copy { ref dst, ref src } => {
+                remove_var(dst, &mut current_live_vars);
+                add_var(src, &mut current_live_vars);
+            }
+            Return(ref v) => {
+                add_var(v, &mut current_live_vars);
+            }
+            FunCall {
+                ref dst, ref args, ..
+            } => {
+                remove_var(dst, &mut current_live_vars);
+                add_vars(args, &mut current_live_vars);
+            }
+            Load {
+                ref dst,
+                ref src_ptr,
+            } => {
+                remove_var(dst, &mut current_live_vars);
+                add_var(src_ptr, &mut current_live_vars);
+            }
+            AddPtr {
+                ref src_ptr,
+                ref index,
+                ref dst_ptr,
+                ..
+            } => {
+                remove_var(dst_ptr, &mut current_live_vars);
+                add_var(src_ptr, &mut current_live_vars);
+                add_var(index, &mut current_live_vars);
+            } // Other cases omitted for brevity but would follow the same pattern
+            // Jump, Label, Return None would have no effect
+            CopyToOffset { ref src, .. } => {
+                add_var(src, &mut current_live_vars);
+            }
+            ArrayAccess {
+                ref dst_elem_ptr,
+                ref src_array_ptr,
+                ref index,
+                ..
+            } => {
+                remove_var(dst_elem_ptr, &mut current_live_vars);
+                add_var(src_array_ptr, &mut current_live_vars);
+                add_var(index, &mut current_live_vars);
+            }
+            Read { ref dst, .. } => {
+                remove_var(dst, &mut current_live_vars);
+            }
+            Alloc { ref dst_ptr, .. } => {
+                remove_var(dst_ptr, &mut current_live_vars);
+            }
+            FreeUnchecked(ref ptr) | FreeChecked(ref ptr) | NullPtrGuard(ref ptr) => {
+                add_var(ptr, &mut current_live_vars);
+            }
+            Exit(ref v) => {
+                add_var(v, &mut current_live_vars);
+            }
+            Print { ref src, .. } | Println { ref src, .. } => {
+                add_var(src, &mut current_live_vars);
+            }
+            Jump(_) | Label(_) | JumpToHandler(_) => {}
+        }
+    }
+
+    // Annotate the block with the current live variables
+    block.value = current_live_vars.clone();
+    block
 }

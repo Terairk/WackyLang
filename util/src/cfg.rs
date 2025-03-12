@@ -374,7 +374,6 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
     }
 
     /// Initialize annotations with a default value
-    // TODO: Figure out if we can take ownership of self instead to minimise clones
     #[must_use]
     #[inline]
     pub fn initialize_annotation<W: Clone + Default>(self, dummy_val: &W) -> CFG<T, W> {
