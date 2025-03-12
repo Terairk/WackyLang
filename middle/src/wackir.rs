@@ -276,7 +276,7 @@ pub enum WackPrintType {
     Pair,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Display)]
 pub enum WackValue {
     #[display("{_0}")]
     Literal(WackLiteral), // Literals are all constants
@@ -289,7 +289,7 @@ pub type WackChar = u8;
 pub(crate) const TRUE: WackBool = true;
 pub(crate) const FALSE: WackBool = false;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum WackLiteral {
     Int(i32),
     Bool(WackBool), // smallest possible repr is 1 byte
