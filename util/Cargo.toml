@@ -21,5 +21,8 @@ enum_primitive = { workspace = true }
 thiserror = { workspace = true }
 bitflags = { workspace = true }
 once_cell = { workspace = true }
+internment = { workspace = true }
+derive_more = { workspace = true }
+bon = { workspace = true }
 recursion = { workspace = true }
 fn_pipe = { workspace = true }

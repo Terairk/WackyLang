@@ -7,13 +7,21 @@
 #![feature(const_trait_impl)]
 #![feature(fn_traits)]
 
+pub mod cfg;
 mod dyn_traits;
 pub mod func;
 pub mod gen_flags;
 pub mod nonempty;
+pub mod opt_flags;
 pub mod recursion;
 mod rust_gadt_playground;
 pub mod typelevel;
+
+pub use cfg::Instruction;
+pub use cfg::Location;
+pub use cfg::SimpleInstr;
+// Public Re-exports
+pub use cfg::CFG;
 
 pub(crate) mod private {
     // sealed traits support

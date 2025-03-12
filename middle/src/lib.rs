@@ -3,6 +3,7 @@
 #![feature(stmt_expr_attributes)]
 
 pub mod ast_transform;
+pub mod optimizations;
 pub mod types;
 pub mod wackir;
 

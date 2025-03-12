@@ -1,0 +1,7 @@
+# should have no runtime checks
+begin
+  println 42 + 30;
+  println 42 - 30;
+  println 42 / 3;
+  println 42 * 3
+end

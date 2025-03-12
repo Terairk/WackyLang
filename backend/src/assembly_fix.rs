@@ -6,15 +6,14 @@
 // We'll use R10D as a scratch register because it usually doesn't serve
 // any special purpose
 
+use crate::assembly_ast::AsmInstruction::{Binary, Cmp, Idiv, JmpCC, Lea, Mov, MovZeroExtend};
 use crate::assembly_ast::CondCode;
 use crate::assembly_ast::Operand::{Data, Memory, Reg};
-use crate::{
-    assembly_ast::{
-        AsmBinaryOperator, AsmFunction, AsmInstruction, AsmInstruction::*, AsmProgram,
-        AssemblyType, Operand, Operand::Imm, Register::*,
-    },
-    predefined::INBUILT_OVERFLOW,
+use crate::assembly_ast::Register::{R10, R11, R9};
+use crate::assembly_ast::{
+    AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, Operand, Operand::Imm,
 };
+use util::gen_flags::INBUILT_OVERFLOW;
 
 ///
 /// Fix the assembly instructions in the program to ensure they are valid x86-64 instructions.
@@ -298,6 +297,7 @@ fn fix_lea(asm: &mut Vec<AsmInstruction>, src: Operand, dst: Operand) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::assembly_ast::Register::{BP, R10};
 
     #[test]
     fn test_fix_instructions_allocate_and_mov_fix() {

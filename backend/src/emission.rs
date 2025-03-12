@@ -175,7 +175,12 @@ impl AssemblyFormatter {
                 format!("idivl {op_str}")
             }
             Cdq => "cdq".to_owned(),
-            Jmp(label) => format!("jmp .L_{label}"),
+            Jmp(label, is_function) => {
+                if *is_function {
+                    return format!("jmp {label}");
+                }
+                format!("jmp .L_{label}")
+            }
             JmpCC {
                 condition,
                 label,

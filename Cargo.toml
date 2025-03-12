@@ -51,6 +51,7 @@ internment = "0.8"
 recursion = "0.5"
 once_cell = "1.20"
 regex = "1.11"
+bon = "3.4"
 # Functional generics/lenses frameworks
 frunk_core = "0.4"
 frunk = "0.4"
@@ -60,7 +61,7 @@ frunk-enum-core = "0.3"
 ariadne = "0.5"
 parse_int = "0.6"
 chumsky = { git = "https://github.com/zesterer/chumsky", rev = "d12869a" } # currently latest chumsky commit
-
+derive_more = { version = "2.0.1", features = ["display"] }
 
 # Clippy's lint category level configurations;
 # every member crate needs to inherit these by adding

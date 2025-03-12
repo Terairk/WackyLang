@@ -36,6 +36,36 @@ bitflags! {
     }
 }
 
+/* ================== INTERNAL FUNC_NAMES ================== */
+// Anytime you want to call an inbuilt function please use the
+// constant strings, that way the code is more modular and you
+// dont have to change strings in multiple places
+
+pub static INBUILT_DIV_ZERO: &str = "_errDivZero";
+pub static INBUILT_PRINT_STRING: &str = "_prints";
+pub static INBUILT_MALLOC: &str = "_malloc";
+pub static INBUILT_OOM: &str = "_errOutOfMemory";
+pub static INBUILT_FREE: &str = "_free";
+pub static INBUILT_FREE_PAIR: &str = "_freepair";
+pub static INBUILT_NULL_ACCESS: &str = "_errNull";
+pub static INBUILT_PRINT_PTR: &str = "_printp";
+pub static INBUILT_PRINT_CHAR: &str = "_printc";
+pub static INBUILT_PRINT_BOOL: &str = "_printb";
+pub static INBUILT_PRINT_INT: &str = "_printi";
+pub static INBUILT_PRINTLN: &str = "_println";
+pub static INBUILT_ARR_LOAD1: &str = "_arrLoad1";
+pub static INBUILT_ARR_LOAD4: &str = "_arrLoad4";
+pub static INBUILT_ARR_LOAD8: &str = "_arrLoad8";
+pub static INBUILT_OUT_OF_BOUNDS: &str = "_errOutOfBounds";
+pub static INBUILT_BAD_CHAR: &str = "_errBadChar";
+pub static INBUILT_OVERFLOW: &str = "_errOverflow";
+pub static INBUILT_READ_INT: &str = "_readi";
+pub static INBUILT_READ_CHAR: &str = "_readc";
+pub static INBUILT_EXIT: &str = "_exit";
+pub static INBUILT_ARR_STORE1: &str = "_arrStore1";
+pub static INBUILT_ARR_STORE4: &str = "_arrStore4";
+pub static INBUILT_ARR_STORE8: &str = "_arrStore8";
+
 /// # Panics
 ///
 /// This is fine because our thing is single threaded
