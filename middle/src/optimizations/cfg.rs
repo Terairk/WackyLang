@@ -1,5 +1,10 @@
+use std::collections::HashSet;
+
 use internment::ArcIntern;
-use util::{CFG, Instruction, SimpleInstr, cfg::Location};
+use util::{
+    CFG, Instruction, SimpleInstr,
+    cfg::{Location, NodeId},
+};
 // temporary bCFG cus I want to leave everything the same
 
 use crate::wackir::{WackInstr, WackTempIdent};
@@ -48,4 +53,74 @@ impl From<WackTempIdent> for Location {
         let id = ident.get_id();
         Self::new(interned_string, id)
     }
+}
+
+/// Helper function to sort blocks in reverse postorder (returns block IDs only)
+pub fn reverse_postorder_block_ids(
+    cfg: &EmptyCFG,
+    blocks: &[usize],
+    is_reversed: bool,
+) -> Vec<usize> {
+    // First get postorder of NodeIds
+    let mut visited = HashSet::new();
+    let mut postorder = Vec::new();
+
+    // Start DFS from entry node
+    visit_dfs(NodeId::Entry, cfg, &mut visited, &mut postorder);
+
+    // Reverse the postorder
+    if is_reversed {
+        postorder.reverse();
+    }
+
+    // Filter out Entry and Exit nodes, keep only Block nodes that were in the original list
+    // and extract the block IDs
+    postorder
+        .into_iter()
+        .filter_map(|id| {
+            if let NodeId::Block(block_id) = id {
+                if blocks.contains(&block_id) {
+                    return Some(block_id);
+                }
+            }
+            None
+        })
+        .collect()
+}
+
+/// Helper function for DFS traversal
+pub fn visit_dfs(
+    node: NodeId,
+    cfg: &EmptyCFG,
+    visited: &mut HashSet<NodeId>,
+    postorder: &mut Vec<NodeId>,
+) {
+    if visited.contains(&node) {
+        return;
+    }
+
+    visited.insert(node);
+
+    // Get successor nodes
+    let successors = match node {
+        NodeId::Entry => &cfg.entry_succs,
+        NodeId::Block(id) => {
+            if let Some(block) = cfg.basic_blocks.get(&id) {
+                &block.succs
+            } else {
+                return;
+            }
+        }
+        NodeId::Exit => return, // Exit has no successors,
+    };
+
+    // Visit each successor
+    for &succ in successors {
+        if !visited.contains(&succ) {
+            visit_dfs(succ, cfg, visited, postorder);
+        }
+    }
+
+    // Add node to postorder after visiting all its successors
+    postorder.push(node);
 }

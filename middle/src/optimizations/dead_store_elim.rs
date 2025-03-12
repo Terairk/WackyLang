@@ -140,3 +140,23 @@ fn transfer(mut block: LiveBasicBlock, end_live_variables: LiveVariables) -> Liv
     block.value = current_live_vars.clone();
     block
 }
+
+/// The meet operator calculates which variables are live at the end of a basic block.
+/// It is the union of the live variables at the beginning of each successor block.
+fn meet(block: &LiveBasicBlock, cfg: &LiveCFG) -> LiveVariables {
+    let mut live_vars = LiveVariables::new();
+    for succ_id in &block.succs {
+        match *succ_id {
+            NodeId::Entry => panic!("Entry node should not be a successor"),
+            NodeId::Exit => {}
+            NodeId::Block(id) => {
+                let succ_live_vars = cfg
+                    .get_block_value(id)
+                    .expect("CFG is malformed or corrupted")
+                    .clone();
+                live_vars = live_vars.union(&succ_live_vars).cloned().collect();
+            }
+        }
+    }
+    live_vars
+}

@@ -10,7 +10,7 @@ use WackInstr::{
     Println, Read, Return, Unary,
 };
 
-use super::cfg::EmptyCFG;
+use super::cfg::{EmptyCFG, reverse_postorder_block_ids};
 // TODO: make this more efficient to reduce the clones on the reaching copies and instructions
 pub fn copy_propagation(cfg: &EmptyCFG) -> EmptyCFG {
     let annotated_cfg = find_reaching_copies(cfg);
@@ -221,7 +221,7 @@ fn find_reaching_copies(cfg: &EmptyCFG) -> ReachingCFG {
     }
 
     // Sort blocks in reverse postorder to improve efficiency
-    worklist = reverse_postorder_block_ids(&cfg, &worklist);
+    worklist = reverse_postorder_block_ids(&cfg, &worklist, true);
 
     // Process blocks until worklist is empty
     while let Some(block_id) = worklist.pop() {
@@ -254,70 +254,6 @@ fn find_reaching_copies(cfg: &EmptyCFG) -> ReachingCFG {
     }
 
     reaching_cfg
-}
-
-/// Helper function to sort blocks in reverse postorder (returns block IDs only)
-fn reverse_postorder_block_ids(cfg: &EmptyCFG, blocks: &[usize]) -> Vec<usize> {
-    // First get postorder of NodeIds
-    let mut visited = HashSet::new();
-    let mut postorder = Vec::new();
-
-    // Start DFS from entry node
-    visit_dfs(NodeId::Entry, cfg, &mut visited, &mut postorder);
-
-    // Reverse the postorder
-    postorder.reverse();
-
-    // Filter out Entry and Exit nodes, keep only Block nodes that were in the original list
-    // and extract the block IDs
-    postorder
-        .into_iter()
-        .filter_map(|id| {
-            if let NodeId::Block(block_id) = id {
-                if blocks.contains(&block_id) {
-                    return Some(block_id);
-                }
-            }
-            None
-        })
-        .collect()
-}
-
-/// Helper function for DFS traversal
-fn visit_dfs(
-    node: NodeId,
-    cfg: &EmptyCFG,
-    visited: &mut HashSet<NodeId>,
-    postorder: &mut Vec<NodeId>,
-) {
-    if visited.contains(&node) {
-        return;
-    }
-
-    visited.insert(node);
-
-    // Get successor nodes
-    let successors = match node {
-        NodeId::Entry => &cfg.entry_succs,
-        NodeId::Block(id) => {
-            if let Some(block) = cfg.basic_blocks.get(&id) {
-                &block.succs
-            } else {
-                return;
-            }
-        }
-        NodeId::Exit => return, // Exit has no successors,
-    };
-
-    // Visit each successor
-    for &succ in successors {
-        if !visited.contains(&succ) {
-            visit_dfs(succ, cfg, visited, postorder);
-        }
-    }
-
-    // Add node to postorder after visiting all its successors
-    postorder.push(node);
 }
 
 fn replace_operand(op: WackValue, reaching_copies: &ReachingCopies) -> WackValue {
