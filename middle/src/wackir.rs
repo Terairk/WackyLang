@@ -559,8 +559,8 @@ pub struct WackTempIdent(ast::Ident, usize);
 
 // impls relating to `WackTempIdent`
 pub mod wack_temp_ident {
-    use crate::ast_transform::ast_lowering_ctx::With;
     use crate::ast_transform::AstLoweringCtx;
+    use crate::ast_transform::ast_lowering_ctx::With;
     use crate::wackir::WackTempIdent;
     use internment::ArcIntern;
     use std::fmt;

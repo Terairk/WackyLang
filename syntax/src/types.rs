@@ -29,7 +29,7 @@ pub enum Type {
     Error(SourcedSpan),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum BaseType {
     Int,
     Bool,
@@ -48,6 +48,10 @@ pub enum PairElemType {
     BaseType(SN<BaseType>),
     Pair(SourcedSpan),
 }
+
+/* ================ DEBUG IMPLS ==================== */
+
+/* ================ END DEBUG IMPLS ================ */
 
 // Helper Functions to convert from syntactic types to semantic types
 // might be useful during type checking

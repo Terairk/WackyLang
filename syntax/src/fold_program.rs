@@ -1,7 +1,8 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
+use crate::ast::Ident;
 use crate::ast::{ArrayElem, PairElem};
-use crate::ast::{Expr, Func, FuncParam, Ident, LValue, Program, RValue, Stat, StatBlock};
+use crate::ast::{Expr, Func, FuncParam, LValue, Program, RValue, Stat, StatBlock};
 use crate::source::SourcedNode;
 use util::nonempty::NonemptyArray;
 

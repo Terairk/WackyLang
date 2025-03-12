@@ -4,7 +4,7 @@ use crate::source::{SourcedNode, SourcedSpan};
 use crate::types::Type;
 use delegate::delegate;
 use internment::ArcIntern;
-use std::fmt::Debug;
+use std::fmt::{self, Debug, Formatter};
 use thiserror::Error;
 use util::nonempty::NonemptyArray;
 /* File contains the definition for the AST
@@ -108,17 +108,6 @@ pub enum LValue<N, T> {
     PairElem(SN<PairElem<N, T>>, T),
 }
 
-impl<N, T: Clone> LValue<N, T> {
-    #[inline]
-    pub fn get_type(&self) -> T {
-        match *self {
-            Self::Ident(_, ref t) | Self::ArrayElem(_, ref t) | Self::PairElem(_, ref t) => {
-                t.clone()
-            }
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub enum RValue<N, T> {
     Expr(SN<Expr<N, T>>, T),                    // Type info already in Expr
@@ -144,7 +133,7 @@ pub struct ArrayElem<N, T> {
     pub indices: NonemptyArray<SN<Expr<N, T>>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Expr<N, T> {
     Liter(Liter, T),
     Ident(SN<N>, T),
@@ -163,25 +152,7 @@ pub enum Expr<N, T> {
     Error(SourcedSpan),
 }
 
-impl<N, T> Expr<N, T> {
-    #[must_use]
-    #[inline]
-    pub const fn if_then_else(
-        if_cond: SN<Expr<N, T>>,
-        then_val: SN<Expr<N, T>>,
-        else_val: SN<Expr<N, T>>,
-        ty: T,
-    ) -> Self {
-        Self::IfThenElse {
-            if_cond,
-            then_val,
-            else_val,
-            ty,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Liter {
     IntLiter(i32),
     BoolLiter(bool),
@@ -218,6 +189,179 @@ pub enum BinaryOper {
     BOr,
     LAnd,
     LOr,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct Ident(ArcIntern<str>);
+
+// impls related to `Ident`
+pub mod ident_impls {
+    use crate::ast::Ident;
+    use internment::ArcIntern;
+    use std::fmt;
+    use std::ops::Deref;
+
+    impl Ident {
+        #[allow(clippy::should_implement_trait)]
+        #[must_use]
+        #[inline]
+        pub fn from_str(s: &str) -> Self {
+            Self(ArcIntern::from(s))
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn from_boxed_str(s: Box<str>) -> Self {
+            Self(ArcIntern::from(s))
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn from_string(s: String) -> Self {
+            Self::from_boxed_str(s.into_boxed_str())
+        }
+
+        #[must_use]
+        #[inline]
+        pub const fn inner(&self) -> &ArcIntern<str> {
+            &self.0
+        }
+
+        #[must_use]
+        #[inline]
+        pub fn into_inner(self) -> ArcIntern<str> {
+            self.0
+        }
+    }
+
+    impl fmt::Display for Ident {
+        #[inline]
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            <str as fmt::Display>::fmt(&self.0, f)
+        }
+    }
+
+    impl Deref for Ident {
+        type Target = str;
+
+        #[allow(clippy::explicit_deref_methods)]
+        #[inline]
+        fn deref(&self) -> &Self::Target {
+            self.0.deref()
+        }
+    }
+
+    impl From<Ident> for String {
+        #[inline]
+        fn from(ident: Ident) -> Self {
+            ident.0.to_string()
+        }
+    }
+}
+
+/* ===================== DEBUG IMPLS ===================== */
+impl Debug for Liter {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::IntLiter(ref i) => write!(f, "IntLiter({i})"),
+            Self::BoolLiter(ref b) => write!(f, "BoolLiter({b})"),
+            Self::CharLiter(ref c) => write!(f, "CharLiter({c})"),
+            Self::StrLiter(ref val) => write!(f, "StrLiter({val:?})"),
+            Self::PairLiter => write!(f, "null"),
+        }
+    }
+}
+
+impl<N: fmt::Debug, T: fmt::Debug> fmt::Debug for Expr<N, T> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            // Custom implementation for Liter and Ident variant
+            Self::Liter(ref liter, ref t) => {
+                write!(f, "Liter({liter:?}, {t:?})")
+            }
+
+            Self::Ident(ref id, ref t) => {
+                write!(f, "Ident({id:?}, {t:?})")
+            }
+            // Default implementation for all other variants
+            _ => {
+                // Use the standard Debug derive implementation for other variants
+                match *self {
+                    Self::Ident(ref id, ref t) => {
+                        f.debug_tuple("Ident").field(id).field(t).finish()
+                    }
+                    Self::ArrayElem(ref elem, ref t) => {
+                        f.debug_tuple("ArrayElem").field(elem).field(t).finish()
+                    }
+                    Self::Unary(ref op, ref expr, ref t) => f
+                        .debug_tuple("Unary")
+                        .field(op)
+                        .field(expr)
+                        .field(t)
+                        .finish(),
+                    Self::Binary(ref lhs, ref op, ref rhs, ref t) => f
+                        .debug_tuple("Binary")
+                        .field(lhs)
+                        .field(op)
+                        .field(rhs)
+                        .field(t)
+                        .finish(),
+                    Self::Paren(ref expr, ref t) => {
+                        f.debug_tuple("Paren").field(expr).field(t).finish()
+                    }
+                    Self::IfThenElse {
+                        ref if_cond,
+                        ref then_val,
+                        ref else_val,
+                        ref ty,
+                    } => f
+                        .debug_struct("IfThenElse")
+                        .field("if_cond", if_cond)
+                        .field("then_val", then_val)
+                        .field("else_val", else_val)
+                        .field("ty", ty)
+                        .finish(),
+                    Self::Error(ref span) => f.debug_tuple("Error").field(span).finish(),
+                    // We've already handled Liter and Binary cases above
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+}
+
+/* ===================== END DEBUG IMPLS ===================== */
+
+impl<N, T: Clone> LValue<N, T> {
+    #[inline]
+    pub fn get_type(&self) -> T {
+        match *self {
+            Self::Ident(_, ref t) | Self::ArrayElem(_, ref t) | Self::PairElem(_, ref t) => {
+                t.clone()
+            }
+        }
+    }
+}
+
+impl<N, T> Expr<N, T> {
+    #[must_use]
+    #[inline]
+    pub const fn if_then_else(
+        if_cond: SN<Expr<N, T>>,
+        then_val: SN<Expr<N, T>>,
+        else_val: SN<Expr<N, T>>,
+        ty: T,
+    ) -> Self {
+        Self::IfThenElse {
+            if_cond,
+            then_val,
+            else_val,
+            ty,
+        }
+    }
 }
 
 impl<N, T> Program<N, T> {
@@ -360,75 +504,6 @@ impl RValue<Ident, ()> {
             func_name,
             args,
             return_type: (),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-pub struct Ident(ArcIntern<str>);
-
-// impls related to `Ident`
-mod ident_impls {
-    use crate::ast::Ident;
-    use internment::ArcIntern;
-    use std::fmt;
-    use std::ops::Deref;
-
-    impl Ident {
-        #[allow(clippy::should_implement_trait)]
-        #[must_use]
-        #[inline]
-        pub fn from_str(s: &str) -> Self {
-            Self(ArcIntern::from(s))
-        }
-
-        #[must_use]
-        #[inline]
-        pub fn from_boxed_str(s: Box<str>) -> Self {
-            Self(ArcIntern::from(s))
-        }
-
-        #[must_use]
-        #[inline]
-        pub fn from_string(s: String) -> Self {
-            Self::from_boxed_str(s.into_boxed_str())
-        }
-
-        #[must_use]
-        #[inline]
-        pub const fn inner(&self) -> &ArcIntern<str> {
-            &self.0
-        }
-
-        #[must_use]
-        #[inline]
-        pub fn into_inner(self) -> ArcIntern<str> {
-            self.0
-        }
-    }
-
-    impl fmt::Display for Ident {
-        #[inline]
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            <str as fmt::Display>::fmt(&self.0, f)
-        }
-    }
-
-    impl Deref for Ident {
-        type Target = str;
-
-        #[allow(clippy::explicit_deref_methods)]
-        #[inline]
-        fn deref(&self) -> &Self::Target {
-            self.0.deref()
-        }
-    }
-
-    impl From<Ident> for String {
-        #[inline]
-        fn from(ident: Ident) -> Self {
-            ident.0.to_string()
         }
     }
 }
