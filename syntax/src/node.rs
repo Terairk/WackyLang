@@ -114,13 +114,13 @@ impl<T: Ord, C> Ord for Node<T, C> {
 impl<T: fmt::Debug, C: fmt::Debug> fmt::Debug for Node<T, C> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:#?}", self.inner)
+        write!(f, "{:?} ~ {:#?}", self.context, self.inner)
     }
 }
 
 impl<T: fmt::Display, C: fmt::Display> fmt::Display for Node<T, C> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:#}", self.inner)
+        write!(f, "{:} ~ {:#}", self.context, self.inner)
     }
 }

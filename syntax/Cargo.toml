@@ -28,10 +28,11 @@ internment = { workspace = true, features = ["arc"] }
 ariadne = { workspace = true }
 parse_int = { workspace = true }
 chumsky = { workspace = true, features = [
-  "std",
-  "stacker",
-  "memoization",
-  "pratt",
-  "regex",
-  "nightly",
+    "std",
+    "stacker",
+    "memoization",
+    "pratt",
+    "regex",
+    "nightly",
 ] }
+

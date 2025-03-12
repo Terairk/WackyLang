@@ -12,7 +12,6 @@ use chumsky::input::{Checkpoint, Cursor};
 use chumsky::inspector::Inspector;
 use chumsky::pratt::right;
 use chumsky::{
-    Parser,
     combinator::{DelimitedBy, MapWith},
     extra::ParserExtra,
     input::BorrowInput,
@@ -22,6 +21,7 @@ use chumsky::{
     primitive::Just,
     recovery::{RecoverWith, ViaParser},
     select_ref,
+    Parser,
 };
 use extend::ext;
 use std::fmt;
