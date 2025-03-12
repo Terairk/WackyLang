@@ -76,14 +76,14 @@ pub enum Stat {
     Break,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum LValue {
     Ident(SN<Ident>),
     ArrayElem(SN<ArrayElem>),
     PairElem(SN<PairElem>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum RValue {
     Expr(SN<Expr>),
     ArrayLiter(Box<[SN<Expr>]>),
@@ -102,16 +102,16 @@ pub enum PairElemSelector {
     Snd,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct PairElem(pub PairElemSelector, pub SBN<LValue>);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ArrayElem {
     pub array_name: SN<Ident>,
     pub indices: NonemptyArray<SN<Expr>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Expr {
     Liter(SN<Liter>),
     Ident(SN<Ident>),

@@ -122,8 +122,9 @@ mod impls {
         ArrayType, BaseType, Compatibility, Equality, PairType, Specificity, Type, TypeOps,
         Weakening,
     };
-    use std::cmp;
+    use std::fmt::{Display, Formatter};
     use std::ops::Add;
+    use std::{cmp, fmt};
 
     impl Type {
         pub const INT: Self = Self::BaseType(BaseType::Int);
@@ -475,24 +476,45 @@ mod impls {
         }
     }
 
-    fn test() {
-        let t1 = Type::from(BaseType::Char);
-        let t2 = Type::from(BaseType::Char);
-        let t3 = Type::from(BaseType::Char);
-        let t4 = Type::from(BaseType::Char);
-        let t5 = Type::from(BaseType::Char);
-        let t6 = Type::from(BaseType::Char);
-
-        let out = (t1.ops() + t2 + t3) + (t4.ops() + t5 + t6);
+    impl Display for Type {
+        #[inline]
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            match *self {
+                Type::BaseType(ref b) => b.fmt(f),
+                Type::ArrayType(ref a) => a.fmt(f),
+                Type::PairType(ref p) => p.fmt(f),
+                Type::Any => write!(f, "any"),
+            }
+        }
     }
 
-    // A type is compatible with another type if-and-only if:
-    // 1) it is equal to the target type, or
-    // 2) it weakens to the target type.
-    // impl<T: Weakening> CompatibleWith for T {
-    //     #[inline(always)]
-    //     fn compatible_with(&self, target: &Type) -> bool {
-    //         self.equal_to(target) || self.weakens_to(target)
-    //     }
-    // }
+    impl Display for BaseType {
+        #[inline]
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            match *self {
+                BaseType::Int => write!(f, "int"),
+                BaseType::Bool => write!(f, "bool"),
+                BaseType::Char => write!(f, "char"),
+                BaseType::String => write!(f, "string"),
+            }
+        }
+    }
+
+    impl Display for ArrayType {
+        #[inline]
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            write!(f, "{}[]", self.elem_type)
+        }
+    }
+
+    impl Display for PairType {
+        #[inline]
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            if self == &PairType::ERASED_PAIR {
+                write!(f, "pair")
+            } else {
+                write!(f, "pair({}, {})", self.fst_type, self.snd_type)
+            }
+        }
+    }
 }

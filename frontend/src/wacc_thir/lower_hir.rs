@@ -7,8 +7,10 @@ use crate::wacc_thir::thir::{
     Program, RValue, Stat, StatBlock, UnaryExpr,
 };
 use crate::wacc_thir::types::{BaseType, PairType, Type};
+use crate::SemanticError;
 use ariadne::Span as _;
 use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
 use util::ext::BoxedSliceExt as _;
 
 // A file-local type alias for better readability of type definitions
@@ -17,8 +19,6 @@ type SBN<T> = SourcedBoxedNode<T>;
 
 #[derive(Debug, Clone)]
 pub enum HirLoweringError {
-    // ArityMismatch(SN<Ident>, usize, usize),
-    // DuplicateIdent(SN<Ident>),
     TypeMismatch {
         span: SourcedSpan,
         actual: Type,
@@ -52,15 +52,148 @@ pub enum HirLoweringError {
         max_possible_indices: usize,
         actual_indices: usize,
     },
-    // UndefinedIdent(SN<Ident>),
-    // ReturnInMain(SourcedSpan),
+}
+
+impl HirLoweringError {
+    #[inline]
+    #[must_use]
+    pub const fn message_header(&self) -> &'static str {
+        match *self {
+            // These two get a special header
+            HirLoweringError::TypeMismatch { .. } => "Type Error",
+            HirLoweringError::InvalidNumberOfIndexes { .. } => "Wrong number of indexes",
+
+            // Handle other error variants the same way
+            _ => "Semantic Error",
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn message_body(&self) -> String {
+        match *self {
+            Self::TypeMismatch {
+                ref expected,
+                ref actual,
+                ..
+            } => {
+                format!("Expected {}, but got {}", expected, actual)
+            }
+            Self::ExpectedArrayType { ref actual, .. } => {
+                format!(
+                    "Expected an array-type, i.e. `t[]` for any `t`, but got {}",
+                    actual
+                )
+            }
+            Self::ExpectedPairType { ref actual, .. } => {
+                format!(
+                    "Expected a pair-type, i.e. `pair(t1, t2)` for any `t1` and `t2`, but got {}",
+                    actual,
+                )
+            }
+            Self::UntypedIdentEncountered(ref ident) => {
+                format!(
+                    "Encountered untyped identifier: {} - THIS MAY BE A BUG IN THE PREVIOUS FRONTEND PHASE!!!!!",
+                    ident
+                )
+            }
+            Self::AssignmentWithBothSidesUnknown(_) => "Cannot assign to unknown type".to_string(),
+            Self::MismatchedArgCount {
+                ref expected,
+                ref actual,
+                ..
+            } => {
+                format!("Expected {} arguments, but got {}", expected, actual)
+            }
+            Self::InvalidIndexType { ref actual, .. } => {
+                // TODO: need to make sure SemanticType is a valid WACC type when displaying as a
+                // String and not smth we defined
+                format!("{} cannot be used to index into an array", actual)
+            }
+            Self::InvalidFreeType { ref actual, .. } => {
+                format!(
+                    "Cannot free {} type, can only free an array or a pair",
+                    actual
+                )
+            }
+            Self::InvalidNumberOfIndexes {
+                ref max_possible_indices,
+                ref actual_indices,
+                ..
+            } => {
+                format!(
+                    "Expected maximum {} index(es), but got {}",
+                    max_possible_indices, actual_indices
+                )
+            }
+        }
+    }
+
+    #[inline]
+    pub fn into_span(self) -> SourcedSpan {
+        match self {
+            Self::UntypedIdentEncountered(ident) => ident.span(),
+            Self::TypeMismatch { span, .. }
+            | Self::ExpectedArrayType { span, .. }
+            | Self::ExpectedPairType { span, .. }
+            | Self::AssignmentWithBothSidesUnknown(span)
+            | Self::MismatchedArgCount { span, .. }
+            | Self::InvalidIndexType { span, .. }
+            | Self::InvalidFreeType { span, .. }
+            | Self::InvalidNumberOfIndexes { span, .. } => span,
+        }
+    }
+
+    #[inline]
+    pub fn into_semantic_error(self) -> SemanticError<&'static str, String> {
+        SemanticError {
+            message_header: self.message_header(),
+            message_body: self.message_body(),
+            span: self.into_span(),
+        }
+    }
+}
+
+impl From<HirLoweringError> for SemanticError<&'static str, String> {
+    #[inline]
+    fn from(value: HirLoweringError) -> Self {
+        value.into_semantic_error()
+    }
+}
+
+#[derive(Debug, Clone)]
+#[repr(transparent)]
+pub struct IdentSymbolTable(pub HashMap<hir::Ident, Type>);
+
+impl Deref for IdentSymbolTable {
+    type Target = HashMap<hir::Ident, Type>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for IdentSymbolTable {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[derive(Debug)]
+pub struct HirLoweringPhaseResult {
+    pub output: Program,
+    pub errors: Vec<HirLoweringError>,
+    pub func_symbol_table: FuncSymbolTable,
+    pub hir_ident_symbol_table: IdentSymbolTable,
 }
 
 struct HirLoweringCtx {
     errors: Vec<HirLoweringError>,
     func_symbol_table: FuncSymbolTable,
     current_func_hir_return_type: Option<hir::Type>,
-    hir_ident_symbol_table: HashMap<hir::Ident, Type>,
+    hir_ident_symbol_table: IdentSymbolTable,
 }
 
 impl HirLoweringCtx {
@@ -69,7 +202,7 @@ impl HirLoweringCtx {
             errors: Vec::new(),
             func_symbol_table,
             current_func_hir_return_type: None,
-            hir_ident_symbol_table: HashMap::new(),
+            hir_ident_symbol_table: IdentSymbolTable(HashMap::new()),
         }
     }
 
@@ -1040,5 +1173,21 @@ impl HirLoweringCtx {
             ident: ident.inner().clone(),
             r#type: actual_type.clone(),
         }
+    }
+}
+
+#[inline]
+#[must_use]
+pub fn lower_hir(
+    func_symbol_table: FuncSymbolTable,
+    hir_program: hir::Program,
+) -> HirLoweringPhaseResult {
+    let mut ctx = HirLoweringCtx::new(func_symbol_table);
+    let thir_program = ctx.lower_program(hir_program);
+    HirLoweringPhaseResult {
+        output: thir_program,
+        errors: ctx.errors,
+        func_symbol_table: ctx.func_symbol_table,
+        hir_ident_symbol_table: ctx.hir_ident_symbol_table,
     }
 }
