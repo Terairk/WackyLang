@@ -56,6 +56,7 @@ pub enum Stat {
     Exit(SN<Expr>),
     Print(SN<Expr>),
     Println(SN<Expr>),
+    Scoped(StatBlock),
     IfThenElse {
         if_cond: SN<Expr>,
         then_body: StatBlock,
@@ -69,7 +70,11 @@ pub enum Stat {
         body: StatBlock,
         while_cond: SN<Expr>,
     },
-    Scoped(StatBlock),
+    LoopDo {
+        body: StatBlock,
+    },
+    Break,
+    Continue,
 }
 
 #[derive(Clone, Debug)]
@@ -370,6 +375,12 @@ mod impls {
         #[inline]
         pub const fn do_while(body: StatBlock, while_cond: SN<Expr>) -> Self {
             Self::WhileDo { body, while_cond }
+        }
+
+        #[must_use]
+        #[inline]
+        pub const fn loop_do(body: StatBlock) -> Self {
+            Self::LoopDo { body }
         }
     }
 

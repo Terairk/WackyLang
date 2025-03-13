@@ -558,7 +558,7 @@ impl HirLoweringCtx {
                     else_body: self.lower_stat_block(else_body),
                 }
             }
-            hir::Stat::Loop { label, body } => Stat::Loop {
+            hir::Stat::LoopDo { label, body } => Stat::LoopDo {
                 label,
                 body: self.lower_stat_block(body),
             },

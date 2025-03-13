@@ -4,7 +4,7 @@
 //! 3) Eliminating parentheses in expressions
 //! 4) Removing all error-nodes from the parsing phase
 //! 5) Lowering all conditional statement constructs to [`hir::Stat::IfThenElse`]
-//! 6) Lowering all loop constructs into a combination of [`hir::Stat::Loop`], [`hir::Stat::IfThenElse`], and [`hir::Stat::Break`]
+//! 6) Lowering all loop constructs into a combination of [`hir::Stat::LoopDo`], [`hir::Stat::IfThenElse`], and [`hir::Stat::Break`]
 
 use crate::parsing::ast;
 use crate::wacc_hir::hir::Program;

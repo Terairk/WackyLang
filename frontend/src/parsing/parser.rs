@@ -479,6 +479,12 @@ where
         .map_group(ast::Stat::do_while),
     );
 
+    // loop-do parser
+    let loop_do = just(Token::Loop)
+        .ignore_then(just(Token::Do))
+        .ignore_then(stat_chain.clone().then_ignore(just(Token::Done)))
+        .map(ast::Stat::loop_do);
+
     // begin-end scope
     let scoped = just(Token::Begin)
         .ignore_then(stat_chain.clone().then_ignore(just(Token::End)))
@@ -487,6 +493,8 @@ where
     // statement parser
     let stat = choice((
         just(Token::Skip).to(ast::Stat::Skip),
+        just(Token::Break).to(ast::Stat::Break),
+        just(Token::Continue).to(ast::Stat::Continue),
         variable_definition,
         assignment,
         just(Token::Read).ignore_then(lvalue).map(ast::Stat::Read),
@@ -508,6 +516,7 @@ where
         if_then_else,
         while_do,
         do_while,
+        loop_do,
         scoped,
     ))
     .labelled("<stmt>")

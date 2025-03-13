@@ -24,6 +24,8 @@ pub enum AstLoweringError {
     DuplicateIdent(SN<ast::Ident>),
     UndefinedIdent(SN<ast::Ident>),
     ReturnInMain(SourcedSpan),
+    BreakOutsideLoop(SourcedSpan),
+    ContinueOutsideLoop(SourcedSpan),
 }
 
 impl AstLoweringError {
@@ -50,6 +52,8 @@ impl AstLoweringError {
                 format!("Undefined identifier '{}'", ident.inner())
             }
             Self::ReturnInMain(_) => "Cannot return from main function".to_string(),
+            Self::BreakOutsideLoop(_) => "Cannot break outside of loop".to_string(),
+            Self::ContinueOutsideLoop(_) => "Cannot continue outside of loop".to_string(),
         }
     }
 
@@ -57,7 +61,7 @@ impl AstLoweringError {
     pub fn into_span(self) -> SourcedSpan {
         match self {
             Self::DuplicateIdent(s) | Self::UndefinedIdent(s) => s.span(),
-            Self::ReturnInMain(s) => s,
+            Self::ReturnInMain(s) | Self::BreakOutsideLoop(s) | Self::ContinueOutsideLoop(s) => s,
         }
     }
 
@@ -152,6 +156,8 @@ struct LoweringCtx {
 
 impl LoweringCtx {
     const LOOP_LABEL_IDENT_BASE: &'static str = "hidden_loop_label";
+    const BREAK_OUTSIDE_LOOP: &'static str = "break_outside_loop";
+    const CONTINUE_OUTSIDE_LOOP: &'static str = "continue_outside_loop";
 
     #[inline]
     pub fn new() -> Self {
@@ -352,7 +358,7 @@ impl LoweringCtx {
         // decompose statement, and create curried constructor
         let (stat, span) = stat_sn.into_tuple();
         let sn_new_flipped = (|c, i| SN::new(i, c)).curry();
-        let stat_sn = sn_new_flipped(span).chain(MultiItem::Item);
+        let stat_sn = sn_new_flipped(span.clone()).chain(MultiItem::Item);
 
         // match on statement, and produce either one spanned-statement or many of them
         match stat {
@@ -410,6 +416,7 @@ impl LoweringCtx {
             ast::Stat::Exit(e) => stat_sn(Stat::Exit(self.lower_expr_sn(e))),
             ast::Stat::Print(e) => stat_sn(Stat::Print(self.lower_expr_sn(e))),
             ast::Stat::Println(e) => stat_sn(Stat::Println(self.lower_expr_sn(e))),
+            ast::Stat::Scoped(block) => MultiItem::multi(self.lower_stat_block(block).0),
             ast::Stat::IfThenElse {
                 if_cond,
                 then_body,
@@ -425,7 +432,46 @@ impl LoweringCtx {
             ast::Stat::DoWhile { body, while_cond } => {
                 stat_sn(self.lower_do_while_loop(body, while_cond))
             }
-            ast::Stat::Scoped(block) => MultiItem::multi(self.lower_stat_block(block).0),
+            ast::Stat::LoopDo { body } => stat_sn({
+                // create hidden label for the new loop we are making (this label is not visible to  the source program)
+                let label = self.create_hidden_loop_label();
+
+                // lower the loop-body within the loop's context
+                let body_block =
+                    self.with_loop_nesting_context(&label, |s| s.lower_stat_block(body));
+
+                // return resulting loop-construct
+                Stat::LoopDo {
+                    label,
+                    body: body_block,
+                }
+            }),
+            ast::Stat::Break => stat_sn({
+                // this is a break-statement without a specific loop-label, meaning it binds to the
+                // closest loop - which should be at the top of the loop-label stack
+                let label = match self.current_loop_nesting_stack.last() {
+                    Some(label) => label.clone(),
+                    None => {
+                        // report break-outside loop error, and create-dummy loop-label
+                        self.add_error(AstLoweringError::BreakOutsideLoop(span));
+                        LoopLabel::new_rogue_zero(ast::Ident::from_str(Self::BREAK_OUTSIDE_LOOP))
+                    }
+                };
+                Stat::Break(label)
+            }),
+            ast::Stat::Continue => stat_sn({
+                // this is a continue-statement without a specific loop-label, meaning it binds to the
+                // closest loop - which should be at the top of the loop-label stack
+                let label = match self.current_loop_nesting_stack.last() {
+                    Some(label) => label.clone(),
+                    None => {
+                        // report break-outside loop error, and create-dummy loop-label
+                        self.add_error(AstLoweringError::ContinueOutsideLoop(span));
+                        LoopLabel::new_rogue_zero(ast::Ident::from_str(Self::CONTINUE_OUTSIDE_LOOP))
+                    }
+                };
+                Stat::Continue(label)
+            }),
         }
     }
 
@@ -503,7 +549,7 @@ impl LoweringCtx {
         stats.extend(body_block.0);
 
         // return resulting loop-construct
-        Stat::Loop {
+        Stat::LoopDo {
             label,
             body: StatBlock::try_from(stats)
                 .expect("There should always be one statement in the stat-vector"),
@@ -550,12 +596,28 @@ impl LoweringCtx {
         stats.push(Self::wrap_with_dummy_sn(if_break_stat));
 
         // return resulting loop-construct
-        Stat::Loop {
+        Stat::LoopDo {
             label,
             body: StatBlock::try_from(stats)
                 .expect("There should always be one statement in the stat-vector"),
         }
     }
+
+    // /// Assuming a loop-label is already associated with a [`LoopRegion`] in stack,
+    // /// we can look up that [`LoopRegion`] using the loop-label.
+    // #[inline]
+    // fn lookup_loop_region_from_stack(&self, loop_label: hir::LoopLabel) -> Option<LoopRegion> {
+    //     // convert loop label to wacky-ident
+    //     let start_label: WackTempIdent = loop_label.into();
+    //
+    //     // look for the loop-region corresponding to the loop-label in reverse (since its a stack)
+    //     for region in self.current_loop_nesting_stack.iter().rev() {
+    //         if start_label == region.start_label {
+    //             return Some(region.clone());
+    //         }
+    //     }
+    //     None
+    // }
 
     pub fn lower_lvalue(&mut self, lvalue: ast::LValue) -> LValue {
         match lvalue {

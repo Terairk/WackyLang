@@ -48,7 +48,7 @@ pub enum Stat {
         then_body: StatBlock,
         else_body: StatBlock,
     },
-    Loop {
+    LoopDo {
         label: hir::LoopLabel,
         body: StatBlock,
     },

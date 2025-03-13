@@ -469,7 +469,7 @@ pub(crate) mod thir_lowering_ctx {
                     // End of if
                     instructions.push(Instr::Label(end_label));
                 }
-                thir::Stat::Loop { label, body } => {
+                thir::Stat::LoopDo { label, body } => {
                     // create new loop-region to keep track of start/end labels,
                     // and create instruction corresponding to the start of the loop
                     let loop_region = self.make_loop_region(label);
