@@ -447,7 +447,7 @@ pub(crate) mod ast_lowering_ctx {
                     instructions.push(Instr::Jump(start_label));
                     instructions.push(Instr::Label(end_label));
                 }
-                thir::Stat::Loop(_) | thir::Stat::Break => {
+                thir::Stat::Loop { .. } | thir::Stat::Break(_) | thir::Stat::Continue(_) => {
                     todo!("implement this once loop-lowering is done")
                 }
             }

@@ -72,8 +72,12 @@ pub enum Stat {
     //
     // this allows for uniform handling of potentially:
     // while-do, do-while, for-loop, and so on
-    Loop(StatBlock),
-    Break,
+    Loop {
+        label: LoopLabel,
+        body: StatBlock,
+    },
+    Continue(LoopLabel),
+    Break(LoopLabel),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -198,12 +202,18 @@ pub struct Ident {
     pub uuid: usize,
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct LoopLabel {
+    pub ident: ast::Ident,
+    pub uuid: usize,
+}
+
 // all implementation blocks live here
 mod impls {
     use crate::parsing::ast;
     use crate::wacc_hir::hir::{
-        ArrayElem, ArrayType, EmptyStatVecError, Expr, Func, FuncParam, Ident, LValue, Program,
-        RValue, Stat, StatBlock, Type, SBN, SN,
+        ArrayElem, ArrayType, EmptyStatVecError, Expr, Func, FuncParam, Ident, LValue, LoopLabel,
+        Program, RValue, Stat, StatBlock, Type, SBN, SN,
     };
     use delegate::delegate;
     use std::fmt;
@@ -435,4 +445,61 @@ mod impls {
             ident_sn.map_inner(Self::new_rogue_zero)
         }
     }
+
+    // Customised debug/display for prettier debugging
+    impl fmt::Debug for LoopLabel {
+        #[inline]
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}@{}", self.ident, self.uuid)
+        }
+    }
+    impl fmt::Display for LoopLabel {
+        #[inline]
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}@{}", self.ident, self.uuid)
+        }
+    }
+
+    // impl Ident {
+    //     pub const ZERO_UUID: usize = 0;
+    //
+    //     /// We use a counter to generate unique IDs, counter is automatically incremented
+    //     /// Note we use the same counter for all identifiers.
+    //     /// Takes in [`SN<ast::Ident>`] as this is what we always get from the AST
+    //     #[inline]
+    //     #[must_use]
+    //     const fn new(counter: &mut usize, ident: ast::Ident) -> Self {
+    //         // would rather crash in debug builds than define a saturating
+    //         // so we can change this to u128
+    //         // though I suspect we'd have bigger problems before then
+    //         #[allow(clippy::arithmetic_side_effects)]
+    //         *counter += 1;
+    //         Self {
+    //             ident,
+    //             uuid: *counter,
+    //         }
+    //     }
+    //
+    //     #[must_use]
+    //     #[inline]
+    //     pub fn new_sn(counter: &mut usize, ident_sn: SN<ast::Ident>) -> SN<Self> {
+    //         ident_sn.map_inner(Self::new.curry()(counter))
+    //     }
+    //
+    //     // Function used to create a rogue renamed so we can still build tree even if we have errors
+    //     #[must_use]
+    //     #[inline]
+    //     pub const fn new_rogue_zero(ident: ast::Ident) -> Self {
+    //         Self {
+    //             ident,
+    //             uuid: Self::ZERO_UUID,
+    //         }
+    //     }
+    //
+    //     #[must_use]
+    //     #[inline]
+    //     pub fn new_rouge_zero_sn(ident_sn: SN<ast::Ident>) -> SN<Self> {
+    //         ident_sn.map_inner(Self::new_rogue_zero)
+    //     }
+    // }
 }

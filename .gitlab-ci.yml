@@ -42,7 +42,7 @@ test-syntax:
   extends: .common_setup
   stage: test-syntax
   script:
-    - cargo test --package syntax --verbose
+    - cargo test --package frontend --verbose
   dependencies:
     - build
   artifacts:

@@ -53,8 +53,12 @@ pub enum Stat {
         while_cond: Expr,
         body: StatBlock,
     },
-    Loop(StatBlock),
-    Break,
+    Loop {
+        label: hir::LoopLabel,
+        body: StatBlock,
+    },
+    Break(hir::LoopLabel),
+    Continue(hir::LoopLabel),
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
