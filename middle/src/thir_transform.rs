@@ -573,8 +573,52 @@ pub(crate) mod thir_lowering_ctx {
                     );
                     (WackValue::Var(dst), dst_ty)
                 }
-                thir::Expr::IfThenElse { .. } => {
-                    todo!("Conditional expressions have not been implemented")
+                thir::Expr::IfThenElse {
+                    if_cond,
+                    then_val,
+                    else_val,
+                    r#type,
+                } => {
+                    // TODO: add more type-checking code to lowerer SemTy vs. WackTy
+
+                    // Makes my life easier
+                    use WackInstr as Instr;
+
+                    let else_label = self.make_label("if_else");
+                    let end_label = self.make_label("if_end");
+
+                    // Create destination target, and evaluate the condition
+                    let dst_type = WackType::from_thir_type(r#type);
+                    let dst_target = self.make_temporary(dst_type.clone());
+                    let (condition, _cond_ty) = self.lower_expr(*if_cond, instructions);
+
+                    // Jump to true branch if condition is true
+                    instructions.push(Instr::JumpIfZero {
+                        condition,
+                        target: else_label.clone(),
+                    });
+
+                    // Evaluate then branch, and copy to target
+                    let (then_val, _then_ty) = self.lower_expr(*then_val, instructions);
+                    instructions.push(Instr::Copy {
+                        src: then_val,
+                        dst: dst_target.clone(),
+                    });
+
+                    // Jump to end of if
+                    instructions.push(Instr::Jump(end_label.clone()));
+
+                    // Evaluate else branch, and copy to target
+                    instructions.push(Instr::Label(else_label));
+                    let (else_val, _else_ty) = self.lower_expr(*else_val, instructions);
+                    instructions.push(Instr::Copy {
+                        src: else_val,
+                        dst: dst_target.clone(),
+                    });
+
+                    // End of if, return destination target + it's type
+                    instructions.push(Instr::Label(end_label));
+                    (WackValue::Var(dst_target), dst_type)
                 }
             }
         }
