@@ -540,6 +540,9 @@ mod wack_glob_ident {
 ///
 /// Invariant: The usize's are unique so should reuse the global counter when possible.
 ///            DO NOT UNDER ANY CIRCUMSTANCES USE THE SAME usize FOR TWO DIFFERENT IDENTIFIERS!!
+/// NOTE: DO NOT CHANGE THE IMPLEMENTATION OF DISPLAY UNDER ANY CIRCUMSTANCE
+/// We use this display for predefined functions and local static analysis
+/// Which affects emission
 #[derive(Clone, Display)]
 #[display("{_0}")]
 pub struct WackTempIdent(ast::Ident, usize);
@@ -547,8 +550,8 @@ pub struct WackTempIdent(ast::Ident, usize);
 // impls relating to `WackTempIdent`
 pub mod wack_temp_ident {
     use crate::alias::InternStr;
-    use crate::ast_transform::ast_lowering_ctx::With;
     use crate::ast_transform::AstLoweringCtx;
+    use crate::ast_transform::ast_lowering_ctx::With;
     use crate::wackir::WackTempIdent;
     use frontend::parsing::ast;
     use frontend::wacc_hir::hir;
@@ -625,12 +628,28 @@ pub mod wack_temp_ident {
     }
 
     impl WackTempIdent {
+        #[inline]
         pub fn create_new(ident: &str, counter: &mut usize) -> Self {
             Self(ast::Ident::from_str(ident), *counter)
         }
 
+        // Used for generating WackTempIdent's that have a constant counter
+        // Used for predefined functions currently as we don't care about their counter
+        #[must_use]
+        #[inline]
+        pub fn new(ident: &str, counter: usize) -> Self {
+            Self(ast::Ident::from_str(ident), counter)
+        }
+
+        #[inline]
         pub fn get_id(&self) -> usize {
             self.1
+        }
+
+        // Used for predefined functions currently as we don't care about their counter
+        #[inline]
+        pub fn get_str(&self) -> &str {
+            &self.0
         }
     }
 }

@@ -10,7 +10,7 @@ pub const ALL_HARDREGS: [Register; 16] = [
 pub const CALLER_SAVED: [Register; 7] = [AX, CX, DX, SI, DI, R8, R9];
 
 bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
     pub struct RegisterSet: u16 {
         const AX = 1 << 0;
         const BX = 1 << 1;

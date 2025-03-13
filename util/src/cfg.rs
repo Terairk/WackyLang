@@ -170,8 +170,7 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
     /// Add edges between basic blocks
     fn add_all_edges(&mut self) {
         // Build map from labels to the IDs of the blocks that they start with
-        // TODO: may need to consider functions and not just labels
-        // TODO: figure out the point of this label_map
+
         let mut label_map = HashMap::new();
         for (&idx, block) in &self.basic_blocks {
             if let Some((_, first_instr)) = block.instructions.first() {

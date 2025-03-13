@@ -175,9 +175,19 @@ impl InterferenceGraph {
 /* ======================== FUNCTIONS ======================== */
 
 mod build_interference_graph {
+    use std::collections::HashSet;
+
     use util::CFG;
     // TODO: replace LiveRegisters with the actual type
-    struct LiveRegisters;
+
+    // #[derive(Debug, Clone, Default)]
+    // struct LiveRegisters;
+
+    // This is supposed to use Operands apparently -- maybe for easy conversion
+    // And because we'll add PseudoRegisters here
+    type LiveRegisters = HashSet<Operand>;
+
+    // type LiveVariables = HashSet<WackTempIdent>;
     type AsmCFG = CFG<AsmInstruction, LiveRegisters>;
 
     use crate::registers::ALL_HARDREGS;
@@ -229,7 +239,8 @@ mod build_interference_graph {
     }
 
     fn make_control_flow_graph(instructions: &[AsmInstruction], func_name: &str) -> AsmCFG {
-        todo!()
+        let emptyCFG = AsmCFG::from_instructions(func_name.to_owned(), instructions.to_vec());
+        emptyCFG.initialize_annotation(&LiveRegisters::default())
     }
 
     fn analyze_lifeness(cfg: &AsmCFG) {

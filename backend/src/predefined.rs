@@ -2,8 +2,8 @@
 // that our code will then call.
 
 use crate::assembly_ast::{
-    AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Directive, LABEL, Operand,
-    Register,
+    AsmFunction, AsmInstruction, AsmLabel, AsmProgram, AssemblyType, CondCode, Directive, LABEL,
+    Operand, Register,
 };
 
 use crate::assembly_ast::AsmBinaryOperator::{Add, And, Sub};
@@ -137,6 +137,16 @@ static ALIGN_STACK: AsmInstruction = Binary {
     op2: Reg(SP),
 };
 
+// TODO: If conflicts ever arise, change this to a lazy function which generates
+// a usize. For now, we don't do optimizations on these so it should be fine
+// For now set to a random number like 13
+pub const GEN_USIZE: usize = 13;
+
+/* ================== LABELS ====================== */
+static INBUILT_OOM_LABEL: Lazy<AsmLabel> = Lazy::new(|| AsmLabel::new(INBUILT_OOM, GEN_USIZE));
+static INBUILT_OOB_LABEL: Lazy<AsmLabel> =
+    Lazy::new(|| AsmLabel::new(INBUILT_OUT_OF_BOUNDS, GEN_USIZE));
+
 /* ================== FUNC_DEFINITIONS ============  */
 // TODO: Use the above helper functions to redefine the functions below
 // TODO: Use the bon crate to make it clearer what the functions are doing
@@ -176,7 +186,7 @@ static MALLOC: Lazy<AsmFunction> = Lazy::new(|| {
             },
             JmpCC {
                 condition: E,
-                label: INBUILT_OOM.to_owned(),
+                label: INBUILT_OOM_LABEL.clone(),
                 is_func: true,
             },
         ],
@@ -217,7 +227,7 @@ static FREEPAIR: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         },
         JmpCC {
             condition: E,
-            label: INBUILT_NULL_ACCESS.to_owned(),
+            label: AsmLabel::new(INBUILT_NULL_ACCESS, GEN_USIZE),
             is_func: true,
         },
         Call(C_FREE.to_owned(), true), // true indicates external PLT call
@@ -421,6 +431,9 @@ static PRINTC: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
 static PRINTB_STR0: &str = "PRINTB_STR0";
 static PRINTB_STR1: &str = "PRINTB_STR1";
 static PRINTB_STR2: &str = "PRINTB_STR2";
+static PRINTB_0_LABEL: Lazy<AsmLabel> = Lazy::new(|| AsmLabel::new("printb0", GEN_USIZE));
+static PRINTB_1_LABEL: Lazy<AsmLabel> = Lazy::new(|| AsmLabel::new("printb1", GEN_USIZE));
+
 static PRINTB: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     name: INBUILT_PRINT_BOOL.to_owned(),
     global: false,
@@ -444,20 +457,20 @@ static PRINTB: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         },
         JmpCC {
             condition: NE,
-            label: "printb0".to_owned(),
+            label: PRINTB_0_LABEL.clone(),
             is_func: false,
         },
         Lea {
             src: Data(PRINTB_STR0.to_owned(), 0),
             dst: Reg(DX),
         },
-        Jmp("printb1".to_owned(), LABEL),
-        Label("printb0".to_owned()),
+        Jmp(PRINTB_1_LABEL.to_owned(), LABEL),
+        Label(PRINTB_0_LABEL.to_owned()),
         Lea {
             src: Data(PRINTB_STR1.to_owned(), 0),
             dst: Reg(DX),
         },
-        Label("printb1".to_owned()),
+        Label(PRINTB_1_LABEL.to_owned()),
         Mov {
             typ: Longword,
             src: Memory(DX, -4),
@@ -605,7 +618,7 @@ fn create_arr_load_function(name: String, scale: i32) -> AsmFunction {
             },
             JmpCC {
                 condition: L,
-                label: INBUILT_OUT_OF_BOUNDS.to_owned(),
+                label: INBUILT_OOB_LABEL.to_owned(),
                 is_func: true,
             },
             Mov {
@@ -626,7 +639,7 @@ fn create_arr_load_function(name: String, scale: i32) -> AsmFunction {
             },
             JmpCC {
                 condition: GE,
-                label: INBUILT_OUT_OF_BOUNDS.to_owned(),
+                label: INBUILT_OOB_LABEL.to_owned(),
                 is_func: true,
             },
             Lea {

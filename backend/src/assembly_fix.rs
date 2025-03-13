@@ -7,12 +7,13 @@
 // any special purpose
 
 use crate::assembly_ast::AsmInstruction::{Binary, Cmp, Idiv, JmpCC, Lea, Mov, MovZeroExtend};
-use crate::assembly_ast::CondCode;
 use crate::assembly_ast::Operand::{Data, Memory, Reg};
-use crate::assembly_ast::Register::{R10, R11, R9};
+use crate::assembly_ast::Register::{R9, R10, R11};
 use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, Operand, Operand::Imm,
 };
+use crate::assembly_ast::{AsmLabel, CondCode};
+use crate::predefined::GEN_USIZE;
 use util::gen_flags::INBUILT_OVERFLOW;
 
 ///
@@ -149,7 +150,7 @@ fn fix_binary(
     }
     asm.push(JmpCC {
         condition: CondCode::OF,
-        label: INBUILT_OVERFLOW.to_owned(),
+        label: AsmLabel::new(INBUILT_OVERFLOW, GEN_USIZE),
         is_func: true,
     });
 }

@@ -1,6 +1,21 @@
 use crate::assembly_ast::{
-    AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
-    Register, FUNCTION, LABEL,
+    AsmBinaryOperator, AsmFunction, AsmInstruction, AsmLabel, AsmProgram, AssemblyType, CondCode,
+    FUNCTION, LABEL, Operand, Register,
+};
+use crate::predefined::GEN_USIZE;
+use crate::registers::{ARR_INDEX_REG, ARR_LOAD_RETURN, ARR_PTR_REG, RegisterSet};
+use AsmInstruction::{
+    AllocateStack, Binary, Call, Cdq, Cmov, Cmp, Comment, DeallocateStack, Idiv, Jmp, JmpCC, Lea,
+    Mov, MovZeroExtend, Pop, Push, Ret, SetCC, Test, Unary as AsmUnary,
+};
+use AssemblyType::{Byte, Longword, Quadword};
+use CondCode::{E, G, GE, L, LE, NE};
+use Operand::{Data, Imm, Indexed, Memory, Pseudo, Reg};
+use Register::{AX, BP, CX, DI, DX, R8, R9, R10, SI, SP};
+use WackInstr::{
+    AddPtr, Alloc, ArrayAccess, Binary as WackBinary, Copy, CopyToOffset, Exit, FreeChecked,
+    FreeUnchecked, FunCall, Jump, JumpIfNotZero, JumpIfZero, Label, Load, NullPtrGuard, Print,
+    Println, Read, Return, Unary as WackUnary,
 };
 use middle::ast_transform::WackIdentSymbolTable;
 use middle::types::{BitWidth, WackType};
@@ -10,26 +25,12 @@ use middle::wackir::{
     WackReadType, WackTempIdent, WackValue,
 };
 use std::collections::{BTreeMap, HashMap};
-use util::gen_flags::{insert_flag_gbl, GenFlags};
+use util::gen_flags::{GenFlags, insert_flag_gbl};
 use util::gen_flags::{
     INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO,
     INBUILT_EXIT, INBUILT_FREE, INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS,
-    INBUILT_PRINTLN, INBUILT_PRINT_BOOL, INBUILT_PRINT_CHAR, INBUILT_PRINT_INT,
-    INBUILT_PRINT_PTR, INBUILT_PRINT_STRING, INBUILT_READ_CHAR, INBUILT_READ_INT,
-};
-use crate::registers::{ARR_INDEX_REG, ARR_LOAD_RETURN, ARR_PTR_REG, RegisterSet};
-use AsmInstruction::{
-    AllocateStack, Binary, Call, Cdq, Cmov, Cmp, Comment, DeallocateStack, Idiv, Jmp, JmpCC, Lea,
-    Mov, MovZeroExtend, Pop, Push, Ret, SetCC, Test, Unary as AsmUnary,
-};
-use AssemblyType::{Byte, Longword, Quadword};
-use CondCode::{E, G, GE, L, LE, NE};
-use Operand::{Data, Imm, Indexed, Memory, Pseudo, Reg};
-use Register::{AX, BP, CX, DI, DX, R10, R8, R9, SI, SP};
-use WackInstr::{
-    AddPtr, Alloc, ArrayAccess, Binary as WackBinary, Copy, CopyToOffset, Exit, FreeChecked,
-    FreeUnchecked, FunCall, Jump, JumpIfNotZero, JumpIfZero, Label, Load, NullPtrGuard, Print,
-    Println, Read, Return, Unary as WackUnary,
+    INBUILT_PRINT_BOOL, INBUILT_PRINT_CHAR, INBUILT_PRINT_INT, INBUILT_PRINT_PTR,
+    INBUILT_PRINT_STRING, INBUILT_PRINTLN, INBUILT_READ_CHAR, INBUILT_READ_INT,
 };
 /* ================== PUBLIC API ================== */
 
@@ -373,6 +374,7 @@ impl AsmGen {
                 });
             }
             JumpToHandler(predefined_func_name) => {
+                let predefined_func_name = AsmLabel::new(predefined_func_name.as_str(), GEN_USIZE);
                 asm.push(Jmp(predefined_func_name.into(), FUNCTION));
             }
             Copy { src, dst } => {
@@ -538,7 +540,7 @@ impl AsmGen {
                 // Jump to _errNull code if pointer is null
                 asm.push(JmpCC {
                     condition: E,
-                    label: INBUILT_NULL_ACCESS.to_owned(),
+                    label: AsmLabel::new(INBUILT_NULL_ACCESS, GEN_USIZE),
                     is_func: true,
                 });
             }
@@ -828,7 +830,7 @@ impl AsmGen {
                     },
                     JmpCC {
                         condition: NE,
-                        label: INBUILT_BAD_CHAR.to_owned(),
+                        label: AsmLabel::new(INBUILT_BAD_CHAR, GEN_USIZE),
                         is_func: true,
                     },
                     Mov {
@@ -896,7 +898,7 @@ impl AsmGen {
                     },
                     JmpCC {
                         condition: E,
-                        label: INBUILT_DIV_ZERO.to_owned(),
+                        label: AsmLabel::new(INBUILT_DIV_ZERO, GEN_USIZE),
                         is_func: true,
                     },
                     Mov {

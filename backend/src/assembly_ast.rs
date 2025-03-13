@@ -36,7 +36,7 @@
 // and it'd be easier for me probably
 // Change later if you want
 
-use middle::wackir::UnaryOp;
+use middle::wackir::{UnaryOp, WackTempIdent};
 use std::fmt::Debug;
 use util::{Instruction, SimpleInstr};
 
@@ -45,6 +45,11 @@ pub type IsFunction = bool;
 // This is a flag to guide code emission to know if it should add a .L_
 pub const FUNCTION: IsFunction = true;
 pub const LABEL: IsFunction = false;
+
+// If you don't like being reliant on an invariant on the implementation of
+// Display on WackTempIdent, make this its own type
+// and implement create_new for it
+pub type AsmLabel = WackTempIdent;
 
 // implement Debug below
 #[derive(Clone)]
@@ -107,17 +112,17 @@ pub enum AsmInstruction {
     },
     Idiv(Operand), // We convert from Binary(Div, _, _, _) -> IDiv
     Cdq,           // Need this for division
-    Jmp(String, IsFunction),
+    Jmp(AsmLabel, IsFunction),
     JmpCC {
         condition: CondCode,
-        label: String,
+        label: AsmLabel,
         is_func: IsFunction, // Field to guide code emission to know if its local or not
     },
     SetCC {
         condition: CondCode,
         operand: Operand,
     },
-    Label(String),
+    Label(AsmLabel),
     Comment(String),
     // These are high level instructions that serve a purpose
     // of not incurring runtime checks for overflows
@@ -255,17 +260,17 @@ impl From<UnaryOp> for AsmUnaryOperator {
 // Idea 2) I store the usize in the String and then extract it back when constructing the cfg
 // I personally like idea 1 better
 
-// impl Instruction for AsmInstruction {
-//     #[inline]
-//     fn simplify(&self) -> SimpleInstr {
-//         use AsmInstruction::{Jmp, JmpCC, Label, Ret};
-//         match *self {
-//             Label(ref name) => SimpleInstr::Label(name.clone().into()),
-//             JmpCC { ref label, .. } => SimpleInstr::ConditionalJump(label.clone().into()),
-//             Jmp(ref name, LABEL) => SimpleInstr::UnconditionalJump(name.clone().into()),
-//             Jmp(_, FUNCTION) => SimpleInstr::ErrorJump,
-//             Ret => SimpleInstr::Return,
-//             _ => SimpleInstr::Other,
-//         }
-//     }
-// }
+impl Instruction for AsmInstruction {
+    #[inline]
+    fn simplify(&self) -> SimpleInstr {
+        use AsmInstruction::{Jmp, JmpCC, Label, Ret};
+        match *self {
+            Label(ref name) => SimpleInstr::Label(name.clone().into()),
+            JmpCC { ref label, .. } => SimpleInstr::ConditionalJump(label.clone().into()),
+            Jmp(ref name, LABEL) => SimpleInstr::UnconditionalJump(name.clone().into()),
+            Jmp(_, FUNCTION) => SimpleInstr::ErrorJump,
+            Ret => SimpleInstr::Return,
+            _ => SimpleInstr::Other,
+        }
+    }
+}
