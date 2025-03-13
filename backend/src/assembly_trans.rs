@@ -166,7 +166,7 @@ impl AsmGen {
             src: Reg(BP),
             dst: Reg(SP),
         });
-        asm_instructions.push(Pop(Reg(BP)));
+        asm_instructions.push(Pop(BP));
         asm_instructions.push(Mov {
             typ: Quadword,
             src: Imm(0),
@@ -750,7 +750,7 @@ impl AsmGen {
             src: Reg(BP),
             dst: Reg(SP),
         });
-        asm_instructions.push(Pop(Reg(BP)));
+        asm_instructions.push(Pop(BP));
 
         asm_instructions.push(Ret);
     }

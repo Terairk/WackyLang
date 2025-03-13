@@ -206,8 +206,8 @@ impl AssemblyFormatter {
                 let op_str = Self::format_operand(op, &AssemblyType::Quadword);
                 format!("push {op_str}")
             }
-            Pop(op) => {
-                let op_str = Self::format_operand(op, &AssemblyType::Quadword);
+            Pop(reg) => {
+                let op_str = Self::format_register(reg, &AssemblyType::Quadword);
                 format!("pop {op_str}")
             }
             // Note these are our own calls so these don't need to be with @PLT
@@ -303,7 +303,7 @@ impl AssemblyFormatter {
 
     /// Format a register – adds a "%" prefix and maps our enum to the 64-bit register names.
     fn format_quad_reg(reg: &Register) -> &'static str {
-        use Register::{AX, BP, BX, CX, DI, DX, R8, R9, R10, R11, SI, SP};
+        use Register::{AX, BP, BX, CX, DI, DX, R8, R9, R10, R11, R12, R13, R14, R15, SI, SP};
         match *reg {
             AX => "%rax",
             BX => "%rbx",
@@ -315,6 +315,10 @@ impl AssemblyFormatter {
             R9 => "%r9",
             R10 => "%r10",
             R11 => "%r11",
+            R12 => "%r12",
+            R13 => "%r13",
+            R14 => "%r14",
+            R15 => "%r15",
             SP => "%rsp",
             BP => "%rbp",
         }
@@ -322,7 +326,7 @@ impl AssemblyFormatter {
 
     // 32 bit registers
     fn format_long_reg(reg: &Register) -> &'static str {
-        use Register::{AX, BP, BX, CX, DI, DX, R8, R9, R10, R11, SI, SP};
+        use Register::{AX, BP, BX, CX, DI, DX, R8, R9, R10, R11, R12, R13, R14, R15, SI, SP};
         match *reg {
             AX => "%eax",
             BX => "%ebx",
@@ -334,6 +338,10 @@ impl AssemblyFormatter {
             R9 => "%r9d",
             R10 => "%r10d",
             R11 => "%r11d",
+            R12 => "%r12d",
+            R13 => "%r13d",
+            R14 => "%r14d",
+            R15 => "%r15d",
             SP => panic!("Stack pointer cannot be 32-bit"),
             BP => panic!("Base pointer cannot be 32-bit"),
         }
@@ -342,7 +350,7 @@ impl AssemblyFormatter {
     #[inline]
     // 8 bit registers
     fn format_byte_reg(reg: &Register) -> &'static str {
-        use Register::{AX, BP, BX, CX, DI, DX, R8, R9, R10, R11, SI, SP};
+        use Register::{AX, BP, BX, CX, DI, DX, R8, R9, R10, R11, R12, R13, R14, R15, SI, SP};
         match *reg {
             AX => "%al",
             BX => "%bl",
@@ -354,6 +362,10 @@ impl AssemblyFormatter {
             R9 => "%r9b",
             R10 => "%r10b",
             R11 => "%r11b",
+            R12 => "%r12b",
+            R13 => "%r13b",
+            R14 => "%r14b",
+            R15 => "%r15b",
             SP => panic!("Stack pointer cannot be 8-bit"),
             BP => panic!("Base pointer cannot be 8-bit"),
         }

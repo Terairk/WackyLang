@@ -122,7 +122,7 @@ pub enum AsmInstruction {
     AllocateStack(i32),
     DeallocateStack(i32),
     Push(Operand),
-    Pop(Operand),
+    Pop(Register), // You can only pop a register
     // True = external call, false
     Call(String, bool),
     Ret,
@@ -198,6 +198,10 @@ pub enum Register {
     R9,
     R10,
     R11,
+    R12,
+    R13,
+    R14,
+    R15,
     SP,
     BP,
 }
