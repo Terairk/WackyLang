@@ -17,13 +17,13 @@ use Operand::{Data, Imm, Indexed, Memory, Reg};
 use Register::{AX, BP, BX, DI, DX, R9, R10, SI, SP};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use util::gen_flags::{GenFlags, INBUILT_ARR_STORE8, get_flags_gbl, rewrite_global_flag};
+use util::gen_flags::{GenFlags, get_flags_gbl, rewrite_global_flag};
 use util::gen_flags::{
-    INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_ARR_STORE1,
-    INBUILT_ARR_STORE4, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO, INBUILT_EXIT, INBUILT_FREE,
-    INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS, INBUILT_OOM, INBUILT_OUT_OF_BOUNDS,
-    INBUILT_OVERFLOW, INBUILT_PRINT_BOOL, INBUILT_PRINT_CHAR, INBUILT_PRINT_INT, INBUILT_PRINT_PTR,
-    INBUILT_PRINT_STRING, INBUILT_PRINTLN, INBUILT_READ_CHAR, INBUILT_READ_INT,
+    INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO,
+    INBUILT_EXIT, INBUILT_FREE, INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS,
+    INBUILT_OOM, INBUILT_OUT_OF_BOUNDS, INBUILT_OVERFLOW, INBUILT_PRINT_BOOL, INBUILT_PRINT_CHAR,
+    INBUILT_PRINT_INT, INBUILT_PRINT_PTR, INBUILT_PRINT_STRING, INBUILT_PRINTLN, INBUILT_READ_CHAR,
+    INBUILT_READ_INT,
 };
 
 #[inline]
@@ -64,9 +64,6 @@ pub static PREDEFINED_FUNCTIONS2: Lazy<HashMap<GenFlags, AsmFunction>> = Lazy::n
     m.insert(GenFlags::READ_CHR, READC.clone());
     m.insert(GenFlags::EXIT, EXIT.clone());
     m.insert(GenFlags::NULL_DEREF, ERR_NULL.clone());
-    m.insert(GenFlags::ARRAY_STORE1, ARR_STORE1.clone());
-    m.insert(GenFlags::ARRAY_STORE4, ARR_STORE4.clone());
-    m.insert(GenFlags::ARRAY_STORE8, ARR_STORE8.clone());
     m
 });
 
@@ -908,74 +905,3 @@ static EXIT: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     directives: vec![],
     regs: RS1,
 });
-
-fn create_arr_store_function(name: String, data_type: AssemblyType, scale: i32) -> AsmFunction {
-    AsmFunction {
-        name,
-        global: false,
-        instructions: vec![
-            Push(Reg(BX)),
-            Test {
-                typ: Longword,
-                op1: Reg(R10),
-                op2: Reg(R10),
-            },
-            Cmov {
-                condition: L,
-                typ: Quadword,
-                src: Reg(R10),
-                dst: Reg(SI),
-            },
-            JmpCC {
-                condition: L,
-                label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-                is_func: true,
-            },
-            Mov {
-                typ: Longword,
-                src: Memory(R9, -4),
-                dst: Reg(BX),
-            },
-            Cmp {
-                typ: Longword,
-                op1: Reg(BX),
-                op2: Reg(R10),
-            },
-            Cmov {
-                condition: GE,
-                typ: Quadword,
-                src: Reg(R10),
-                dst: Reg(SI),
-            },
-            JmpCC {
-                condition: GE,
-                label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-                is_func: true,
-            },
-            Mov {
-                typ: data_type,
-                src: Reg(AX),
-                dst: Indexed {
-                    offset: 0,
-                    base: R9,
-                    index: R10,
-                    scale,
-                },
-            },
-            Pop(BX),
-            Ret,
-        ],
-        directives: vec![],
-        regs: RS_ARR,
-    }
-}
-
-// Then use the helper function to define your store functions
-static ARR_STORE1: Lazy<AsmFunction> =
-    Lazy::new(|| create_arr_store_function(INBUILT_ARR_STORE1.to_owned(), Byte, 1));
-
-static ARR_STORE4: Lazy<AsmFunction> =
-    Lazy::new(|| create_arr_store_function(INBUILT_ARR_STORE4.to_owned(), Longword, 4));
-
-static ARR_STORE8: Lazy<AsmFunction> =
-    Lazy::new(|| create_arr_store_function(INBUILT_ARR_STORE8.to_owned(), Quadword, 8));

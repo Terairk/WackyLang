@@ -2,7 +2,7 @@ use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, FUNCTION,
     LABEL, Operand, Register,
 };
-use crate::registers::RegisterSet;
+use crate::registers::{ARR_INDEX_REG, ARR_LOAD_RETURN, ARR_PTR_REG, RegisterSet};
 use AsmInstruction::{
     AllocateStack, Binary, Call, Cdq, Cmov, Cmp, Comment, DeallocateStack, Idiv, Jmp, JmpCC, Lea,
     Mov, MovZeroExtend, Pop, Push, Ret, SetCC, Test, Unary as AsmUnary,
@@ -583,13 +583,13 @@ impl AsmGen {
                 asm.push(Mov {
                     typ: Quadword,
                     src: src_array_operand,
-                    dst: Reg(R9),
+                    dst: Reg(ARR_PTR_REG),
                 });
                 let index_operand = self.lower_value(index, asm);
                 asm.push(Mov {
                     typ: Longword,
                     src: index_operand,
-                    dst: Reg(R10),
+                    dst: Reg(ARR_INDEX_REG),
                 });
 
                 let inbuilt_instr = match scale {
@@ -610,7 +610,7 @@ impl AsmGen {
                 asm.push(Call(inbuilt_instr.to_owned(), false));
                 asm.push(Mov {
                     typ: Quadword,
-                    src: Reg(R9),
+                    src: Reg(ARR_LOAD_RETURN),
                     dst: dst_ptr_operand,
                 });
             }
