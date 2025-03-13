@@ -82,9 +82,10 @@ impl WackType {
             }
             // a pair type in WACC translates to a __pointer__ to a pair in memory
             Type::PairType(boxed) => Self::pointer_of(Self::pair(
-                Self::from_thir_type((*boxed).fst_type.clone()),
-                Self::from_thir_type((*boxed).fst_type),
+                Self::from_thir_type(boxed.fst_type),
+                Self::from_thir_type(boxed.snd_type),
             )),
+
             // TODO: if compile bugs, not handling this this might be the culprit.....
             // // an erased-pair type can point to just-about anything...
             // SemanticType::ErasedPair => Self::ANY_POINTER,
