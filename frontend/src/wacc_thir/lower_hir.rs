@@ -563,7 +563,7 @@ impl HirLoweringCtx {
                 body: self.lower_stat_block(body),
             },
             hir::Stat::Break(label) => Stat::Break(label),
-            hir::Stat::Continue(label) => Stat::Continue(label),
+            hir::Stat::NextLoop(label) => Stat::NextLoop(label),
         }
     }
 

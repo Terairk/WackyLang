@@ -64,7 +64,7 @@ pub enum Stat {
         label: LoopLabel,
         body: StatBlock,
     },
-    Continue(LoopLabel),
+    NextLoop(LoopLabel),
     Break(LoopLabel),
 }
 

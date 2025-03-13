@@ -74,7 +74,7 @@ pub enum Stat {
         body: StatBlock,
     },
     Break,
-    Continue,
+    NextLoop,
 }
 
 #[derive(Clone, Debug)]

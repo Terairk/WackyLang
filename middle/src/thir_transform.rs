@@ -500,9 +500,9 @@ pub(crate) mod thir_lowering_ctx {
                     // jump to the end of the loop
                     instructions.push(WackInstr::Jump(loop_region.end_label));
                 }
-                thir::Stat::Continue(label) => {
+                thir::Stat::NextLoop(label) => {
                     // find loop-label, it should always be there
-                    let loop_region = self.lookup_loop_region_from_stack(label).expect("Continue-statement encountered outside a loop. This is a bug in the frontend!!!");
+                    let loop_region = self.lookup_loop_region_from_stack(label).expect("Nextloop-statement encountered outside a loop. This is a bug in the frontend!!!");
 
                     // jump to the start of the loop
                     instructions.push(WackInstr::Jump(loop_region.start_label));

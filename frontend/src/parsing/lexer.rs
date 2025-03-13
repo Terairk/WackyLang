@@ -285,7 +285,7 @@ where
         text::keyword("done").to(Token::Done),
         text::keyword("loop").to(Token::Loop),
         text::keyword("break").to(Token::Break),
-        text::keyword("continue").to(Token::Continue),
+        text::keyword("nextloop").to(Token::Nextloop),
         text::keyword("newpair").to(Token::Newpair),
         text::keyword("pair").to(Token::Pair),
         text::keyword("fst").to(Token::Fst),

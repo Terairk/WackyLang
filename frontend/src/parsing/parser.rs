@@ -494,7 +494,7 @@ where
     let stat = choice((
         just(Token::Skip).to(ast::Stat::Skip),
         just(Token::Break).to(ast::Stat::Break),
-        just(Token::Continue).to(ast::Stat::Continue),
+        just(Token::Nextloop).to(ast::Stat::NextLoop),
         variable_definition,
         assignment,
         just(Token::Read).ignore_then(lvalue).map(ast::Stat::Read),

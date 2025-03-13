@@ -25,7 +25,7 @@ pub enum AstLoweringError {
     UndefinedIdent(SN<ast::Ident>),
     ReturnInMain(SourcedSpan),
     BreakOutsideLoop(SourcedSpan),
-    ContinueOutsideLoop(SourcedSpan),
+    NextloopOutsideLoop(SourcedSpan),
 }
 
 impl AstLoweringError {
@@ -51,9 +51,9 @@ impl AstLoweringError {
             Self::UndefinedIdent(ref ident) => {
                 format!("Undefined identifier '{}'", ident.inner())
             }
-            Self::ReturnInMain(_) => "Cannot return from main function".to_string(),
-            Self::BreakOutsideLoop(_) => "Cannot break outside of loop".to_string(),
-            Self::ContinueOutsideLoop(_) => "Cannot continue outside of loop".to_string(),
+            Self::ReturnInMain(_) => "Cannot `return` from main function".to_string(),
+            Self::BreakOutsideLoop(_) => "Cannot `break` outside of loop".to_string(),
+            Self::NextloopOutsideLoop(_) => "Cannot `nextloop` outside of loop".to_string(),
         }
     }
 
@@ -61,7 +61,7 @@ impl AstLoweringError {
     pub fn into_span(self) -> SourcedSpan {
         match self {
             Self::DuplicateIdent(s) | Self::UndefinedIdent(s) => s.span(),
-            Self::ReturnInMain(s) | Self::BreakOutsideLoop(s) | Self::ContinueOutsideLoop(s) => s,
+            Self::ReturnInMain(s) | Self::BreakOutsideLoop(s) | Self::NextloopOutsideLoop(s) => s,
         }
     }
 
@@ -157,7 +157,7 @@ struct LoweringCtx {
 impl LoweringCtx {
     const LOOP_LABEL_IDENT_BASE: &'static str = "hidden_loop_label";
     const BREAK_OUTSIDE_LOOP: &'static str = "break_outside_loop";
-    const CONTINUE_OUTSIDE_LOOP: &'static str = "continue_outside_loop";
+    const NEXTLOOP_OUTSIDE_LOOP: &'static str = "nextloop_outside_loop";
 
     #[inline]
     pub fn new() -> Self {
@@ -459,18 +459,18 @@ impl LoweringCtx {
                 };
                 Stat::Break(label)
             }),
-            ast::Stat::Continue => stat_sn({
+            ast::Stat::NextLoop => stat_sn({
                 // this is a continue-statement without a specific loop-label, meaning it binds to the
                 // closest loop - which should be at the top of the loop-label stack
                 let label = match self.current_loop_nesting_stack.last() {
                     Some(label) => label.clone(),
                     None => {
                         // report break-outside loop error, and create-dummy loop-label
-                        self.add_error(AstLoweringError::ContinueOutsideLoop(span));
-                        LoopLabel::new_rogue_zero(ast::Ident::from_str(Self::CONTINUE_OUTSIDE_LOOP))
+                        self.add_error(AstLoweringError::NextloopOutsideLoop(span));
+                        LoopLabel::new_rogue_zero(ast::Ident::from_str(Self::NEXTLOOP_OUTSIDE_LOOP))
                     }
                 };
-                Stat::Continue(label)
+                Stat::NextLoop(label)
             }),
         }
     }

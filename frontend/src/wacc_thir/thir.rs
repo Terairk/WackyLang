@@ -53,7 +53,7 @@ pub enum Stat {
         body: StatBlock,
     },
     Break(hir::LoopLabel),
-    Continue(hir::LoopLabel),
+    NextLoop(hir::LoopLabel),
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]

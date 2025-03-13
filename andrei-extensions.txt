@@ -27,15 +27,20 @@
 - TODO: write more tests around all the edge cases of that
 middle/backend won't have to change at all
 
-# More types of loop-related constructs: do-while, loop, break, continue, (maybe for-loop??)
+# More types of loop-related constructs: do-while, loop, break, nextloop
 - added `do-while` statement with syntax: `do <stmt> while <expr> done`
+- added `loop-do` statement with syntax `loop do <stmt> done`
+- added `break` and `nextloop` statements to be used inside loops
+- + `break` breaks out of the loop
+- + `nextloop` skips to the start of the next iteration of the loop
 - TODO: add parser support
-- + loop/break/continue
+- + explicit-loop-labels
 - TODO: lower all to loop+conditional+break/continue in frontend
-- + loop/break/continue
+- + explicit-loop-labels
 - + check for loop-existence!!!!
 - TODO: write more tests around all the edge cases of that
 - + do-while
-- + loop/break/continue
+- + loop
+- + break+continue
 middle support loop+conditional+break/continue, which all other is lowered into
 backend doesn't have to change
