@@ -39,6 +39,8 @@
 use middle::wackir::UnaryOp;
 use std::fmt::Debug;
 use util::{Instruction, SimpleInstr};
+
+use crate::registers::RegisterSet;
 pub type IsFunction = bool;
 // This is a flag to guide code emission to know if it should add a .L_
 pub const FUNCTION: IsFunction = true;
@@ -56,6 +58,7 @@ pub struct AsmFunction {
     pub global: bool,
     pub instructions: Vec<AsmInstruction>,
     pub directives: Vec<Directive>,
+    pub regs: RegisterSet, // What registers are passed as parameters
 }
 
 #[derive(Debug, Clone)]

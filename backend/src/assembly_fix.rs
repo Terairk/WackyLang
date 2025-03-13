@@ -63,6 +63,7 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
             global: func.global,
             instructions: new_func_body,
             directives: vec![],
+            regs: func.regs,
         });
     }
 
@@ -279,6 +280,7 @@ fn fix_cmp(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, op1: Operand, op2: 
 }
 
 fn fix_lea(asm: &mut Vec<AsmInstruction>, src: Operand, dst: Operand) {
+    // TODO: change this to not use R9
     let new_instrs = match (src.clone(), dst.clone()) {
         // Lea can't have memory as destination, must be register
         (_, Memory(_, _)) => vec![
@@ -297,7 +299,10 @@ fn fix_lea(asm: &mut Vec<AsmInstruction>, src: Operand, dst: Operand) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::assembly_ast::Register::{BP, R10};
+    use crate::{
+        assembly_ast::Register::{BP, R10},
+        registers::RegisterSet,
+    };
 
     #[test]
     fn test_fix_instructions_allocate_and_mov_fix() {
@@ -322,6 +327,7 @@ mod tests {
                 },
             ],
             directives: vec![],
+            regs: RegisterSet::empty(),
         };
 
         let program = AsmProgram {

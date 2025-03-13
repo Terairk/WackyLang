@@ -2,6 +2,7 @@ use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, FUNCTION,
     LABEL, Operand, Register,
 };
+use crate::registers::RegisterSet;
 use AsmInstruction::{
     AllocateStack, Binary, Call, Cdq, Cmov, Cmp, Comment, DeallocateStack, Idiv, Jmp, JmpCC, Lea,
     Mov, MovZeroExtend, Pop, Push, Ret, SetCC, Test, Unary as AsmUnary,
@@ -180,6 +181,7 @@ impl AsmGen {
             global: true,
             instructions: asm_instructions,
             directives: vec![],
+            regs: RegisterSet::empty(),
         }
     }
 
@@ -204,6 +206,7 @@ impl AsmGen {
             "Push registers onto stack to prevent clobbering".to_owned(),
         ));
         let arg_regs = [DI, SI, DX, CX, R8, R9];
+        let reg_amount = params.len().min(arg_regs.len());
         for (param, reg) in params.iter().zip(arg_regs.iter()) {
             let wack_value = WackValue::Var(param.clone());
             let typ = self.get_asm_type(&wack_value);
@@ -239,12 +242,24 @@ impl AsmGen {
             self.lower_instruction(instr, &mut asm);
         }
 
+        let rs: RegisterSet = match reg_amount {
+            0 => RegisterSet::empty(),
+            1 => crate::registers::RS1,
+            2 => crate::registers::RS2,
+            3 => crate::registers::RS3,
+            4 => crate::registers::RS4,
+            5 => crate::registers::RS5,
+            6 => crate::registers::RS6,
+            _ => panic!("Too many parameters for function"),
+        };
+
         // any functions we generate ourselves are not external
         AsmFunction {
             name: func_name,
             global: false,
             instructions: asm,
             directives: vec![],
+            regs: rs,
         }
     }
 

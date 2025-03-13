@@ -10,6 +10,7 @@ use crate::assembly_ast::AsmBinaryOperator::{Add, And, Sub};
 use crate::assembly_ast::AsmInstruction::{
     Binary, Call, Cmov, Cmp, Jmp, JmpCC, Label, Lea, Mov, Pop, Push, Ret, Test,
 };
+use crate::registers::{RS_ARR, RS1, RegisterSet};
 use AssemblyType::{Byte, Longword, Quadword};
 use CondCode::{E, GE, L, NE};
 use Operand::{Data, Imm, Indexed, Memory, Reg};
@@ -117,6 +118,7 @@ fn create_function(
     name: String,
     body_instructions: Vec<AsmInstruction>,
     directives: Vec<Directive>,
+    registers: RegisterSet,
 ) -> AsmFunction {
     let mut instructions = function_prologue();
     instructions.extend(body_instructions);
@@ -127,6 +129,7 @@ fn create_function(
         global: false,
         instructions,
         directives,
+        regs: registers,
     }
 }
 
@@ -160,6 +163,7 @@ static ERR_DIV_ZERO: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Call(C_EXIT.to_owned(), true),
     ],
     directives: vec![Directive(ERR_DIV_ZERO_STR0, "Error: Division by zero\\n")],
+    regs: RegisterSet::DI,
 });
 
 // Example usage
@@ -180,6 +184,7 @@ static MALLOC: Lazy<AsmFunction> = Lazy::new(|| {
             },
         ],
         vec![],
+        RS1,
     )
 });
 
@@ -188,6 +193,7 @@ static FREE: Lazy<AsmFunction> = Lazy::new(|| {
         INBUILT_FREE.to_owned(),
         vec![Call(C_FREE.to_owned(), true)],
         vec![],
+        RS1,
     )
 });
 
@@ -227,6 +233,7 @@ static FREEPAIR: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Ret,
     ],
     directives: vec![],
+    regs: RS1,
 });
 
 static ERR_OUT_OF_MEMORY_STR0: &str = "ERR_OUT_OF_MEMORY_STR0";
@@ -256,6 +263,7 @@ static ERR_OUT_OF_MEMORY: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         ERR_OUT_OF_MEMORY_STR0,
         "fatal error: out of memory\\n",
     )],
+    regs: RS1,
 });
 
 static PRINTP_STR0: &str = "PRINTP_STR0";
@@ -305,6 +313,7 @@ static PRINTP: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Ret,
     ],
     directives: vec![Directive(PRINTP_STR0, "%p")],
+    regs: RS1,
 });
 
 static PRINTS_STR0: &str = "PRINTS_STR0";
@@ -359,6 +368,7 @@ static PRINTS: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Ret,
     ],
     directives: vec![Directive(PRINTS_STR0, "%.*s")],
+    regs: RS1,
 });
 
 static PRINTC_STR0: &str = "PRINTC_STR0";
@@ -408,6 +418,7 @@ static PRINTC: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Ret,
     ],
     directives: vec![Directive(PRINTC_STR0, "%c")],
+    regs: RS1,
 });
 
 static PRINTB_STR0: &str = "PRINTB_STR0";
@@ -484,6 +495,7 @@ static PRINTB: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Directive(PRINTB_STR1, "true"),
         Directive(PRINTB_STR2, "%.*s"),
     ],
+    regs: RS1,
 });
 
 static PRINTI_STR0: &str = "PRINTI_STR0";
@@ -533,6 +545,7 @@ static PRINTI: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Ret,
     ],
     directives: vec![Directive(PRINTI_STR0, "%d")],
+    regs: RS1,
 });
 
 static PRINTLN_STR0: &str = "PRINTLN_STR0";
@@ -572,8 +585,10 @@ static PRINTLN: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Ret,
     ],
     directives: vec![Directive(PRINTLN_STR0, "")],
+    regs: RegisterSet::empty(),
 });
 
+// TODO: change these to not use R10, R11, what if they stuck with default registers?
 fn create_arr_load_function(name: String, scale: i32) -> AsmFunction {
     AsmFunction {
         name,
@@ -630,6 +645,7 @@ fn create_arr_load_function(name: String, scale: i32) -> AsmFunction {
             Ret,
         ],
         directives: vec![],
+        regs: RS_ARR,
     }
 }
 
@@ -681,6 +697,7 @@ static ERR_OUT_OF_BOUNDS: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         ERR_OUT_OF_BOUNDS_STR0,
         "fatal error: array index %d out of bounds",
     )],
+    regs: RegisterSet::empty(),
 });
 
 static ERR_BAD_CHAR_STR0: &str = "ERR_BAD_CHAR_STR0";
@@ -721,6 +738,7 @@ static ERR_BAD_CHAR: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         ERR_BAD_CHAR_STR0,
         "fatal error: int %d is not ascii character 0-127 \\n",
     )],
+    regs: RegisterSet::empty(),
 });
 
 static ERR_OVERFLOW_STR0: &str = "ERR_OVERFLOW_STR0";
@@ -750,6 +768,7 @@ static ERR_OVERFLOW: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         ERR_OVERFLOW_STR0,
         "fatal error: integer overflow or underflow occurred\\n",
     )],
+    regs: RegisterSet::empty(),
 });
 
 fn create_read_function(
@@ -819,6 +838,7 @@ fn create_read_function(
             Ret,
         ],
         directives: vec![Directive(str_const_name, format_str)],
+        regs: RS1,
     }
 }
 
@@ -857,6 +877,7 @@ static ERR_NULL: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         ERR_NULL_STR0,
         "fatal error: null pair dereferenced or freed\\n",
     )],
+    regs: RegisterSet::empty(),
 });
 
 static EXIT: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
@@ -885,6 +906,7 @@ static EXIT: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Ret,
     ],
     directives: vec![],
+    regs: RS1,
 });
 
 fn create_arr_store_function(name: String, data_type: AssemblyType, scale: i32) -> AsmFunction {
@@ -944,6 +966,7 @@ fn create_arr_store_function(name: String, data_type: AssemblyType, scale: i32) 
             Ret,
         ],
         directives: vec![],
+        regs: RS_ARR,
     }
 }
 
