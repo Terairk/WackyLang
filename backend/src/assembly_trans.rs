@@ -472,7 +472,8 @@ impl AsmGen {
             } => {
                 let typ = self.get_asm_type(&src);
                 let operand = self.lower_value(src, asm);
-                let operand2 = self.lower_value(dst_ptr, asm);
+                let dst = WackValue::Var(dst_ptr);
+                let operand2 = self.lower_value(dst, asm);
                 // println!("operand1: {operand:?}");
                 // println!("operand2: {operand2:?}");
                 let get_base_dst_instr = Mov {

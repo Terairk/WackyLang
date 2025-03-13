@@ -1,9 +1,18 @@
-use crate::alias::InternStr;
-use util::{cfg::Location, Instruction, SimpleInstr, CFG};
+use std::collections::HashSet;
+
+use util::{
+    cfg::{Location, NodeId}, Instruction, SimpleInstr,
+    CFG,
+};
 // temporary bCFG cus I want to leave everything the same
 
+use crate::alias::InternStr;
 use crate::wackir::{WackInstr, WackTempIdent};
-
+use WackInstr::{
+    AddPtr, Alloc, ArrayAccess, Binary, Copy, CopyToOffset, Exit, FreeChecked, FreeUnchecked,
+    FunCall, Jump, JumpIfNotZero, JumpIfZero, JumpToHandler, Label, Load, NullPtrGuard, Print,
+    Println, Read, Return, Unary,
+};
 // TODO: Change the CFG to the proper CFG type
 // I'll figure this out as I go along
 
@@ -47,5 +56,100 @@ impl From<WackTempIdent> for Location {
         let interned_string: InternStr = ident.clone().into();
         let id = ident.get_id();
         Self::new(interned_string, id)
+    }
+}
+
+/// Helper function to sort blocks in reverse postorder (returns block IDs only)
+pub fn reverse_postorder_block_ids(
+    cfg: &EmptyCFG,
+    blocks: &[usize],
+    is_reversed: bool,
+) -> Vec<usize> {
+    // First get postorder of NodeIds
+    let mut visited = HashSet::new();
+    let mut postorder = Vec::new();
+
+    // Start DFS from entry node
+    visit_dfs(NodeId::Entry, cfg, &mut visited, &mut postorder);
+
+    // Reverse the postorder
+    if is_reversed {
+        postorder.reverse();
+    }
+
+    // Filter out Entry and Exit nodes, keep only Block nodes that were in the original list
+    // and extract the block IDs
+    postorder
+        .into_iter()
+        .filter_map(|id| {
+            if let NodeId::Block(block_id) = id {
+                if blocks.contains(&block_id) {
+                    return Some(block_id);
+                }
+            }
+            None
+        })
+        .collect()
+}
+
+/// Helper function for DFS traversal
+pub fn visit_dfs(
+    node: NodeId,
+    cfg: &EmptyCFG,
+    visited: &mut HashSet<NodeId>,
+    postorder: &mut Vec<NodeId>,
+) {
+    if visited.contains(&node) {
+        return;
+    }
+
+    visited.insert(node);
+
+    // Get successor nodes
+    let successors = match node {
+        NodeId::Entry => &cfg.entry_succs,
+        NodeId::Block(id) => {
+            if let Some(block) = cfg.basic_blocks.get(&id) {
+                &block.succs
+            } else {
+                return;
+            }
+        }
+        NodeId::Exit => return, // Exit has no successors,
+    };
+
+    // Visit each successor
+    for &succ in successors {
+        if !visited.contains(&succ) {
+            visit_dfs(succ, cfg, visited, postorder);
+        }
+    }
+
+    // Add node to postorder after visiting all its successors
+    postorder.push(node);
+}
+
+pub fn get_dst(instr: &WackInstr) -> Option<&WackTempIdent> {
+    match *instr {
+        Return(_) => None,
+        Unary { ref dst, .. }
+        | Binary { ref dst, .. }
+        | FunCall { ref dst, .. }
+        | Copy { ref dst, .. }
+        | Read { ref dst, .. }
+        | Load { ref dst, .. } => Some(dst),
+        AddPtr { ref dst_ptr, .. }
+        | CopyToOffset { ref dst_ptr, .. }
+        | Alloc { ref dst_ptr, .. } => Some(dst_ptr),
+        ArrayAccess {
+            ref dst_elem_ptr, ..
+        } => Some(dst_elem_ptr),
+        Jump(_) | JumpIfZero { .. } | JumpIfNotZero { .. } | JumpToHandler(_) | Label(_) => None,
+        FreeUnchecked(_)
+        | FreeChecked(_)
+        | NullPtrGuard(_)
+        | Print { .. }
+        | Println { .. }
+        | Exit(_) => None,
     }
 }

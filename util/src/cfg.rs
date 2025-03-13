@@ -373,27 +373,38 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
         result
     }
 
-    /// Initialize annotations with a default value
-    // TODO: Figure out if we can take ownership of self instead to minimise clones
     #[must_use]
     #[inline]
-    pub fn initialize_annotation<W: Clone + Default>(&self, dummy_val: &W) -> CFG<T, W> {
-        let mut new_blocks = HashMap::new();
+    pub fn contains_node(&self, node_id: NodeId) -> bool {
+        match node_id {
+            NodeId::Entry => true,
+            NodeId::Block(id) => self.basic_blocks.contains_key(&id),
+            NodeId::Exit => true,
+        }
+    }
 
-        for (&idx, block) in &self.basic_blocks {
-            let new_instructions = block
-                .instructions
-                .iter()
-                .map(|(_, i)| (dummy_val.clone(), i.clone()))
-                .collect();
+    /// Initialize annotations with a default value
+    #[must_use]
+    #[inline]
+    pub fn initialize_annotation<W: Clone + Default>(self, dummy_val: &W) -> CFG<T, W> {
+        let mut new_blocks = HashMap::with_capacity(self.basic_blocks.len());
+
+        for (idx, block) in self.basic_blocks {
+            // Pre-allocate the vector with exact size needed
+            let mut new_instructions = Vec::with_capacity(block.instructions.len());
+
+            // Move instructions into the new vector with new annotations
+            for (_, instruction) in block.instructions {
+                new_instructions.push((dummy_val.clone(), instruction));
+            }
 
             new_blocks.insert(
                 idx,
                 BasicBlock {
                     id: block.id,
                     instructions: new_instructions,
-                    preds: block.preds.clone(),
-                    succs: block.succs.clone(),
+                    preds: block.preds,
+                    succs: block.succs,
                     value: dummy_val.clone(),
                 },
             );
@@ -401,16 +412,16 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
 
         CFG {
             basic_blocks: new_blocks,
-            entry_succs: self.entry_succs.clone(),
-            exit_preds: self.exit_preds.clone(),
-            debug_label: self.debug_label.clone(),
+            entry_succs: self.entry_succs,
+            exit_preds: self.exit_preds,
+            debug_label: self.debug_label,
         }
     }
 
     /// Strip annotations
     #[must_use]
     #[inline]
-    pub fn strip_annotations(&self) -> CFG<T, ()> {
+    pub fn strip_annotations(self) -> CFG<T, ()> {
         self.initialize_annotation(&())
     }
 }
@@ -492,7 +503,7 @@ impl<T: Instruction + Clone + Display, V: Clone + Default + Debug> CFG<T, V> {
             .status()?;
 
         if status.success() {
-            // Maybe we shouldn't remove the dot file
+            // Maybe we shouldn't remove the dot file, Comment/Uncomment as needed
             let _ = std::fs::remove_file(&filename);
             Ok(png_filename)
         } else {

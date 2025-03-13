@@ -131,20 +131,13 @@ pub enum WackInstr {
         dst: WackTempIdent, // you can only store into an identifier
     },
 
-    // /// USAGE: `dst = &src`
-    // ///
-    // /// NOTE: [`src`] must be a variable, not constant.
-    // GetAddress {
-    //     src: WackValue,
-    //     dst: WackValue,
-    // }, // TODO: uncomment when its _actually_ needed
     //
     /// USAGE: `dst = *src_ptr`
     ///
     /// NOTE: [`src_ptr`] must be a pointer/memory address.h
     Load {
         src_ptr: WackValue,
-        dst: WackTempIdent, // you can only store into an identifier
+        dst: WackTempIdent,
     },
 
     // /// USAGE: `*dst_ptr = src`
@@ -168,7 +161,7 @@ pub enum WackInstr {
         index: WackValue,
         scale: usize,
         offset: i32,
-        dst_ptr: WackTempIdent, // you can only store into an identifier
+        dst_ptr: WackTempIdent,
     },
 
     /// Copies the bytes of scalar value represented by [`src`], to the memory location (plus offset)
@@ -177,7 +170,7 @@ pub enum WackInstr {
     /// It can be seen as an automated version of C's `memcpy`.
     CopyToOffset {
         src: WackValue,
-        dst_ptr: WackValue, // you can only store into an identifier
+        dst_ptr: WackTempIdent,
         offset: i32,
     },
 
@@ -191,27 +184,27 @@ pub enum WackInstr {
         src_array_ptr: WackValue,
         index: WackValue,
         scale: usize,
-        dst_elem_ptr: WackTempIdent, // you can only store into an identifier
+        dst_elem_ptr: WackTempIdent,
     },
 
     Jump(WackTempIdent),
     JumpIfZero {
         condition: WackValue,
-        target: WackTempIdent, // you can only store into an identifier
+        target: WackTempIdent,
     },
     JumpIfNotZero {
         condition: WackValue,
-        target: WackTempIdent, // you can only store into an identifier
+        target: WackTempIdent,
     },
     JumpToHandler(PredefinedFunction), // Jump to a runtime error handler
     Label(WackTempIdent),
     FunCall {
         fun_name: WackGlobIdent,
         args: Vec<WackValue>,
-        dst: WackTempIdent, // you can only store into an identifier
+        dst: WackTempIdent,
     },
     Read {
-        dst: WackTempIdent, // you can only store into an identifier
+        dst: WackTempIdent,
         ty: WackReadType,
     },
 
@@ -277,7 +270,7 @@ pub enum WackPrintType {
     Pair,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Display)]
 pub enum WackValue {
     #[display("{_0}")]
     Literal(WackLiteral), // Literals are all constants
@@ -290,7 +283,7 @@ pub type WackChar = u8;
 pub(crate) const TRUE: WackBool = true;
 pub(crate) const FALSE: WackBool = false;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum WackLiteral {
     Int(i32),
     Bool(WackBool), // smallest possible repr is 1 byte
@@ -844,7 +837,7 @@ impl fmt::Display for WackInstr {
                 src,
                 dst_ptr,
                 offset,
-            } => write!(f, "memcpy({dst_ptr} + {offset}, {src}, sizeof(src)",),
+            } => write!(f, "memcpy({dst_ptr} + {offset}, {src}, sizeof(src))",),
             Self::Jump(target) => write!(f, "Jump({target})"),
             Self::JumpIfZero { condition, target } => {
                 write!(f, "Jump {target} if not {condition}")
@@ -882,7 +875,7 @@ impl fmt::Display for WackInstr {
                 scale: _scale,
                 dst_elem_ptr,
             } => {
-                write!(f, "{dst_elem_ptr} = {src_array_ptr}[{index}]")
+                write!(f, "{dst_elem_ptr} = address $ {src_array_ptr}[{index}]")
             }
             Self::Alloc { size, dst_ptr } => {
                 write!(f, "{dst_ptr} = malloc({size})")
