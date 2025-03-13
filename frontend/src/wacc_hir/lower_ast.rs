@@ -6,7 +6,6 @@ use crate::wacc_hir::hir::{
     LoopLabel, PairElem, PairElemSelector, PairElemType, Program, RValue, Stat, StatBlock, Type,
     UnaryOper,
 };
-use chumsky::container::Seq;
 use std::collections::HashMap;
 use std::mem;
 use util::ext::BoxedSliceExt as _;
@@ -432,15 +431,17 @@ impl LoweringCtx {
             ast::Stat::Print(e) => stat_sn(Stat::Print(self.lower_expr_sn(e))),
             ast::Stat::Println(e) => stat_sn(Stat::Println(self.lower_expr_sn(e))),
             ast::Stat::Scoped(block) => MultiItem::multi(self.lower_stat_block(block).0),
-            ast::Stat::IfThenElse {
-                if_cond,
-                then_body,
-                else_body,
-            } => stat_sn(Stat::IfThenElse {
-                if_cond: self.lower_expr_sn(if_cond),
-                then_body: self.lower_stat_block(then_body),
-                else_body: self.lower_stat_block(else_body),
+            ast::Stat::IfElifOnly { r#if, elifs } => stat_sn({
+                // in if-(elif)-only statements, there is no "else" so we can make a dummy one
+                let else_body =
+                    ast::StatBlock::singleton(Self::wrap_with_dummy_sn(ast::Stat::Skip));
+                self.lower_if_elif_else(r#if, elifs, else_body)
             }),
+            ast::Stat::IfElifElse {
+                r#if,
+                elifs,
+                else_body,
+            } => stat_sn(self.lower_if_elif_else(r#if, elifs, else_body)),
             ast::Stat::WhileDo {
                 label,
                 while_cond,
@@ -506,6 +507,38 @@ impl LoweringCtx {
                 Stat::NextLoop(label)
             }),
         }
+    }
+
+    fn lower_if_elif_else(
+        &mut self,
+        r#if: ast::ConditionalFragment,
+        elifs: Vec<ast::ConditionalFragment>,
+        else_body: ast::StatBlock,
+    ) -> Stat {
+        // combine the "if" and "elifs" to create a vector of conditional fragments
+        let mut conditional_fragments = vec![r#if];
+        conditional_fragments.extend(elifs);
+
+        // pop conditional fragments from the back, one at-a-time, and
+        // combine with current "else" block to create if-then-else
+        let mut else_body = self.lower_stat_block(else_body);
+        while let Some(if_fragment) = conditional_fragments.pop() {
+            // lower if-conditional parts, and combine with else-body to make if statement
+            let if_cond = self.lower_expr_sn(if_fragment.cond);
+            let then_body = self.lower_stat_block(if_fragment.body);
+            let if_stat = Stat::IfThenElse {
+                if_cond,
+                then_body,
+                else_body,
+            };
+
+            // the new if-statement becomes the next else-body
+            else_body = StatBlock::singleton(Self::wrap_with_dummy_sn(if_stat));
+        }
+
+        // the result should be a 1-length statement block consisting of exactly the final if-statement
+        assert_eq!(else_body.0.len(), 1);
+        else_body.0.first().inner().clone()
     }
 
     /// Create a hidden `if cond then skip else break fi` statement which uses dummy source nodes

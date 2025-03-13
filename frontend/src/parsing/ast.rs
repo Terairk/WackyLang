@@ -57,9 +57,13 @@ pub enum Stat {
     Print(SN<Expr>),
     Println(SN<Expr>),
     Scoped(StatBlock),
-    IfThenElse {
-        if_cond: SN<Expr>,
-        then_body: StatBlock,
+    IfElifOnly {
+        r#if: ConditionalFragment,
+        elifs: Vec<ConditionalFragment>,
+    },
+    IfElifElse {
+        r#if: ConditionalFragment,
+        elifs: Vec<ConditionalFragment>,
         else_body: StatBlock,
     },
     WhileDo {
@@ -78,6 +82,12 @@ pub enum Stat {
     },
     Break(Option<SN<Ident>>),
     NextLoop(Option<SN<Ident>>),
+}
+
+#[derive(Clone, Debug)]
+pub struct ConditionalFragment {
+    pub cond: SN<Expr>,
+    pub body: StatBlock,
 }
 
 #[derive(Clone, Debug)]
@@ -210,8 +220,8 @@ pub struct Ident(InternStr);
 mod impls {
     use crate::alias::InternStr;
     use crate::parsing::ast::{
-        ArrayElem, ArrayType, EmptyStatVecError, Expr, Func, FuncParam, Ident, LValue, Program,
-        RValue, Stat, StatBlock, Type, SBN, SN,
+        ArrayElem, ArrayType, ConditionalFragment, EmptyStatVecError, Expr, Func, FuncParam, Ident,
+        LValue, Program, RValue, Stat, StatBlock, Type, SBN, SN,
     };
     use delegate::delegate;
     use std::fmt;
@@ -295,18 +305,26 @@ mod impls {
         //
         //     1. a ‘return’ statement
         //     2. an ‘exit’ statement
-        //     3. an ‘if’ statement with two returning blocks.
+        //     3. an ‘if-(elif)-else’ statement with all returning blocks.
         //
         // All function bodies **MUST** be returning blocks.
         #[inline]
         pub fn is_return_block(&self) -> bool {
             match &**self.last() {
                 Stat::Return(_) | Stat::Exit(_) => true,
-                Stat::IfThenElse {
-                    then_body,
+                Stat::IfElifElse {
+                    r#if,
+                    elifs,
                     else_body,
-                    ..
-                } => then_body.is_return_block() && else_body.is_return_block(),
+                } => {
+                    let if_is_return = r#if.body.is_return_block();
+                    let elifs_are_return = elifs
+                        .iter()
+                        .fold(true, |accum, elif| accum && elif.body.is_return_block());
+                    let else_is_return = r#else_body.is_return_block();
+
+                    if_is_return && elifs_are_return && else_is_return
+                }
                 Stat::Scoped(stat_block) => stat_block.is_return_block(),
                 _ => false,
             }
@@ -356,14 +374,23 @@ mod impls {
 
         #[must_use]
         #[inline]
-        pub const fn if_then_else(
-            if_cond: SN<Expr>,
-            then_body: StatBlock,
+        pub const fn if_elif_only(
+            r#if: ConditionalFragment,
+            elifs: Vec<ConditionalFragment>,
+        ) -> Self {
+            Self::IfElifOnly { r#if, elifs }
+        }
+
+        #[must_use]
+        #[inline]
+        pub const fn if_elif_else(
+            r#if: ConditionalFragment,
+            elifs: Vec<ConditionalFragment>,
             else_body: StatBlock,
         ) -> Self {
-            Self::IfThenElse {
-                if_cond,
-                then_body,
+            Self::IfElifElse {
+                r#if,
+                elifs,
                 else_body,
             }
         }
@@ -400,6 +427,14 @@ mod impls {
         #[inline]
         pub const fn loop_do(label: Option<SN<Ident>>, body: StatBlock) -> Self {
             Self::LoopDo { label, body }
+        }
+    }
+
+    impl ConditionalFragment {
+        #[must_use]
+        #[inline]
+        pub const fn new(cond: SN<Expr>, body: StatBlock) -> Self {
+            Self { cond, body }
         }
     }
 

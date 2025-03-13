@@ -279,6 +279,7 @@ where
         text::keyword("println").to(Token::Println),
         text::keyword("if").to(Token::If),
         text::keyword("then").to(Token::Then),
+        text::keyword("elif").to(Token::Elif),
         text::keyword("else").to(Token::Else),
         text::keyword("fi").to(Token::Fi),
         text::keyword("while").to(Token::While),

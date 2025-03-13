@@ -23,6 +23,8 @@
 
 # More types of if-statements: if-only, if-elif-elif-...-elif-else (maybe switch/match??)
 - TODO: add parser support
+- + if-only
+- + if-elif-elif........elif-else
 - TODO: lower to normal if-else in frontend
 - TODO: write more tests around all the edge cases of that
 middle/backend won't have to change at all
@@ -33,14 +35,13 @@ middle/backend won't have to change at all
 - added `break` and `nextloop` statements to be used inside loops
 - + `break` breaks out of the loop
 - + `nextloop` skips to the start of the next iteration of the loop
-- TODO: add parser support
-- + explicit-loop-labels
-- TODO: lower all to loop+conditional+break/continue in frontend
-- + explicit-loop-labels
-- + check for loop-existence!!!!
+- added support for explicit loop labels
+- + with syntax `<ident>: <loop-stmt>` for loop statements
+- + with syntax `break <ident>` and `nextloop <ident>` for `break`/`nextloop` keywords
 - TODO: write more tests around all the edge cases of that
 - + do-while
 - + loop
 - + break+continue
+- + explicit loop labels
 middle support loop+conditional+break/continue, which all other is lowered into
 backend doesn't have to change

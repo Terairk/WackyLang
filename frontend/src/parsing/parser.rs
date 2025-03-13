@@ -1,6 +1,7 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
 use crate::parsing::alias::{ProgramExtra, ProgramOutput};
+use crate::parsing::ast::ConditionalFragment;
 use crate::parsing::ext::ParserExt;
 use crate::parsing::token::{Delim, Token};
 use crate::parsing::{alias, ast, build_syntactic_report};
@@ -451,15 +452,36 @@ where
     let assignment = group((lvalue.clone().then_ignore(just(Token::Equals)), rvalue))
         .map_group(ast::Stat::assignment);
 
-    // if-then-else parser
-    let if_then_else = just(Token::If).ignore_then(
-        group((
-            expr.clone().then_ignore(just(Token::Then)),
-            stat_chain.clone().then_ignore(just(Token::Else)),
-            stat_chain.clone().then_ignore(just(Token::Fi)),
-        ))
-        .map_group(ast::Stat::if_then_else),
-    );
+    // "if"-header parser: "if" goes at the start of both if-only and if-else statements
+    let if_header = group((
+        just(Token::If).ignore_then(expr.clone()),
+        just(Token::Then).ignore_then(stat_chain.clone()),
+    ))
+    .map_group(ConditionalFragment::new);
+
+    // "elif"s parser: "elif"s (optionally) go after the if-only statements, and inbetween if-else statements
+    let elifs = group((
+        just(Token::Elif).ignore_then(expr.clone()),
+        just(Token::Then).ignore_then(stat_chain.clone()),
+    ))
+    .map_group(ConditionalFragment::new)
+    .repeated()
+    .collect::<Vec<_>>();
+
+    // if-(elif)-only parser
+    let if_elif_only = group((if_header.clone(), elifs.clone()))
+        .then_ignore(just(Token::Fi))
+        .map_group(ast::Stat::if_elif_only);
+
+    // if-(elif)-else parser
+    let if_elif_else = group((
+        if_header,
+        elifs,
+        just(Token::Else)
+            .ignore_then(stat_chain.clone())
+            .then_ignore(just(Token::Fi)),
+    ))
+    .map_group(ast::Stat::if_elif_else);
 
     // explicit (and also optional) loop-label parser
     let loop_label = ident.clone().then_ignore(just(Token::Colon)).or_not();
@@ -523,7 +545,8 @@ where
         just(Token::Println)
             .ignore_then(expr.clone())
             .map(ast::Stat::Println),
-        if_then_else,
+        if_elif_only,
+        if_elif_else,
         while_do,
         do_while,
         loop_do,
