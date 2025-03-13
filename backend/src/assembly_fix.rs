@@ -280,14 +280,13 @@ fn fix_cmp(asm: &mut Vec<AsmInstruction>, typ: AssemblyType, op1: Operand, op2: 
 }
 
 fn fix_lea(asm: &mut Vec<AsmInstruction>, src: Operand, dst: Operand) {
-    // TODO: change this to not use R9
     let new_instrs = match (src.clone(), dst.clone()) {
         // Lea can't have memory as destination, must be register
         (_, Memory(_, _)) => vec![
-            Lea { src, dst: Reg(R9) },
+            Lea { src, dst: Reg(R10) },
             Mov {
                 typ: AssemblyType::Quadword,
-                src: Reg(R9),
+                src: Reg(R10),
                 dst,
             },
         ],

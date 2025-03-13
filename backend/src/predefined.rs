@@ -10,7 +10,7 @@ use crate::assembly_ast::AsmBinaryOperator::{Add, And, Sub};
 use crate::assembly_ast::AsmInstruction::{
     Binary, Call, Cmov, Cmp, Jmp, JmpCC, Label, Lea, Mov, Pop, Push, Ret, Test,
 };
-use crate::registers::{RS_ARR, RS1, RegisterSet};
+use crate::registers::{ARR_INDEX_REG, ARR_LOAD_RETURN, ARR_PTR_REG, RS_ARR, RS1, RegisterSet};
 use AssemblyType::{Byte, Longword, Quadword};
 use CondCode::{E, GE, L, NE};
 use Operand::{Data, Imm, Indexed, Memory, Reg};
@@ -594,13 +594,13 @@ fn create_arr_load_function(name: String, scale: i32) -> AsmFunction {
             Push(Reg(BX)),
             Test {
                 typ: Longword,
-                op1: Reg(R10),
-                op2: Reg(R10),
+                op1: Reg(ARR_INDEX_REG),
+                op2: Reg(ARR_INDEX_REG),
             },
             Cmov {
                 condition: L,
                 typ: Quadword,
-                src: Reg(R10),
+                src: Reg(ARR_INDEX_REG),
                 dst: Reg(SI),
             },
             JmpCC {
@@ -610,13 +610,13 @@ fn create_arr_load_function(name: String, scale: i32) -> AsmFunction {
             },
             Mov {
                 typ: Longword,
-                src: Memory(R9, -4),
+                src: Memory(ARR_PTR_REG, -4),
                 dst: Reg(BX),
             },
             Cmp {
                 typ: Longword,
                 op1: Reg(BX),
-                op2: Reg(R10),
+                op2: Reg(ARR_INDEX_REG),
             },
             Cmov {
                 condition: GE,
@@ -632,11 +632,11 @@ fn create_arr_load_function(name: String, scale: i32) -> AsmFunction {
             Lea {
                 src: Indexed {
                     offset: 0,
-                    base: R9,
-                    index: R10,
+                    base: ARR_PTR_REG,
+                    index: ARR_INDEX_REG,
                     scale,
                 },
-                dst: Reg(R9),
+                dst: Reg(ARR_LOAD_RETURN),
             },
             Pop(BX),
             Ret,
