@@ -6,6 +6,7 @@ use crate::wacc_hir::hir::{
     LoopLabel, PairElem, PairElemSelector, PairElemType, Program, RValue, Stat, StatBlock, Type,
     UnaryOper,
 };
+use std::assert_matches::assert_matches;
 use std::collections::HashMap;
 use std::mem;
 use util::ext::BoxedSliceExt as _;
@@ -435,13 +436,13 @@ impl LoweringCtx {
                 // in if-(elif)-only statements, there is no "else" so we can make a dummy one
                 let else_body =
                     ast::StatBlock::singleton(Self::wrap_with_dummy_sn(ast::Stat::Skip));
-                self.lower_if_elif_else(r#if, elifs, else_body)
+                self.lower_if_elif_else_stat(r#if, elifs, else_body)
             }),
             ast::Stat::IfElifElse {
                 r#if,
                 elifs,
                 else_body,
-            } => stat_sn(self.lower_if_elif_else(r#if, elifs, else_body)),
+            } => stat_sn(self.lower_if_elif_else_stat(r#if, elifs, else_body)),
             ast::Stat::WhileDo {
                 label,
                 while_cond,
@@ -509,10 +510,10 @@ impl LoweringCtx {
         }
     }
 
-    fn lower_if_elif_else(
+    fn lower_if_elif_else_stat(
         &mut self,
-        r#if: ast::ConditionalFragment,
-        elifs: Vec<ast::ConditionalFragment>,
+        r#if: ast::ConditionalStatFragment,
+        elifs: Vec<ast::ConditionalStatFragment>,
         else_body: ast::StatBlock,
     ) -> Stat {
         // combine the "if" and "elifs" to create a vector of conditional fragments
@@ -823,20 +824,49 @@ impl LoweringCtx {
                 self.lower_expr_sbn(re),
             ),
             ast::Expr::Paren(e) => self.lower_expr(e.into_inner_unboxed()),
-            ast::Expr::IfThenElse {
-                if_cond,
-                then_val,
+            ast::Expr::IfElifElse {
+                r#if,
+                elifs,
                 else_val,
-            } => Expr::IfThenElse {
-                if_cond: self.lower_expr_sbn(if_cond),
-                then_val: self.lower_expr_sbn(then_val),
-                else_val: self.lower_expr_sbn(else_val),
-            },
+            } => self.lower_if_elif_else_expr(r#if, elifs, else_val),
             ast::Expr::Error(_) => unreachable!(
                 "The error-expression {:?} should not be present in the AST past the parsing stage",
                 expr
             ),
         }
+    }
+
+    fn lower_if_elif_else_expr(
+        &mut self,
+        r#if: ast::ConditionalExprFragment,
+        elifs: Vec<ast::ConditionalExprFragment>,
+        else_val: SBN<ast::Expr>,
+    ) -> Expr {
+        // combine the "if" and "elifs" to create a vector of conditional fragments
+        let mut conditional_fragments = vec![r#if];
+        conditional_fragments.extend(elifs);
+
+        // pop conditional fragments from the back, one at-a-time, and
+        // combine with current "else" expression to create if-then-else
+        let mut else_val = self.lower_expr_sbn(else_val);
+        while let Some(if_fragment) = conditional_fragments.pop() {
+            // lower if-conditional parts, and combine with else-value to make if-expression
+            let if_cond = self.lower_expr_sbn(if_fragment.cond);
+            let then_val = self.lower_expr_sbn(if_fragment.val);
+            let if_expr = Expr::IfThenElse {
+                if_cond,
+                then_val,
+                else_val,
+            };
+
+            // the new if-expression becomes the next else-value
+            else_val = Self::wrap_with_dummy_sn(if_expr).box_inner();
+        }
+
+        // the resulting "else-val" should be in "if-expression"
+        let if_expr = else_val.into_inner_unboxed();
+        assert_matches!(if_expr, Expr::IfThenElse { .. });
+        if_expr
     }
 
     #[inline]

@@ -21,11 +21,10 @@
 - TODO: implement support for middle/backend for them (lower to basic if-statement)
 - TODO: write more tests around all the edge cases of that
 
-# More types of if-statements: if-only, if-elif-elif-...-elif-else (maybe switch/match??)
-- TODO: add parser support
-- + if-only
-- + if-elif-elif........elif-else
-- TODO: lower to normal if-else in frontend
+# More types of if-statements: (maybe switch/match??)
+- added if-elif-only statements with syntax: `if <expr> then <stmt> (elif <expr> then <stmt>)* else <stmt> fi`
+- added if-elif-only statements with syntax: `if <expr> then <stmt> (elif <expr> then <stmt>)* fi`
+- removed one test from CI which was testing for presence of "else" in if statements
 - TODO: write more tests around all the edge cases of that
 middle/backend won't have to change at all
 

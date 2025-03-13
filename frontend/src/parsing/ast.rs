@@ -58,12 +58,12 @@ pub enum Stat {
     Println(SN<Expr>),
     Scoped(StatBlock),
     IfElifOnly {
-        r#if: ConditionalFragment,
-        elifs: Vec<ConditionalFragment>,
+        r#if: ConditionalStatFragment,
+        elifs: Vec<ConditionalStatFragment>,
     },
     IfElifElse {
-        r#if: ConditionalFragment,
-        elifs: Vec<ConditionalFragment>,
+        r#if: ConditionalStatFragment,
+        elifs: Vec<ConditionalStatFragment>,
         else_body: StatBlock,
     },
     WhileDo {
@@ -85,7 +85,7 @@ pub enum Stat {
 }
 
 #[derive(Clone, Debug)]
-pub struct ConditionalFragment {
+pub struct ConditionalStatFragment {
     pub cond: SN<Expr>,
     pub body: StatBlock,
 }
@@ -133,14 +133,20 @@ pub enum Expr {
     Unary(SN<UnaryOper>, SBN<Self>),
     Binary(SBN<Self>, SN<BinaryOper>, SBN<Self>),
     Paren(SBN<Self>),
-    IfThenElse {
-        if_cond: SBN<Self>,
-        then_val: SBN<Self>,
+    IfElifElse {
+        r#if: ConditionalExprFragment,
+        elifs: Vec<ConditionalExprFragment>,
         else_val: SBN<Self>,
     },
 
     // Generated only by parser errors.
     Error(SourcedSpan),
+}
+
+#[derive(Clone, Debug)]
+pub struct ConditionalExprFragment {
+    pub cond: SBN<Expr>,
+    pub val: SBN<Expr>,
 }
 
 #[derive(Clone, Debug)]
@@ -220,8 +226,8 @@ pub struct Ident(InternStr);
 mod impls {
     use crate::alias::InternStr;
     use crate::parsing::ast::{
-        ArrayElem, ArrayType, ConditionalFragment, EmptyStatVecError, Expr, Func, FuncParam, Ident,
-        LValue, Program, RValue, Stat, StatBlock, Type, SBN, SN,
+        ArrayElem, ArrayType, ConditionalExprFragment, ConditionalStatFragment, EmptyStatVecError,
+        Expr, Func, FuncParam, Ident, LValue, Program, RValue, Stat, StatBlock, Type, SBN, SN,
     };
     use delegate::delegate;
     use std::fmt;
@@ -231,16 +237,24 @@ mod impls {
     impl Expr {
         #[must_use]
         #[inline]
-        pub const fn if_then_else(
-            if_cond: SBN<Self>,
-            then_val: SBN<Self>,
+        pub const fn if_elif_else(
+            r#if: ConditionalExprFragment,
+            elifs: Vec<ConditionalExprFragment>,
             else_val: SBN<Self>,
         ) -> Self {
-            Self::IfThenElse {
-                if_cond,
-                then_val,
+            Self::IfElifElse {
+                r#if,
+                elifs,
                 else_val,
             }
+        }
+    }
+
+    impl ConditionalExprFragment {
+        #[must_use]
+        #[inline]
+        pub const fn new(cond: SBN<Expr>, val: SBN<Expr>) -> Self {
+            Self { cond, val }
         }
     }
 
@@ -375,8 +389,8 @@ mod impls {
         #[must_use]
         #[inline]
         pub const fn if_elif_only(
-            r#if: ConditionalFragment,
-            elifs: Vec<ConditionalFragment>,
+            r#if: ConditionalStatFragment,
+            elifs: Vec<ConditionalStatFragment>,
         ) -> Self {
             Self::IfElifOnly { r#if, elifs }
         }
@@ -384,8 +398,8 @@ mod impls {
         #[must_use]
         #[inline]
         pub const fn if_elif_else(
-            r#if: ConditionalFragment,
-            elifs: Vec<ConditionalFragment>,
+            r#if: ConditionalStatFragment,
+            elifs: Vec<ConditionalStatFragment>,
             else_body: StatBlock,
         ) -> Self {
             Self::IfElifElse {
@@ -430,7 +444,7 @@ mod impls {
         }
     }
 
-    impl ConditionalFragment {
+    impl ConditionalStatFragment {
         #[must_use]
         #[inline]
         pub const fn new(cond: SN<Expr>, body: StatBlock) -> Self {

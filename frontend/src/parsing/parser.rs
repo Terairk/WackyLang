@@ -1,7 +1,7 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
 use crate::parsing::alias::{ProgramExtra, ProgramOutput};
-use crate::parsing::ast::ConditionalFragment;
+use crate::parsing::ast::{ConditionalExprFragment, ConditionalStatFragment};
 use crate::parsing::ext::ParserExt;
 use crate::parsing::token::{Delim, Token};
 use crate::parsing::{alias, ast, build_syntactic_report};
@@ -122,12 +122,27 @@ where
         // parse parenthesized expressions
         let paren_expr = expr.clone().delim_by(Delim::Paren).sbn();
 
-        // parse if-then-else expressions
-        let if_then_else = just(Token::If).ignore_then(group((
-            expr.clone().then_ignore(just(Token::Then)).sbn(),
-            expr.clone().then_ignore(just(Token::Else)).sbn(),
-            expr.clone().then_ignore(just(Token::Fi)).sbn(),
-        )));
+        // parse if-(elif)-else expressions
+        let if_header = group((
+            just(Token::If).ignore_then(expr.clone()).sbn(),
+            just(Token::Then).ignore_then(expr.clone()).sbn(),
+        ))
+        .map_group(ConditionalExprFragment::new);
+        let elifs = group((
+            just(Token::Elif).ignore_then(expr.clone()).sbn(),
+            just(Token::Then).ignore_then(expr.clone()).sbn(),
+        ))
+        .map_group(ConditionalExprFragment::new)
+        .repeated()
+        .collect::<Vec<_>>();
+        let if_elif_else = group((
+            if_header,
+            elifs,
+            just(Token::Else)
+                .ignore_then(expr.clone().sbn())
+                .then_ignore(just(Token::Fi)),
+        ))
+        .map_group(ast::Expr::if_elif_else);
 
         // 'Atoms' are expressions that contain no ambiguity
         let atom = choice((
@@ -138,8 +153,8 @@ where
             // Bootleg approach to get SN<Ident> from Ident parser
             ident.sn().map(ast::Expr::Ident),
             paren_expr.map(ast::Expr::Paren),
-            // if-then-else expression should be parsed after all others
-            if_then_else.map_group(ast::Expr::if_then_else),
+            // if-elif-else expression should be parsed after all others
+            if_elif_else,
         ));
 
         // Perform simplistic error recovery on Atom expressions
@@ -457,14 +472,14 @@ where
         just(Token::If).ignore_then(expr.clone()),
         just(Token::Then).ignore_then(stat_chain.clone()),
     ))
-    .map_group(ConditionalFragment::new);
+    .map_group(ConditionalStatFragment::new);
 
     // "elif"s parser: "elif"s (optionally) go after the if-only statements, and inbetween if-else statements
     let elifs = group((
         just(Token::Elif).ignore_then(expr.clone()),
         just(Token::Then).ignore_then(stat_chain.clone()),
     ))
-    .map_group(ConditionalFragment::new)
+    .map_group(ConditionalStatFragment::new)
     .repeated()
     .collect::<Vec<_>>();
 

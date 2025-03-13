@@ -8,6 +8,7 @@
 #![feature(trait_alias)]
 #![feature(stmt_expr_attributes)]
 #![feature(unboxed_closures)]
+#![feature(assert_matches)]
 
 use crate::source::SourcedSpan;
 use ariadne::{CharSet, Label, Report, Source};
