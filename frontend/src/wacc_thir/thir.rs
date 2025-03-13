@@ -48,11 +48,6 @@ pub enum Stat {
         then_body: StatBlock,
         else_body: StatBlock,
     },
-    /// TODO: remove when loop+break implemented
-    WhileDo {
-        while_cond: Expr,
-        body: StatBlock,
-    },
     Loop {
         label: hir::LoopLabel,
         body: StatBlock,

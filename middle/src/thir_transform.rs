@@ -469,24 +469,6 @@ pub(crate) mod thir_lowering_ctx {
                     // End of if
                     instructions.push(Instr::Label(end_label));
                 }
-                thir::Stat::WhileDo { while_cond, body } => {
-                    // TODO: add more type-checking code to lowerer SemTy vs. WackTy
-
-                    // Makes my life easier
-                    use WackInstr as Instr;
-                    let start_label = self.make_label("while_start");
-                    let end_label = self.make_label("while_end");
-
-                    instructions.push(Instr::Label(start_label.clone()));
-                    let (val, _val_ty) = self.lower_expr(while_cond, instructions);
-                    instructions.push(Instr::JumpIfZero {
-                        condition: val,
-                        target: end_label.clone(),
-                    });
-                    self.lower_stat_block(body, instructions);
-                    instructions.push(Instr::Jump(start_label));
-                    instructions.push(Instr::Label(end_label));
-                }
                 thir::Stat::Loop { label, body } => {
                     // create new loop-region to keep track of start/end labels,
                     // and create instruction corresponding to the start of the loop

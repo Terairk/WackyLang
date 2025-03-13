@@ -419,11 +419,6 @@ impl LoweringCtx {
                 then_body: self.lower_stat_block(then_body),
                 else_body: self.lower_stat_block(else_body),
             }),
-            // // TODO: refactor this branch once loop-break implemented
-            // ast::Stat::WhileDo { while_cond, body } => stat_sn(Stat::WhileDo {
-            //     while_cond: self.lower_expr_sn(while_cond),
-            //     body: self.lower_stat_block(body),
-            // }),
             ast::Stat::WhileDo { while_cond, body } => {
                 stat_sn(self.lower_while_do_loop(while_cond, body))
             }

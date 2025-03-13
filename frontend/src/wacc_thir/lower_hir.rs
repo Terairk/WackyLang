@@ -558,20 +558,6 @@ impl HirLoweringCtx {
                     else_body: self.lower_stat_block(else_body),
                 }
             }
-            hir::Stat::WhileDo { while_cond, body } => {
-                let resolved_while_cond = self.lower_expr_sn(while_cond.clone());
-                if resolved_while_cond.r#type() != Type::BOOL {
-                    self.add_error(HirLoweringError::TypeMismatch {
-                        span: while_cond.span(),
-                        actual: resolved_while_cond.r#type(),
-                        expected: Type::BOOL,
-                    });
-                }
-                Stat::WhileDo {
-                    while_cond: resolved_while_cond,
-                    body: self.lower_stat_block(body),
-                }
-            }
             hir::Stat::Loop { label, body } => Stat::Loop {
                 label,
                 body: self.lower_stat_block(body),

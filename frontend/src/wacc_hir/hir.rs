@@ -60,18 +60,6 @@ pub enum Stat {
         then_body: StatBlock,
         else_body: StatBlock,
     },
-    /// TODO: remove when loop+break implemented
-    WhileDo {
-        while_cond: SN<Expr>,
-        body: StatBlock,
-    },
-    // all loop-like constructs are lowered to a combination of
-    // 1) if-then-else
-    // 2) loop statement
-    // 3) break statement
-    //
-    // this allows for uniform handling of potentially:
-    // while-do, do-while, for-loop, and so on
     Loop {
         label: LoopLabel,
         body: StatBlock,
@@ -217,7 +205,7 @@ mod impls {
     };
     use delegate::delegate;
     use std::fmt;
-    use util::func::f2::F2OnceExt;
+    use util::func::f2::F2OnceExt as _;
     use util::nonempty::NonemptyArray;
 
     impl Expr {
