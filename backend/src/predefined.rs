@@ -2,8 +2,8 @@
 // that our code will then call.
 
 use crate::assembly_ast::{
-    AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Directive, Operand, Register,
-    LABEL,
+    AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Directive, LABEL, Operand,
+    Register,
 };
 
 use crate::assembly_ast::AsmBinaryOperator::{Add, And, Sub};
@@ -14,7 +14,7 @@ use crate::registers::{ARR_INDEX_REG, ARR_LOAD_RETURN, ARR_PTR_REG, RS_ARR, RS1,
 use AssemblyType::{Byte, Longword, Quadword};
 use CondCode::{E, GE, L, NE};
 use Operand::{Data, Imm, Indexed, Memory, Reg};
-use Register::{AX, BP, BX, DI, DX, R9, R10, SI, SP};
+use Register::{AX, BP, BX, DI, DX, R10, SI, SP};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use util::gen_flags::{GenFlags, get_flags_gbl, rewrite_global_flag};
@@ -25,10 +25,6 @@ use util::gen_flags::{
     INBUILT_PRINT_INT, INBUILT_PRINT_PTR, INBUILT_PRINT_STRING, INBUILT_PRINTLN, INBUILT_READ_CHAR,
     INBUILT_READ_INT,
 };
-use AssemblyType::{Byte, Longword, Quadword};
-use CondCode::{E, GE, L, NE};
-use Operand::{Data, Imm, Indexed, Memory, Reg};
-use Register::{AX, BP, BX, DI, DX, R10, R9, SI, SP};
 
 #[inline]
 pub fn generate_predefined(program: &mut AsmProgram) {
