@@ -131,7 +131,7 @@ pub enum AsmInstruction {
     Ret,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Operand {
     Imm(i32),
     Reg(Register),
@@ -189,7 +189,7 @@ pub enum CondCode {
 // Other registers are callee saved
 // which will be added later
 // when optimisations are done
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Register {
     AX,
     BX,
