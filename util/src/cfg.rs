@@ -373,6 +373,16 @@ impl<T: Instruction + Clone, V: Clone + Default> CFG<T, V> {
         result
     }
 
+    #[must_use]
+    #[inline]
+    pub fn contains_node(&self, node_id: NodeId) -> bool {
+        match node_id {
+            NodeId::Entry => true,
+            NodeId::Block(id) => self.basic_blocks.contains_key(&id),
+            NodeId::Exit => true,
+        }
+    }
+
     /// Initialize annotations with a default value
     #[must_use]
     #[inline]

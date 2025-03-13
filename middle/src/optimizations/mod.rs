@@ -45,6 +45,7 @@ fn optimize_fun(
 
     // Used for debugging purposes, mutable so we only print the CFG once before any optimizations
     let mut is_first = config.should_print_cfg();
+    let mut counter = 0;
 
     // Iterate and keep applying optimizations until you reach a fixed point
     loop {
@@ -70,13 +71,36 @@ fn optimize_fun(
             cfg = eliminate_unreachable_code(cfg);
         }
 
+        // if config.should_print_cfg() {
+        //     let new_name = format!("{}_unreachable_{}", func_name, counter);
+        //     let cfg = make_cfg(cfg_to_instrs(cfg.clone()), new_name.as_str());
+        //     if let Ok(png_path) = cfg.print_graphviz() {
+        //         println!("Generated CFG visualization: {}", png_path);
+        //     }
+        // }
+
         if config.has_copy_propagation() {
             cfg = copy_propagation(&cfg);
         }
 
+        // if config.should_print_cfg() {
+        //     let new_name = format!("{}_copy_prop_{}", func_name, counter);
+        //     let cfg = make_cfg(cfg_to_instrs(cfg.clone()), new_name.as_str());
+        //     if let Ok(png_path) = cfg.print_graphviz() {
+        //         println!("Generated CFG visualization: {}", png_path);
+        //     }
+        // }
         if config.has_eliminate_dead_stores() {
             cfg = eliminate_dead_stores(&cfg);
         }
+        // if config.should_print_cfg() {
+        //     let new_name = format!("{}_deadstores_{}", func_name, counter);
+        //     let cfg = make_cfg(cfg_to_instrs(cfg.clone()), new_name.as_str());
+        //     if let Ok(png_path) = cfg.print_graphviz() {
+        //         println!("Generated CFG visualization: {}", png_path);
+        //     }
+        //     counter += 1;
+        // }
 
         let optimized_fun_body = cfg_to_instrs(cfg);
 
@@ -86,6 +110,7 @@ fn optimize_fun(
             if config.should_print_cfg() {
                 let new_name = format!("{}_optimized", func_name);
                 let cfg = make_cfg(function_body.clone(), new_name.as_str());
+                println!("cfg: {:?}", cfg);
                 if let Ok(png_path) = cfg.print_graphviz() {
                     println!("Generated CFG visualization: {}", png_path);
                 }

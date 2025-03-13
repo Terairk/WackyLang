@@ -197,8 +197,14 @@ fn transfer(mut block: LiveBasicBlock, end_live_variables: LiveVariables) -> Liv
                 add_var(index, &mut current_live_vars);
             } // Other cases omitted for brevity but would follow the same pattern
             // Jump, Label, Return None would have no effect
-            CopyToOffset { ref src, .. } => {
+            CopyToOffset {
+                ref src,
+                ref dst_ptr,
+                ..
+            } => {
                 add_var(src, &mut current_live_vars);
+                let dst = WackValue::Var(dst_ptr.clone());
+                add_var(&dst, &mut current_live_vars);
             }
             ArrayAccess {
                 ref dst_elem_ptr,
@@ -238,11 +244,13 @@ fn transfer(mut block: LiveBasicBlock, end_live_variables: LiveVariables) -> Liv
 /// It is the union of the live variables at the beginning of each successor block.
 fn meet(block: &LiveBasicBlock, cfg: &LiveCFG) -> LiveVariables {
     let mut live_vars = LiveVariables::new();
+    // println!("{:?}", cfg);
     for succ_id in &block.succs {
         match *succ_id {
             NodeId::Entry => panic!("Entry node should not be a successor"),
             NodeId::Exit => {}
             NodeId::Block(id) => {
+                // println!("{:?}", id);
                 let succ_live_vars = cfg
                     .get_block_value(id)
                     .expect("CFG is malformed or corrupted")
@@ -256,7 +264,7 @@ fn meet(block: &LiveBasicBlock, cfg: &LiveCFG) -> LiveVariables {
 
 fn is_dead_store(live_vars: &LiveVariables, instr: &WackInstr) -> bool {
     match *instr {
-        FunCall { .. } => false,
+        FunCall { .. } | CopyToOffset { .. } => false,
         _ => {
             // Check if instr has a destination and if it is not live
             if let Some(dst) = get_dst(instr) {

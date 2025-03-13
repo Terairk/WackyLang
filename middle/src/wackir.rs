@@ -843,7 +843,7 @@ impl fmt::Display for WackInstr {
                 src,
                 dst_ptr,
                 offset,
-            } => write!(f, "memcpy({dst_ptr} + {offset}, {src}, sizeof(src)",),
+            } => write!(f, "memcpy({dst_ptr} + {offset}, {src}, sizeof(src))",),
             Self::Jump(target) => write!(f, "Jump({target})"),
             Self::JumpIfZero { condition, target } => {
                 write!(f, "Jump {target} if not {condition}")
@@ -881,7 +881,7 @@ impl fmt::Display for WackInstr {
                 scale: _scale,
                 dst_elem_ptr,
             } => {
-                write!(f, "{dst_elem_ptr} = {src_array_ptr}[{index}]")
+                write!(f, "{dst_elem_ptr} = address $ {src_array_ptr}[{index}]")
             }
             Self::Alloc { size, dst_ptr } => {
                 write!(f, "{dst_ptr} = malloc({size})")

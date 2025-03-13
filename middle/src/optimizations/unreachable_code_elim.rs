@@ -158,58 +158,133 @@ fn eliminate_useless_labels(mut cfg: EmptyCFG) -> EmptyCFG {
 
 /// Remove empty blocks that simply connect a predecessor to a successor
 /// Blocks may become empty after the various optimization phases
+// fn remove_empty_blocks(mut cfg: EmptyCFG) -> EmptyCFG {
+//     let block_ids: Vec<usize> = cfg.basic_blocks.keys().copied().collect();
+//     let mut blocks_to_remove = Vec::new();
+//     let mut edges_to_remove = Vec::new();
+//     let mut edges_to_add = Vec::new();
+//
+//     for block_id in block_ids {
+//         let block = &cfg.basic_blocks[&block_id];
+//
+//         if block.instructions.is_empty() {
+//             // Handle different cases based on number of successors and predecessors
+//
+//             // Case 1: 1 predecessor, 1 successor
+//             if block.preds.len() == 1 && block.succs.len() == 1 {
+//                 let pred = block.preds[0];
+//                 let succ = block.succs[0];
+//
+//                 // Remove edges and add direct connection
+//                 edges_to_remove.push((pred, block.id));
+//                 edges_to_remove.push((block.id, succ));
+//                 edges_to_add.push((pred, succ));
+//
+//                 println!("1 pred 1 succ");
+//                 println!("Removing block {}", block.id);
+//                 blocks_to_remove.push(block.id);
+//             } else if block.succs.len() == 1 {
+//                 // Case 2: Multiple predecessors, one successor
+//                 let succ = block.succs[0];
+//
+//                 // Connect each predecessor directly to successor
+//                 for &pred in &block.preds {
+//                     edges_to_remove.push((pred, block.id));
+//                     edges_to_add.push((pred, succ));
+//                 }
+//
+//                 // Remove edge from this block to successor
+//                 edges_to_remove.push((block.id, succ));
+//                 println!("Multiple preds 1 succ");
+//                 println!("Removing block {}", block.id);
+//                 blocks_to_remove.push(block.id);
+//             } else {
+//                 println!("Empty block with multiple successors and/or predecessors");
+//                 println!(
+//                     "preds_len: {}, succs_len: {}",
+//                     block.preds.len(),
+//                     block.succs.len()
+//                 );
+//             }
+//             // Maybe other cases but these would suggest an error
+//         }
+//     }
+//
+//     for (from, to) in edges_to_remove {
+//         println!("Removing edge from {} to {}", from, to);
+//         cfg.remove_edge(from, to);
+//     }
+//
+//     for (from, to) in edges_to_add {
+//         println!("Adding edge from {} to {}", from, to);
+//         cfg.add_edge(from, to);
+//     }
+//
+//     for id in blocks_to_remove {
+//         if let NodeId::Block(id) = id {
+//             cfg.basic_blocks.remove(&id);
+//         }
+//     }
+//
+//     cfg
+// }
+
 fn remove_empty_blocks(mut cfg: EmptyCFG) -> EmptyCFG {
-    let block_ids: Vec<usize> = cfg.basic_blocks.keys().copied().collect();
-    let mut blocks_to_remove = Vec::new();
-    let mut edges_to_remove = Vec::new();
-    let mut edges_to_add = Vec::new();
+    // We'll keep processing until no more blocks can be removed
+    let mut changed = true;
 
-    for block_id in block_ids {
-        let block = &cfg.basic_blocks[&block_id];
+    while changed {
+        changed = false;
+        let block_ids: Vec<usize> = cfg.basic_blocks.keys().copied().collect();
 
-        if block.instructions.is_empty() {
-            // Handle different cases based on number of successors and predecessors
+        for block_id in block_ids {
+            // Skip if block was already removed
+            if !cfg.basic_blocks.contains_key(&block_id) {
+                continue;
+            }
 
-            // Case 1: 1 predecessor, 1 successor
-            if block.preds.len() == 1 && block.succs.len() == 1 {
-                let pred = block.preds[0];
-                let succ = block.succs[0];
+            // Extract all the data we need from the block first
+            let is_empty;
+            let succ;
+            let preds;
+            {
+                let block = &cfg.basic_blocks[&block_id];
+                is_empty = block.instructions.is_empty();
 
-                // Remove edges and add direct connection
-                edges_to_remove.push((pred, block.id));
-                edges_to_remove.push((block.id, succ));
-                edges_to_add.push((pred, succ));
+                if !is_empty || block.succs.len() != 1 {
+                    continue;
+                }
 
-                blocks_to_remove.push(block.id);
-            } else if block.succs.len() == 1 {
-                // Case 2: Multiple predecessors, one successor
-                let succ = block.succs[0];
+                succ = block.succs[0];
+                preds = block.preds.clone();
+            } // block reference ends here
 
-                // Connect each predecessor directly to successor
-                for &pred in &block.preds {
-                    edges_to_remove.push((pred, block.id));
-                    edges_to_add.push((pred, succ));
+            // Make sure we're not removing the entry block
+            if !preds.is_empty() {
+                // For each predecessor, add an edge to the successor
+                for &pred in &preds {
+                    // println!("Removing edge from {} to {}", pred, block_id);
+                    cfg.remove_edge(pred, NodeId::Block(block_id));
+
+                    // Only add new edge if successor still exists
+                    if cfg.contains_node(succ) {
+                        // println!("Adding edge from {} to {}", pred, succ);
+                        cfg.add_edge(pred, succ);
+                    }
                 }
 
                 // Remove edge from this block to successor
-                edges_to_remove.push((block.id, succ));
-                blocks_to_remove.push(block.id);
+                // println!("Removing edge from {} to {}", block_id, succ);
+                cfg.remove_edge(NodeId::Block(block_id), succ);
+
+                // Remove the block
+                // println!("Removing block {}", block_id);
+                cfg.basic_blocks.remove(&block_id);
+
+                changed = true;
+                // Continue to next iteration since we modified the graph
+                break;
             }
-            // Maybe other cases but these would suggest an error
-        }
-    }
-
-    for (from, to) in edges_to_remove {
-        cfg.remove_edge(from, to);
-    }
-
-    for (from, to) in edges_to_add {
-        cfg.add_edge(from, to);
-    }
-
-    for id in blocks_to_remove {
-        if let NodeId::Block(id) = id {
-            cfg.basic_blocks.remove(&id);
         }
     }
 
