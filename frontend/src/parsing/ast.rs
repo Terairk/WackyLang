@@ -63,18 +63,21 @@ pub enum Stat {
         else_body: StatBlock,
     },
     WhileDo {
+        label: Option<SN<Ident>>,
         while_cond: SN<Expr>,
         body: StatBlock,
     },
     DoWhile {
+        label: Option<SN<Ident>>,
         body: StatBlock,
         while_cond: SN<Expr>,
     },
     LoopDo {
+        label: Option<SN<Ident>>,
         body: StatBlock,
     },
-    Break,
-    NextLoop,
+    Break(Option<SN<Ident>>),
+    NextLoop(Option<SN<Ident>>),
 }
 
 #[derive(Clone, Debug)]
@@ -367,20 +370,36 @@ mod impls {
 
         #[must_use]
         #[inline]
-        pub const fn while_do(while_cond: SN<Expr>, body: StatBlock) -> Self {
-            Self::WhileDo { while_cond, body }
+        pub const fn while_do(
+            label: Option<SN<Ident>>,
+            while_cond: SN<Expr>,
+            body: StatBlock,
+        ) -> Self {
+            Self::WhileDo {
+                label,
+                while_cond,
+                body,
+            }
         }
 
         #[must_use]
         #[inline]
-        pub const fn do_while(body: StatBlock, while_cond: SN<Expr>) -> Self {
-            Self::WhileDo { body, while_cond }
+        pub const fn do_while(
+            label: Option<SN<Ident>>,
+            body: StatBlock,
+            while_cond: SN<Expr>,
+        ) -> Self {
+            Self::WhileDo {
+                label,
+                body,
+                while_cond,
+            }
         }
 
         #[must_use]
         #[inline]
-        pub const fn loop_do(body: StatBlock) -> Self {
-            Self::LoopDo { body }
+        pub const fn loop_do(label: Option<SN<Ident>>, body: StatBlock) -> Self {
+            Self::LoopDo { label, body }
         }
     }
 

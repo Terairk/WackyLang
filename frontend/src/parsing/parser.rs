@@ -442,7 +442,7 @@ where
     // variable definition parser
     let variable_definition = group((
         r#type,
-        ident.then_ignore(just(Token::Equals)),
+        ident.clone().then_ignore(just(Token::Equals)),
         rvalue.clone(),
     ))
     .map_group(ast::Stat::var_definition);
@@ -461,40 +461,50 @@ where
         .map_group(ast::Stat::if_then_else),
     );
 
+    // explicit (and also optional) loop-label parser
+    let loop_label = ident.clone().then_ignore(just(Token::Colon)).or_not();
+
     // while-do loop parser
-    let while_do = just(Token::While).ignore_then(
-        group((
-            expr.clone().then_ignore(just(Token::Do)),
-            stat_chain.clone().then_ignore(just(Token::Done)),
-        ))
-        .map_group(ast::Stat::while_do),
-    );
+    let while_do = group((
+        loop_label.clone().then_ignore(just(Token::While)),
+        expr.clone().then_ignore(just(Token::Do)),
+        stat_chain.clone().then_ignore(just(Token::Done)),
+    ))
+    .map_group(ast::Stat::while_do);
 
     // do-while loop parser
-    let do_while = just(Token::Do).ignore_then(
-        group((
-            stat_chain.clone().then_ignore(just(Token::While)),
-            expr.clone().then_ignore(just(Token::Done)),
-        ))
-        .map_group(ast::Stat::do_while),
-    );
+    let do_while = group((
+        loop_label.clone().then_ignore(just(Token::Do)),
+        stat_chain.clone().then_ignore(just(Token::While)),
+        expr.clone().then_ignore(just(Token::Done)),
+    ))
+    .map_group(ast::Stat::do_while);
 
     // loop-do parser
-    let loop_do = just(Token::Loop)
-        .ignore_then(just(Token::Do))
-        .ignore_then(stat_chain.clone().then_ignore(just(Token::Done)))
-        .map(ast::Stat::loop_do);
+    let loop_do = group((
+        loop_label
+            .then_ignore(just(Token::Loop))
+            .then_ignore(just(Token::Do)),
+        stat_chain.clone().then_ignore(just(Token::Done)),
+    ))
+    .map_group(ast::Stat::loop_do);
 
     // begin-end scope
     let scoped = just(Token::Begin)
         .ignore_then(stat_chain.clone().then_ignore(just(Token::End)))
         .map(ast::Stat::Scoped);
 
+    // break/nextloop statements
+    let break_stat = just(Token::Break)
+        .ignore_then(ident.clone().or_not())
+        .map(ast::Stat::Break);
+    let nextloop_stat = just(Token::Nextloop)
+        .ignore_then(ident.or_not())
+        .map(ast::Stat::NextLoop);
+
     // statement parser
     let stat = choice((
         just(Token::Skip).to(ast::Stat::Skip),
-        just(Token::Break).to(ast::Stat::Break),
-        just(Token::Nextloop).to(ast::Stat::NextLoop),
         variable_definition,
         assignment,
         just(Token::Read).ignore_then(lvalue).map(ast::Stat::Read),
@@ -517,6 +527,8 @@ where
         while_do,
         do_while,
         loop_do,
+        break_stat,
+        nextloop_stat,
         scoped,
     ))
     .labelled("<stmt>")

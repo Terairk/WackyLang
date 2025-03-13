@@ -6,6 +6,7 @@ use crate::wacc_hir::hir::{
     LoopLabel, PairElem, PairElemSelector, PairElemType, Program, RValue, Stat, StatBlock, Type,
     UnaryOper,
 };
+use chumsky::container::Seq;
 use std::collections::HashMap;
 use std::mem;
 use util::ext::BoxedSliceExt as _;
@@ -23,9 +24,11 @@ type SBN<T> = SourcedBoxedNode<T>;
 pub enum AstLoweringError {
     DuplicateIdent(SN<ast::Ident>),
     UndefinedIdent(SN<ast::Ident>),
+    UndefinedLoopLabel(SN<ast::Ident>),
     ReturnInMain(SourcedSpan),
     BreakOutsideLoop(SourcedSpan),
     NextloopOutsideLoop(SourcedSpan),
+    LoopLabelAlreadyInUse(SN<ast::Ident>),
 }
 
 impl AstLoweringError {
@@ -51,16 +54,25 @@ impl AstLoweringError {
             Self::UndefinedIdent(ref ident) => {
                 format!("Undefined identifier '{}'", ident.inner())
             }
+            Self::UndefinedLoopLabel(ref ident) => {
+                format!("Undefined loop-label '{}'", ident.inner())
+            }
             Self::ReturnInMain(_) => "Cannot `return` from main function".to_string(),
             Self::BreakOutsideLoop(_) => "Cannot `break` outside of loop".to_string(),
             Self::NextloopOutsideLoop(_) => "Cannot `nextloop` outside of loop".to_string(),
+            Self::LoopLabelAlreadyInUse(ref ident) => {
+                format!("Loop-label '{}' already in use", ident.inner())
+            }
         }
     }
 
     #[inline]
     pub fn into_span(self) -> SourcedSpan {
         match self {
-            Self::DuplicateIdent(s) | Self::UndefinedIdent(s) => s.span(),
+            Self::DuplicateIdent(s)
+            | Self::UndefinedIdent(s)
+            | Self::UndefinedLoopLabel(s)
+            | Self::LoopLabelAlreadyInUse(s) => s.span(),
             Self::ReturnInMain(s) | Self::BreakOutsideLoop(s) | Self::NextloopOutsideLoop(s) => s,
         }
     }
@@ -352,8 +364,11 @@ impl LoweringCtx {
         })
     }
 
-    #[allow(clippy::shadow_unrelated)]
-    #[allow(clippy::indexing_slicing)]
+    #[allow(
+        clippy::shadow_unrelated,
+        clippy::indexing_slicing,
+        clippy::too_many_lines
+    )]
     pub fn lower_stat_sn(&mut self, stat_sn: SN<ast::Stat>) -> MultiItem<SN<Stat>> {
         // decompose statement, and create curried constructor
         let (stat, span) = stat_sn.into_tuple();
@@ -426,15 +441,19 @@ impl LoweringCtx {
                 then_body: self.lower_stat_block(then_body),
                 else_body: self.lower_stat_block(else_body),
             }),
-            ast::Stat::WhileDo { while_cond, body } => {
-                stat_sn(self.lower_while_do_loop(while_cond, body))
-            }
-            ast::Stat::DoWhile { body, while_cond } => {
-                stat_sn(self.lower_do_while_loop(body, while_cond))
-            }
-            ast::Stat::LoopDo { body } => stat_sn({
-                // create hidden label for the new loop we are making (this label is not visible to  the source program)
-                let label = self.create_hidden_loop_label();
+            ast::Stat::WhileDo {
+                label,
+                while_cond,
+                body,
+            } => stat_sn(self.lower_while_do_loop(label, while_cond, body)),
+            ast::Stat::DoWhile {
+                label,
+                body,
+                while_cond,
+            } => stat_sn(self.lower_do_while_loop(label, body, while_cond)),
+            ast::Stat::LoopDo { label, body } => stat_sn({
+                // lower loop label
+                let label = self.lower_loop_label(label);
 
                 // lower the loop-body within the loop's context
                 let body_block =
@@ -446,29 +465,43 @@ impl LoweringCtx {
                     body: body_block,
                 }
             }),
-            ast::Stat::Break => stat_sn({
-                // this is a break-statement without a specific loop-label, meaning it binds to the
-                // closest loop - which should be at the top of the loop-label stack
-                let label = match self.current_loop_nesting_stack.last() {
-                    Some(label) => label.clone(),
+            ast::Stat::Break(label) => stat_sn({
+                let label = match label {
                     None => {
-                        // report break-outside loop error, and create-dummy loop-label
-                        self.add_error(AstLoweringError::BreakOutsideLoop(span));
-                        LoopLabel::new_rogue_zero(ast::Ident::from_str(Self::BREAK_OUTSIDE_LOOP))
+                        // this is a break-statement without a specific loop-label, meaning it binds to the
+                        // closest loop - which should be at the top of the loop-label stack
+                        match self.current_loop_nesting_stack.last() {
+                            Some(label) => label.clone(),
+                            None => {
+                                // report break-outside loop error, and create-dummy loop-label
+                                self.add_error(AstLoweringError::BreakOutsideLoop(span));
+                                LoopLabel::new_rogue_zero(ast::Ident::from_str(
+                                    Self::BREAK_OUTSIDE_LOOP,
+                                ))
+                            }
+                        }
                     }
+                    Some(label) => self.lookup_loop_label_from_stack(label),
                 };
                 Stat::Break(label)
             }),
-            ast::Stat::NextLoop => stat_sn({
-                // this is a continue-statement without a specific loop-label, meaning it binds to the
-                // closest loop - which should be at the top of the loop-label stack
-                let label = match self.current_loop_nesting_stack.last() {
-                    Some(label) => label.clone(),
+            ast::Stat::NextLoop(label) => stat_sn({
+                let label = match label {
                     None => {
-                        // report break-outside loop error, and create-dummy loop-label
-                        self.add_error(AstLoweringError::NextloopOutsideLoop(span));
-                        LoopLabel::new_rogue_zero(ast::Ident::from_str(Self::NEXTLOOP_OUTSIDE_LOOP))
+                        // this is a continue-statement without a specific loop-label, meaning it binds to the
+                        // closest loop - which should be at the top of the loop-label stack
+                        match self.current_loop_nesting_stack.last() {
+                            Some(label) => label.clone(),
+                            None => {
+                                // report break-outside loop error, and create-dummy loop-label
+                                self.add_error(AstLoweringError::NextloopOutsideLoop(span));
+                                LoopLabel::new_rogue_zero(ast::Ident::from_str(
+                                    Self::NEXTLOOP_OUTSIDE_LOOP,
+                                ))
+                            }
+                        }
                     }
+                    Some(label) => self.lookup_loop_label_from_stack(label),
                 };
                 Stat::NextLoop(label)
             }),
@@ -483,6 +516,49 @@ impl LoweringCtx {
             if_cond,
             then_body: StatBlock::singleton(Self::wrap_with_dummy_sn(Stat::Skip)),
             else_body: StatBlock::singleton(Self::wrap_with_dummy_sn(Stat::Break(loop_label))),
+        }
+    }
+
+    /// NOTE: don't use this to lower break/return statements!!!
+    #[inline]
+    fn lower_loop_label(&mut self, loop_label: Option<SN<ast::Ident>>) -> LoopLabel {
+        // if there is nothing there, create hidden label for the new loop we are making
+        // (this label is not visible to  the source program)
+        let Some(label) = loop_label else {
+            return self.create_hidden_loop_label();
+        };
+
+        // now, ensure that we aren't already using this label within our current
+        // loop-label stack context, and if we are - add an error
+        if self
+            .current_loop_nesting_stack
+            .iter()
+            .rev()
+            .any(|l| &l.ident == label.inner())
+        {
+            self.add_error(AstLoweringError::LoopLabelAlreadyInUse(label.clone()));
+        }
+
+        // return lowered loop-label
+        LoopLabel::new(&mut self.counter, label.into_inner())
+    }
+
+    /// Assuming a loop-label is already associated with a [`LoopRegion`] in stack,
+    /// we can look up that [`LoopRegion`] using the loop-label.
+    #[inline]
+    fn lookup_loop_label_from_stack(&mut self, loop_label: SN<ast::Ident>) -> LoopLabel {
+        // find loop label in the current stack, or make rouge one if can't find it
+        if let Some(label) = self
+            .current_loop_nesting_stack
+            .iter()
+            .rev()
+            .find(|l| &l.ident == loop_label.inner())
+        {
+            label.clone()
+        } else {
+            // report unidentified label
+            self.add_error(AstLoweringError::UndefinedLoopLabel(loop_label.clone()));
+            LoopLabel::new(&mut self.counter, loop_label.into_inner())
         }
     }
 
@@ -531,11 +607,12 @@ impl LoweringCtx {
     #[allow(clippy::expect_used)]
     pub fn lower_while_do_loop(
         &mut self,
+        label: Option<SN<ast::Ident>>,
         while_cond_sn: SN<ast::Expr>,
         body: ast::StatBlock,
     ) -> Stat {
-        // create hidden label for the new loop we are making (this label is not visible to  the source program)
-        let label = self.create_hidden_loop_label();
+        // lower loop label
+        let label = self.lower_loop_label(label);
 
         // create the if-statement which breaks if condition is met
         let if_cond = self.lower_expr_sn(while_cond_sn); // lower the conditional expression
@@ -580,11 +657,12 @@ impl LoweringCtx {
     #[allow(clippy::expect_used)]
     pub fn lower_do_while_loop(
         &mut self,
+        label: Option<SN<ast::Ident>>,
         body: ast::StatBlock,
         while_cond_sn: SN<ast::Expr>,
     ) -> Stat {
-        // create hidden label for the new loop we are making (this label is not visible to  the source program)
-        let label = self.create_hidden_loop_label();
+        // lower loop label
+        let label = self.lower_loop_label(label);
 
         // lower the loop-body within the loop's context, and convert it into a statement-vector accumulator
         let body_block = self.with_loop_nesting_context(&label, |s| s.lower_stat_block(body));
@@ -602,22 +680,6 @@ impl LoweringCtx {
                 .expect("There should always be one statement in the stat-vector"),
         }
     }
-
-    // /// Assuming a loop-label is already associated with a [`LoopRegion`] in stack,
-    // /// we can look up that [`LoopRegion`] using the loop-label.
-    // #[inline]
-    // fn lookup_loop_region_from_stack(&self, loop_label: hir::LoopLabel) -> Option<LoopRegion> {
-    //     // convert loop label to wacky-ident
-    //     let start_label: WackTempIdent = loop_label.into();
-    //
-    //     // look for the loop-region corresponding to the loop-label in reverse (since its a stack)
-    //     for region in self.current_loop_nesting_stack.iter().rev() {
-    //         if start_label == region.start_label {
-    //             return Some(region.clone());
-    //         }
-    //     }
-    //     None
-    // }
 
     pub fn lower_lvalue(&mut self, lvalue: ast::LValue) -> LValue {
         match lvalue {

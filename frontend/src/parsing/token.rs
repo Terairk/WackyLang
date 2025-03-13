@@ -99,6 +99,7 @@ pub enum Token {
     Pipe,
     Caret,
     Tilde,
+    Colon,
     Semicolon,
     Comma,
 
@@ -175,6 +176,7 @@ impl fmt::Display for Token {
             Self::Pipe => write!(f, "|"),
             Self::Caret => write!(f, "^"),
             Self::Tilde => write!(f, "~"),
+            Self::Colon => write!(f, ":"),
             Self::Semicolon => write!(f, ";"),
             Self::Comma => write!(f, ","),
             Self::Begin => write!(f, "begin"),

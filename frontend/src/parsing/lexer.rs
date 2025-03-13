@@ -259,6 +259,7 @@ where
         just('/').to(Token::ForwardSlash),
         just('^').to(Token::Caret),
         just('~').to(Token::Tilde),
+        just(':').to(Token::Colon),
         just(';').to(Token::Semicolon),
         just(',').to(Token::Comma),
     ))
