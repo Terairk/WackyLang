@@ -102,7 +102,6 @@ version = "0.1.0"
 dependencies = [
  "middle",
  "once_cell",
- "syntax",
  "thiserror",
  "util",
 ]
@@ -723,22 +722,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "syntax"
-version = "0.1.0"
-dependencies = [
- "ariadne",
- "chumsky",
- "delegate",
- "extend",
- "fn_pipe",
- "impl-trait-for-tuples",
- "internment",
- "parse_int",
- "thiserror",
- "util",
 ]
 
 [[package]]

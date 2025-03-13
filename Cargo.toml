@@ -5,7 +5,6 @@ members = [
     "compiler",
     "frontend",
     "middle",
-    "syntax",
     "util",
     "util/fn_pipe",
     "util/fn_pipe/proc",
@@ -27,7 +26,6 @@ backend = { path = "backend" }
 compiler = { path = "compiler" }
 frontend = { path = "frontend" }
 middle = { path = "middle" }
-syntax = { path = "syntax" }
 util = { path = "util" }
 fn_pipe = { path = "util/fn_pipe" }
 fn_pipe_proc = { path = "util/fn_pipe/proc" }
