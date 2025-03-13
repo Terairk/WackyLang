@@ -12,6 +12,7 @@ pub const ALL_HARDREGS: [Register; 16] = [
 pub const ALL_BASEREGS: [Register; 12] = [AX, BX, CX, DX, DI, SI, R8, R9, R12, R13, R14, R15];
 // Don't use R10 and R11 as we use them for our fixing instructions pass
 pub const CALLER_SAVED: [Register; 7] = [AX, CX, DX, SI, DI, R8, R9];
+pub const PARAM_REGS: [Register; 6] = [DI, SI, DX, CX, R8, R9];
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -33,6 +34,40 @@ bitflags! {
         const R10 = 1 << 14;
         const R11 = 1 << 15;
     }
+}
+
+/// Converts a `RegisterSet` bitflag into a Vec of the corresponding Register values
+#[must_use]
+#[inline]
+pub fn register_set_to_vec(reg_set: RegisterSet) -> Vec<Register> {
+    ALL_HARDREGS
+        .iter()
+        .filter(|&reg| {
+            // Map each register to its corresponding bit flag
+            let flag = match reg {
+                AX => RS::AX,
+                BX => RS::BX,
+                CX => RS::CX,
+                DX => RS::DX,
+                DI => RS::DI,
+                SI => RS::SI,
+                R8 => RS::R8,
+                R9 => RS::R9,
+                R10 => RS::R10,
+                R11 => RS::R11,
+                R12 => RS::R12,
+                R13 => RS::R13,
+                R14 => RS::R14,
+                R15 => RS::R15,
+                SP => RS::SP,
+                BP => RS::BP,
+            };
+
+            // Check if the flag is present in the register set
+            reg_set.contains(flag)
+        })
+        .copied()
+        .collect()
 }
 
 use RegisterSet as RS;

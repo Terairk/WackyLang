@@ -194,7 +194,10 @@ mod build_interference_graph {
     type AsmCFG = CFG<AsmInstruction, LiveRegisters>;
     type LiveBasicBlock = BasicBlock<AsmInstruction, LiveRegisters>;
 
-    use crate::registers::{ALL_BASEREGS, ALL_HARDREGS};
+    use crate::{
+        assembly_trans::FunctionRegisters,
+        registers::{ALL_BASEREGS, RS6, register_set_to_vec},
+    };
 
     use super::*;
 
@@ -281,7 +284,10 @@ mod build_interference_graph {
         todo!()
     }
 
-    fn find_used_and_updated(instr: AsmInstruction) -> (Vec<Operand>, Vec<Operand>) {
+    fn find_used_and_updated(
+        instr: AsmInstruction,
+        func_set: &FunctionRegisters,
+    ) -> (Vec<Operand>, Vec<Operand>) {
         let mut used = Vec::new();
         let mut updated = Vec::new();
 
@@ -350,29 +356,34 @@ mod build_interference_graph {
                 // No registers used or updated
             }
             AsmInstruction::AllocateStack(_) => {
-                // updated.push(Operand::Reg(Register::SP));
+                // No registers used or updated
             }
             AsmInstruction::DeallocateStack(_) => {
-                // updated.push(Operand::Reg(Register::SP));
+                // No registers used or updated
             }
             AsmInstruction::Push(operand) => {
                 used.push(operand);
-                // updated.push(Operand::Reg(Register::SP));
             }
             AsmInstruction::Pop(register) => {
-                // used.push(Operand::Reg(Register::SP));
-                // updated.push(Operand::Reg(register));
-                // updated.push(Operand::Reg(Register::SP));
                 panic!("Pop should not be used in this context");
             }
-            AsmInstruction::Call(_, _) => {
-                // Parameter passing registers (typically first 6 parameters in x86-64)
-                used.push(Operand::Reg(Register::DI));
-                used.push(Operand::Reg(Register::SI));
-                used.push(Operand::Reg(Register::DX));
-                used.push(Operand::Reg(Register::CX));
-                used.push(Operand::Reg(Register::R8));
-                used.push(Operand::Reg(Register::R9));
+            AsmInstruction::Call(fun_name, _) => {
+                // let new_regs = Vec::new();
+
+                // If we can't determine the function's register set, assume it uses all
+                // param-passing registers
+                let reg_set = match func_set.get(&fun_name) {
+                    Some(set) => set,
+                    None => {
+                        println!("Warning: Function {} not found in function set", fun_name);
+                        &RS6
+                    }
+                };
+
+                let regs = register_set_to_vec(*reg_set);
+                for reg in regs {
+                    used.push(Operand::Reg(reg));
+                }
 
                 // Caller-saved registers that might be modified by the callee
                 updated.push(Operand::Reg(Register::DI));
@@ -384,7 +395,7 @@ mod build_interference_graph {
                 updated.push(Operand::Reg(Register::AX)); // Return value
             }
             AsmInstruction::Ret => {
-                used.push(Operand::Reg(Register::AX)); // Return value
+                // This is handled by our Exit node in the meet function
             }
         }
 

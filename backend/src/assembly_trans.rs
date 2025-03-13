@@ -2,7 +2,7 @@ use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmLabel, AsmProgram, AssemblyType, CondCode,
     FUNCTION, LABEL, Operand, Register,
 };
-use crate::predefined::GEN_USIZE;
+use crate::predefined::{GEN_USIZE, add_regsets};
 use crate::registers::{ARR_INDEX_REG, ARR_LOAD_RETURN, ARR_PTR_REG, RegisterSet};
 use AsmInstruction::{
     AllocateStack, Binary, Call, Cdq, Cmov, Cmp, Comment, DeallocateStack, Idiv, Jmp, JmpCC, Lea,
@@ -25,6 +25,7 @@ use middle::wackir::{
     WackReadType, WackTempIdent, WackValue,
 };
 use std::collections::{BTreeMap, HashMap};
+use std::hash::Hash;
 use util::gen_flags::{GenFlags, insert_flag_gbl};
 use util::gen_flags::{
     INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO,
@@ -53,25 +54,22 @@ pub fn wacky_to_assembly(
         asm_functions.push(asm_gen.lower_function(wack_function));
     }
 
+    // Add the function to registers mapping to the register set
+    add_regsets(&mut asm_gen);
+    // println!("{:?}", asm_gen.function_regs);
+
     (AsmProgram { asm_functions }, asm_gen)
 }
 
 /* ================== INTERNAL API ================== */
 
+pub type FunctionRegisters = HashMap<String, RegisterSet>;
 pub struct AsmGen {
     pub counter: usize,
     pub str_counter: usize,
     pub str_literals: BTreeMap<String, String>,
     pub symbol_table: HashMap<WackTempIdent, AssemblyType>,
-    // and a table to store these literals with their lengths
-    // we need to mangle them as well
-    // also maybe keep track of RIP relative addressing
-
-    // Probably need a backend symbol table
-    // honestly we probably don't need a symbol table for functions
-    // as we dont have external functions other than the ones used by
-    // Wacc's standard statements like read, print etc
-    // So we automatically know if we should use PLT or not
+    pub function_regs: FunctionRegisters,
 }
 
 fn convert_type(ty: &WackType) -> AssemblyType {
@@ -120,6 +118,7 @@ impl AsmGen {
             str_counter: 0,
             str_literals: BTreeMap::new(),
             symbol_table,
+            function_regs: HashMap::new(),
         }
     }
 
@@ -255,6 +254,7 @@ impl AsmGen {
             6 => crate::registers::RS6,
             _ => panic!("Too many parameters for function"),
         };
+        self.function_regs.insert(func_name.clone(), rs);
 
         // any functions we generate ourselves are not external
         AsmFunction {

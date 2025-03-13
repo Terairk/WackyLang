@@ -10,6 +10,7 @@ use crate::assembly_ast::AsmBinaryOperator::{Add, And, Sub};
 use crate::assembly_ast::AsmInstruction::{
     Binary, Call, Cmov, Cmp, Jmp, JmpCC, Label, Lea, Mov, Pop, Push, Ret, Test,
 };
+use crate::assembly_trans::AsmGen;
 use crate::registers::{ARR_INDEX_REG, ARR_LOAD_RETURN, ARR_PTR_REG, RS_ARR, RS1, RegisterSet};
 use AssemblyType::{Byte, Longword, Quadword};
 use CondCode::{E, GE, L, NE};
@@ -38,6 +39,23 @@ pub fn generate_predefined(program: &mut AsmProgram) {
         .collect();
 
     program.asm_functions.extend(new_funcs);
+}
+
+#[inline]
+pub fn add_regsets(asm_gen: &mut AsmGen) {
+    let function_regs = &mut asm_gen.function_regs;
+    rewrite_global_flag();
+    let flags = get_flags_gbl();
+    let new_funcs: Vec<AsmFunction> = PREDEFINED_FUNCTIONS2
+        .iter()
+        .filter(|&(flag, _)| flags.contains(*flag))
+        .map(|(_, func)| func)
+        .cloned()
+        .collect();
+
+    for func in new_funcs {
+        function_regs.insert(func.name.clone(), func.regs);
+    }
 }
 
 // TODO change these to be Ident's eventually
