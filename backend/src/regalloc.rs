@@ -5,10 +5,17 @@ use std::collections::HashMap;
 
 use build_interference_graph::build_graph;
 
-use crate::assembly_ast::{AsmInstruction, Operand, Register};
+use crate::{
+    assembly_ast::{AsmInstruction, Operand, Register},
+    assembly_trans::FunctionRegisters,
+};
 
-fn allocate_registers(instructions: Vec<AsmInstruction>, func_name: &str) -> Vec<AsmInstruction> {
-    let mut interference_graph = build_graph(&instructions, func_name);
+fn allocate_registers(
+    instructions: Vec<AsmInstruction>,
+    func_name: &str,
+    func_regs: &FunctionRegisters,
+) -> Vec<AsmInstruction> {
+    let mut interference_graph = build_graph(&instructions, func_name, func_regs);
     add_spill_costs(&interference_graph, &instructions);
     color_graph(&mut interference_graph);
     let register_map = create_register_map(&interference_graph);
@@ -179,7 +186,7 @@ mod build_interference_graph {
 
     use util::{
         CFG,
-        cfg::{BasicBlock, NodeId},
+        cfg::{BasicBlock, NodeId, backwards_dataflow_analysis},
     };
     // TODO: replace LiveRegisters with the actual type
 
@@ -202,11 +209,15 @@ mod build_interference_graph {
     use super::*;
 
     /// Build's interference graph for a function using a control flow graph internally
-    pub fn build_graph(instructions: &[AsmInstruction], func_name: &str) -> InterferenceGraph {
+    pub fn build_graph(
+        instructions: &[AsmInstruction],
+        func_name: &str,
+        func_reg: &FunctionRegisters,
+    ) -> InterferenceGraph {
         let mut interference_graph = create_base_graph();
         add_pseudoregisters(&mut interference_graph, instructions);
         let mut cfg = make_control_flow_graph(instructions, func_name);
-        analyze_lifeness(&mut cfg);
+        analyze_lifeness(&mut cfg, &func_reg);
         add_edges(&cfg, &mut interference_graph);
         interference_graph
     }
@@ -250,8 +261,15 @@ mod build_interference_graph {
         emptyCFG.initialize_annotation(&LiveRegisters::default())
     }
 
-    fn analyze_lifeness(cfg: &mut AsmCFG) {
-        todo!()
+    fn analyze_lifeness(cfg: &mut AsmCFG, func_regs: &FunctionRegisters) {
+        let default_live_regs = LiveRegisters::default();
+
+        // Perform backwards dataflow analysis to compute live registers at each instruction
+        // Use closures to capture the function's register set
+        let transfer_meet = |block: LiveBasicBlock, end_live_registers: LiveRegisters| {
+            transfer(block, end_live_registers, func_regs)
+        };
+        backwards_dataflow_analysis(cfg, meet, transfer_meet);
     }
 
     /// The meet operator calculates which registers are live at the end of a basic block.
@@ -278,6 +296,37 @@ mod build_interference_graph {
             }
         }
         live_regs
+    }
+
+    fn transfer(
+        mut block: LiveBasicBlock,
+        end_live_registers: LiveRegisters,
+        func_regs: &FunctionRegisters,
+    ) -> LiveBasicBlock {
+        let mut current_live_registers = end_live_registers;
+
+        // Process instructions in reverse order
+        for instr in block.instructions.iter_mut().rev() {
+            // Annotate the instructions with the current live registers
+            instr.0 = current_live_registers.clone();
+            let (used, updated) = find_used_and_updated(instr.1.clone(), func_regs);
+
+            for v in updated {
+                if let Operand::Reg(reg) = v {
+                    current_live_registers.remove(&Operand::Reg(reg));
+                }
+            }
+
+            for v in used {
+                if let Operand::Reg(reg) = v {
+                    current_live_registers.insert(Operand::Reg(reg));
+                }
+            }
+        }
+
+        // Annotate the block with the current live registers
+        block.value = current_live_registers.clone();
+        block
     }
 
     fn add_edges(cfg: &AsmCFG, graph: &mut InterferenceGraph) {
