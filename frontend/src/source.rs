@@ -1,6 +1,6 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
-use crate::node::Node;
+use crate::node::{BoxedNode, Node};
 use ariadne::Span as AriadneSpan;
 use chumsky::{prelude::SimpleSpan, span::Span as ChumskySpan};
 use internment::Intern;
@@ -296,3 +296,5 @@ impl<T> SourcedNode<T> {
         self.context().clone()
     }
 }
+
+pub type SourcedBoxedNode<T> = BoxedNode<T, SourcedSpan>;

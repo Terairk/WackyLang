@@ -1,25 +1,24 @@
-//! TODO: crate documentation
-//!
-//! this is here as a placeholder documentation
-//!
-//!
-
-// enable Rust-unstable features for convenience
-#![feature(trait_alias)]
-#![feature(stmt_expr_attributes)]
-#![feature(unboxed_closures)]
-
-use crate::error::{semantic_error_to_reason, SemanticError};
 use crate::source::SourcedSpan;
+use crate::StreamType;
 use ariadne::{CharSet, Label, Report, Source};
 use chumsky::error::Rich;
-use std::fmt;
-use std::ops::{Deref, DerefMut};
+use std::io::Write;
+use std::{fmt, io};
 
-/// Namespace for all the type/trait aliases used by this crate.
-pub(crate) mod alias {
+pub mod ast;
+pub mod ast_frame;
+pub mod lexer;
+pub mod parser;
+pub mod token;
+
+/// Namespace for all the type/trait aliases used by this module.
+pub(super) mod alias {
+    use crate::parsing::ast;
+    use crate::parsing::token::Token;
+    use crate::source::SourcedSpan;
     use chumsky::extra;
     use chumsky::extra::ParserExtra;
+    use chumsky::input::WithContext;
     use chumsky::prelude::{Input, Rich};
 
     /// Trait alias for generic [`chumsky::Parser`] implementations used by the various parsers here
@@ -33,16 +32,25 @@ pub(crate) mod alias {
     where
         I: Input<'src>,
         I::Token: PartialEq;
+
+    pub type ErrorExtra<'a, E> = extra::Full<E, (), ()>;
+    pub type ParseOutput<'a, O, E> = (Option<O>, Vec<E>);
+
+    pub type InputError<'a, I> = Rich<'a, <I as Input<'a>>::Token, <I as Input<'a>>::Span>;
+    pub type InputExtra<'a, I> = ErrorExtra<'a, InputError<'a, I>>;
+    pub type InputParseOutput<'a, I, O> = ParseOutput<'a, O, InputError<'a, I>>;
+
+    pub type LexerInput<'a> = WithContext<SourcedSpan, &'a str>;
+    pub type LexerExtra<'a> = InputExtra<'a, LexerInput<'a>>;
+    pub type LexerOutput<'a> = InputParseOutput<'a, LexerInput<'a>, Vec<(Token, SourcedSpan)>>;
+
+    pub type ProgramError<'a> = Rich<'a, Token, SourcedSpan>;
+    pub type ProgramExtra<'a> = ErrorExtra<'a, ProgramError<'a>>;
+    pub type ProgramOutput<'a> = ParseOutput<'a, ast::Program, ProgramError<'a>>;
 }
 
-pub mod ast;
-pub mod error;
-pub mod fold_program;
-pub mod rename;
-pub mod types;
-
-/// Namespace for crate-wide extension traits/methods
-pub(crate) mod ext {
+/// Namespace for module-wide extension traits/methods
+pub(super) mod ext {
     use crate::private;
     use chumsky::combinator::{Map, MapWith, OrNot, Then};
     use chumsky::{
@@ -198,179 +206,33 @@ pub(crate) mod ext {
     }
 }
 
-pub(crate) mod container {
-    use chumsky::container::Container;
-
-    #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-    pub enum MultiItem<T> {
-        Multi(Vec<T>),
-        Item(T),
-    }
-
-    #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-    #[repr(transparent)]
-    pub struct ItemVec<T>(Vec<T>);
-
-    impl<T> ItemVec<T> {
-        pub fn into_inner(self) -> Vec<T> {
-            self.0
-        }
-    }
-
-    impl<T> Default for ItemVec<T> {
-        fn default() -> Self {
-            Self(Vec::new())
-        }
-    }
-
-    impl<T> Container<MultiItem<T>> for ItemVec<T> {
-        fn push(&mut self, item: MultiItem<T>) {
-            match item {
-                MultiItem::Multi(mut items) => self.0.append(&mut items),
-                MultiItem::Item(item) => self.0.push(item),
-            }
-        }
-    }
-}
-
-pub mod node;
-pub mod parser;
-
-pub(crate) mod private {
-    // sealed traits support
-    pub trait Sealed {}
-    impl<T: ?Sized> Sealed for T {}
-}
-
-pub mod source;
-
-pub mod token;
-pub mod typecheck;
-
+/// # Errors
+/// TODO: add errors docs
 #[allow(clippy::unwrap_used)]
-pub fn build_syntactic_report<T>(error: &Rich<T, SourcedSpan>, source: String)
+#[inline]
+pub fn build_syntactic_report<T, S: AsRef<str>, W: Write>(
+    error: &Rich<T, SourcedSpan>,
+    source: S,
+    error_code: i32,
+    stream_type: StreamType,
+    output_stream: W,
+) -> io::Result<()>
 where
     T: fmt::Display,
 {
     let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
-    Report::build(ariadne::ReportKind::Error, error.span().clone())
+    let report = Report::build(ariadne::ReportKind::Error, error.span().clone())
         .with_config(config)
-        .with_message(format!("Syntax error"))
-        .with_code(69)
+        .with_message("Syntax error".to_owned())
+        .with_code(error_code)
         .with_label(Label::new(error.span().clone()).with_message(error.reason().to_owned()))
         .with_labels(error.contexts().map(|(label, span)| {
             Label::new(span.clone()).with_message(format!("while parsing this {label}"))
         }))
-        .finish()
-        .print((error.span().source_id().clone(), Source::from(source)))
-        .unwrap();
-}
-
-#[allow(clippy::unwrap_used)]
-#[inline]
-pub fn semantic_report_helper(
-    file_path: &String,
-    message: &str,
-    error: &SemanticError,
-    span: &SourcedSpan,
-    source: String,
-) {
-    let config = ariadne::Config::default().with_char_set(CharSet::Ascii);
-    Report::build(
-        ariadne::ReportKind::Error,
-        (file_path, span.clone().as_range()),
-    )
-    .with_config(config)
-    .with_message(message)
-    .with_code(420)
-    .with_label(
-        Label::new((file_path, span.clone().as_range()))
-            .with_message(semantic_error_to_reason(error)),
-    )
-    .finish()
-    .print((file_path, Source::from(source)))
-    .unwrap();
-}
-
-pub fn build_semantic_error_report(file_path: &String, error: &SemanticError, source: String) {
-    match error {
-        SemanticError::TypeMismatch(span, _, _) => {
-            semantic_report_helper(file_path, "Type Error", error, span, source);
-        }
-        SemanticError::DuplicateIdent(ident) => {
-            semantic_report_helper(
-                file_path,
-                "Duplicate Identifier",
-                error,
-                &ident.span(),
-                source,
-            );
-        }
-        SemanticError::InvalidNumberOfIndexes(span, _, _) => {
-            semantic_report_helper(file_path, "Wrong number of indexes", error, &span, source);
-        }
-        // Handle other error variants similarly
-        _ => {
-            // Generic error report for other cases
-            let span = match error {
-                SemanticError::ArityMismatch(node, _, _) => node.span().clone(),
-                SemanticError::AssignmentWithBothSidesUnknown(span) => span.clone(),
-                SemanticError::TypeMismatch(span, _, _) => span.clone(),
-                SemanticError::InvalidFreeType(span, _) => span.clone(),
-                SemanticError::MismatchedArgCount(span, _, _) => span.clone(),
-                SemanticError::InvalidIndexType(span, _) => span.clone(),
-                SemanticError::UndefinedIdent(node) => node.span().clone(),
-                SemanticError::ReturnInMain(span) => span.clone(),
-                _ => panic!("Unhandled error variant"),
-            };
-            semantic_report_helper(file_path, "Semantic Error", error, &span, source);
-        }
-    }
-}
-
-#[repr(transparent)]
-#[derive(Debug)]
-#[allow(dead_code)]
-struct DisplayVec<T>(Vec<T>);
-
-impl<T> DisplayVec<T> {
-    const DISPLAY_WIDTH: usize = 4;
-    const OFFSET_WIDTH: usize = 2;
-}
-
-impl<T> Deref for DisplayVec<T> {
-    type Target = Vec<T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> DerefMut for DisplayVec<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-#[allow(clippy::arithmetic_side_effects)]
-impl<T: fmt::Display> fmt::Display for DisplayVec<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{")?;
-
-        let mut width = 0;
-        for i in self.iter() {
-            // control items-per-line width
-            if width == 0 {
-                writeln!(f)?;
-                for _ in 0..Self::OFFSET_WIDTH {
-                    write!(f, " ")?;
-                }
-                width = Self::DISPLAY_WIDTH;
-            }
-            width -= 1;
-            write!(f, "{i}, ")?;
-        }
-
-        write!(f, "\n}}")
+        .finish();
+    let cache = (error.span().source_id().clone(), Source::from(source));
+    match stream_type {
+        StreamType::Stdout => report.write_for_stdout(cache, output_stream),
+        StreamType::Stderr => report.write(cache, output_stream),
     }
 }

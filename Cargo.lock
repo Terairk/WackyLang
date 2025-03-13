@@ -103,7 +103,6 @@ dependencies = [
  "bitflags",
  "middle",
  "once_cell",
- "syntax",
  "thiserror",
  "util",
 ]
@@ -221,10 +220,10 @@ dependencies = [
  "backend",
  "chumsky",
  "clap",
+ "frontend",
  "internment",
  "middle",
  "regex",
- "syntax",
  "util",
 ]
 
@@ -315,6 +314,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7914353092ddf589ad78f25c5c1c21b7f80b0ff8621e7c814c3485b5306da9d"
 
 [[package]]
+name = "enum_primitive"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be4551092f4d519593039259a9ed8daedf0da12e5109c5280338073eaeb81180"
+dependencies = [
+ "num-traits 0.1.43",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -360,6 +368,31 @@ name = "foldhash"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0d2fde1f7b3d48b8395d5f2de76c18a528bd6a9cdde438df747bfcba3e05d6f"
+
+[[package]]
+name = "frontend"
+version = "0.1.0"
+dependencies = [
+ "ariadne",
+ "chumsky",
+ "delegate",
+ "derive_more",
+ "extend",
+ "fn_pipe",
+ "generativity",
+ "impl-trait-for-tuples",
+ "internment",
+ "parse_int",
+ "recursion",
+ "thiserror",
+ "util",
+]
+
+[[package]]
+name = "generativity"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5881e4c3c2433fe4905bb19cfd2b5d49d4248274862b68c27c33d9ba4e13f9ec"
 
 [[package]]
 name = "getrandom"
@@ -467,11 +500,20 @@ version = "0.1.0"
 dependencies = [
  "derive_more",
  "extend",
+ "frontend",
  "internment",
  "itertools",
- "syntax",
  "thiserror",
  "util",
+]
+
+[[package]]
+name = "num-traits"
+version = "0.1.43"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92e5113e9fd4cc14ded8e499429f396a20f98c772a47cc8622a736e1ec843c31"
+dependencies = [
+ "num-traits 0.2.19",
 ]
 
 [[package]]
@@ -508,7 +550,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d695b79916a2c08bcff7be7647ab60d1402885265005a6658ffe6d763553c5a"
 dependencies = [
- "num-traits",
+ "num-traits 0.2.19",
 ]
 
 [[package]]
@@ -547,6 +589,12 @@ checksum = "0e4dccaaaf89514f546c693ddc140f729f958c247918a13380cccc6078391acc"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "recursion"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f705426858ccd7bbfe19798239d6b6bfd9bf96bde0624a84b92694046e98871"
 
 [[package]]
 name = "redox_syscall"
@@ -678,22 +726,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "syntax"
-version = "0.1.0"
-dependencies = [
- "ariadne",
- "chumsky",
- "delegate",
- "extend",
- "fn_pipe",
- "impl-trait-for-tuples",
- "internment",
- "parse_int",
- "thiserror",
- "util",
-]
-
-[[package]]
 name = "thiserror"
 version = "2.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -750,8 +782,12 @@ dependencies = [
  "bitflags",
  "bon",
  "derive_more",
+ "enum_primitive",
+ "extend",
+ "fn_pipe",
  "internment",
  "once_cell",
+ "recursion",
  "thiserror",
 ]
 

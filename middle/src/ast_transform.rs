@@ -1,49 +1,62 @@
-use std::collections::HashMap;
-
 use crate::types::{WackFuncType, WackType};
 use crate::wackir::{WackGlobIdent, WackProgram, WackTempIdent};
-use syntax::ast::{
-    ArrayElem, Expr, Func, FuncParam, Ident, LValue, PairElem, Program, RValue, Stat, StatBlock,
-};
-use syntax::rename::RenamedName;
-use syntax::typecheck::TypeResolver;
-use syntax::types::SemanticType;
+use frontend::parsing::ast;
+use frontend::wacc_thir::HirLoweringPhaseOutput;
+use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
 /* ================== PUBLIC API ================== */
 
-type TypedAST = Program<RenamedName, SemanticType>;
-type TypedFunc = Func<RenamedName, SemanticType>;
-type TypedFuncParam = FuncParam<RenamedName>;
-type TypedStatBlock = StatBlock<RenamedName, SemanticType>;
-type TypedStat = Stat<RenamedName, SemanticType>;
-type TypedLValue = LValue<RenamedName, SemanticType>;
-type TypedRValue = RValue<RenamedName, SemanticType>;
-type TypedExpr = Expr<RenamedName, SemanticType>;
-type TypedArrayElem = ArrayElem<RenamedName, SemanticType>;
-type TypedPairElem = PairElem<RenamedName, SemanticType>;
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct WackIdentSymbolTable(pub HashMap<WackTempIdent, WackType>);
+
+impl Deref for WackIdentSymbolTable {
+    type Target = HashMap<WackTempIdent, WackType>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for WackIdentSymbolTable {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 // Only take in type_resolver so i can discard the heck out of it
 // I can probably take it in by reference but I'd prefer not to clone
 #[must_use]
 #[inline]
 pub fn lower_program(
-    program: TypedAST,
-    type_resolver: TypeResolver,
-) -> (WackProgram, usize, HashMap<WackTempIdent, WackType>) {
-    let mut ctx = AstLoweringCtx::new_from(type_resolver);
+    hir_lowering: HirLoweringPhaseOutput,
+) -> (WackProgram, usize, WackIdentSymbolTable) {
+    // make context
+    let program = hir_lowering.thir_program;
+    let mut ctx = AstLoweringCtx::new_from(
+        hir_lowering.func_symbol_table,
+        hir_lowering.hir_ident_symbol_table,
+        hir_lowering.ident_counter,
+    );
+
+    // lower main body
     let mut main_body = Vec::new();
     ctx.lower_stat_block(program.body, &mut main_body);
 
+    // lower functions
     let wack_functions = program
         .funcs
         .into_iter()
         .map(|func| ctx.lower_func(func))
         .collect();
-
     let wack_program = WackProgram {
         functions: wack_functions,
         main_body,
     };
 
+    // return output
     (wack_program, ctx.ident_counter(), ctx.symbol_table)
 }
 
@@ -52,30 +65,25 @@ pub fn lower_program(
 pub(crate) struct AstLoweringCtx {
     ident_counter: usize,
     func_table: HashMap<WackGlobIdent, WackFuncType>,
-    symbol_table: HashMap<WackTempIdent, WackType>,
+    symbol_table: WackIdentSymbolTable,
     /// used to rename function to wacc_function
-    func_rename_map: HashMap<Ident, WackGlobIdent>,
+    func_rename_map: HashMap<ast::Ident, WackGlobIdent>,
 }
 
 // impls relating to `AstLoweringCtx`
 pub(crate) mod ast_lowering_ctx {
-    use crate::ast_transform::{
-        AstLoweringCtx, TypedArrayElem, TypedExpr, TypedFunc, TypedFuncParam, TypedLValue,
-        TypedPairElem, TypedRValue, TypedStat, TypedStatBlock,
-    };
+    use crate::ast_transform::{AstLoweringCtx, WackIdentSymbolTable};
     use crate::types::{WackFuncType, WackPointerType, WackType};
     use crate::wackir::{
-        BinaryOp, FALSE, TRUE, WackFunction, WackGlobIdent, WackInstr, WackLiteral, WackPrintType,
-        WackReadType, WackTempIdent, WackValue,
+        BinaryOp, WackFunction, WackGlobIdent, WackInstr, WackLiteral, WackPrintType, WackReadType, WackTempIdent,
+        WackValue, FALSE, TRUE,
     };
     use extend::ext;
+    use frontend::parsing::ast;
+    use frontend::wacc_hir::hir;
+    use frontend::wacc_thir::lower_hir::{IdentSymbolTable, ThirFuncSymbolTable};
+    use frontend::wacc_thir::thir;
     use std::collections::HashMap;
-    use syntax::ast;
-    use syntax::ast::{BinaryOper, Ident, LValue, UnaryOper};
-    use syntax::node::Node;
-    use syntax::rename::RenamedName;
-    use syntax::typecheck::TypeResolver;
-    use syntax::types::{BaseType, SemanticType};
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub struct With<T, C> {
@@ -138,38 +146,40 @@ pub(crate) mod ast_lowering_ctx {
     }
 
     impl AstLoweringCtx {
-        pub(crate) fn new_from(type_resolver: TypeResolver) -> Self {
-            // extract renamer + counter
-            let renamer = type_resolver.renamer;
-            let ident_counter = renamer.counter();
-
+        pub(crate) fn new_from(
+            func_symbol_table: ThirFuncSymbolTable,
+            hir_ident_symbol_table: IdentSymbolTable,
+            ident_counter: usize,
+        ) -> Self {
             // create mapping to new function names, and new function table
-            let mut func_map: HashMap<Ident, WackGlobIdent> = HashMap::new();
-            let func_table = renamer
-                .id_func_table
+            let mut func_rename_map: HashMap<ast::Ident, WackGlobIdent> = HashMap::new();
+            let func_table = func_symbol_table
                 .functions
                 .into_iter()
                 .map(|(id, (func, params))| {
                     // rename functions
-                    let new_id: WackGlobIdent = Ident::from_str(&format!("wacc_{id}")).into();
-                    func_map.insert(id, new_id.clone());
+                    let new_id: WackGlobIdent = ast::Ident::from_str(&format!("wacc_{id}")).into();
+                    func_rename_map.insert(id, new_id.clone());
 
                     // crate new function table entry
-                    (new_id, WackFuncType::from_semantic_type(params, func))
+                    (new_id, WackFuncType::from_thir_type(params, func))
                 })
                 .collect();
 
             // create new symbol table
-            let symbol_table: HashMap<WackTempIdent, WackType> = type_resolver
-                .symid_table
-                .into_iter()
-                .map(|(id, sym_ty)| (id.into(), WackType::from_semantic_type(sym_ty)))
-                .collect();
+            let symbol_table = WackIdentSymbolTable(
+                hir_ident_symbol_table
+                    .0
+                    .into_iter()
+                    .map(|(id, sym_ty)| (id.into(), WackType::from_thir_type(sym_ty)))
+                    .collect(),
+            );
+
             Self {
                 ident_counter,
                 func_table,
                 symbol_table,
-                func_rename_map: func_map,
+                func_rename_map,
             }
         }
 
@@ -187,7 +197,7 @@ pub(crate) mod ast_lowering_ctx {
         fn make_temporary(&mut self, wack_ty: WackType) -> WackTempIdent {
             // Eventually we may want to replace temp with a function name
             // for better debugging
-            let ident: WackTempIdent = Ident::from_str("temp").with_ctx_mut(self).into();
+            let ident: WackTempIdent = ast::Ident::from_str("temp").with_ctx_mut(self).into();
 
             // Add entry to symbol table
             self.symbol_table.insert(ident.clone(), wack_ty);
@@ -198,11 +208,11 @@ pub(crate) mod ast_lowering_ctx {
 
         // Makes a label for jump's for now
         fn make_label(&mut self, name: &str) -> WackTempIdent {
-            let ident: WackTempIdent = Ident::from_str(name).with_ctx_mut(self).into();
+            let ident: WackTempIdent = ast::Ident::from_str(name).with_ctx_mut(self).into();
             ident
         }
 
-        pub(crate) fn lower_func(&mut self, func: TypedFunc) -> WackFunction {
+        pub(crate) fn lower_func(&mut self, func: thir::Func) -> WackFunction {
             let mut instructions: Vec<WackInstr> = Vec::new();
             self.lower_stat_block(func.body, &mut instructions);
             let params = func
@@ -226,42 +236,42 @@ pub(crate) mod ast_lowering_ctx {
         }
 
         /* TODO: find where we care about the types of params */
-        fn lower_func_param(&mut self, param: &TypedFuncParam) -> WackTempIdent {
-            param.name.inner().clone().into()
+        #[inline]
+        fn lower_func_param(&mut self, param: &thir::Ident) -> WackTempIdent {
+            param.ident.clone().into()
         }
 
         pub(crate) fn lower_stat_block(
             &mut self,
-            stat_block: TypedStatBlock,
+            stat_block: thir::StatBlock,
             instructions: &mut Vec<WackInstr>,
         ) {
             for stat in stat_block.0 {
-                self.lower_stat(stat.into_inner(), instructions);
+                self.lower_stat(stat, instructions);
             }
         }
 
         #[allow(clippy::too_many_lines)]
-        fn lower_stat(&mut self, stat: TypedStat, instructions: &mut Vec<WackInstr>) {
+        fn lower_stat(&mut self, stat: thir::Stat, instructions: &mut Vec<WackInstr>) {
             match stat {
                 // TODO: add more type-checking code to lowerer SemTy vs. WackTy
-                TypedStat::Skip => (),
-                TypedStat::VarDefinition { name, rvalue, .. } => {
+                thir::Stat::Skip => (),
+                thir::Stat::VarDefinition { name, rvalue, .. } => {
                     // TODO: add more type-checking code to lowerer SemTy vs. WackTy
                     // extract LHS
-                    let lhs = name.into_inner().into();
+                    let lhs = name.ident.into();
 
                     // evaluate RHS, store into temp `rhs` variable
-                    let (rhs, _rhs_ty) = self.lower_rvalue(rvalue.into_inner(), instructions);
+                    let (rhs, _rhs_ty) = self.lower_rvalue(rvalue, instructions);
 
                     // copy value at `rhs` to `lhs` identifier
                     let instr = WackInstr::Copy { src: rhs, dst: lhs };
                     instructions.push(instr);
                 }
-                TypedStat::Assignment { lvalue, rvalue } => {
+                thir::Stat::Assignment { lvalue, rvalue } => {
                     // TODO: add more type-checking code to lowerer SemTy vs. WackTy
-                    let (lhs, _lhs_ty, derefed) =
-                        self.lower_lvalue(lvalue.into_inner(), instructions);
-                    let (rhs, _rhs_ty) = self.lower_rvalue(rvalue.into_inner(), instructions);
+                    let (lhs, _lhs_ty, derefed) = self.lower_lvalue(lvalue, instructions);
+                    let (rhs, _rhs_ty) = self.lower_rvalue(rvalue, instructions);
                     let instr;
                     if derefed {
                         instr = WackInstr::CopyToOffset {
@@ -274,14 +284,14 @@ pub(crate) mod ast_lowering_ctx {
                     }
                     instructions.push(instr);
                 }
-                TypedStat::Read(lvalue) => {
+                thir::Stat::Read(lvalue) => {
                     // grab the semantic type, and use it to obtain read type
-                    let sem_ty = lvalue.inner().get_type();
-                    let read_type = WackReadType::from_semantic_type(sem_ty.clone())
+                    let sem_ty = lvalue.r#type();
+                    let read_type = WackReadType::from_thir_type(sem_ty.clone())
                         .expect("This failing indicates frontend bug");
 
                     // get destination, and make sure types match up
-                    let (value, _wack_ty, _) = self.lower_lvalue(lvalue.into_inner(), instructions);
+                    let (value, _wack_ty, _) = self.lower_lvalue(lvalue, instructions);
                     // TODO: figure out a way to implement "weakening" check for lhs-rhs WACC types
                     //       so it is not strictly checking for equality -- as otherwise this will give false positives
                     // assert_eq!(WackType::from_semantic_type(sem_ty), wack_ty);
@@ -293,10 +303,10 @@ pub(crate) mod ast_lowering_ctx {
                     };
                     instructions.push(instr);
                 }
-                TypedStat::Free(expr) => {
+                thir::Stat::Free(expr) => {
                     // get value and typecheck
-                    let _sem_ty = expr.inner().get_type();
-                    let (value, wack_ptr_ty) = self.lower_expr(expr.into_inner(), instructions);
+                    let _sem_ty = expr.r#type();
+                    let (value, wack_ptr_ty) = self.lower_expr(expr, instructions);
                     // TODO: figure out a way to implement "weakening" check for lhs-rhs WACC types
                     //       so it is not strictly checking for equality -- as otherwise this will give false positives
                     // assert_eq!(WackType::from_semantic_type(sem_ty), wack_ptr_ty);
@@ -326,10 +336,10 @@ pub(crate) mod ast_lowering_ctx {
                     };
                     instructions.push(instr);
                 }
-                TypedStat::Return(expr) => {
+                thir::Stat::Return(expr) => {
                     // get value and typecheck
-                    let _sem_ty = expr.inner().get_type();
-                    let (value, _wack_ty) = self.lower_expr(expr.into_inner(), instructions);
+                    let _sem_ty = expr.r#type();
+                    let (value, _wack_ty) = self.lower_expr(expr, instructions);
                     // TODO: figure out a way to implement "weakening" check for lhs-rhs WACC types
                     //       so it is not strictly checking for equality -- as otherwise this will give false positives
                     // assert_eq!(WackType::from_semantic_type(sem_ty), wack_ty);
@@ -338,23 +348,23 @@ pub(crate) mod ast_lowering_ctx {
                     let instr = WackInstr::Return(value);
                     instructions.push(instr);
                 }
-                TypedStat::Exit(expr) => {
+                thir::Stat::Exit(expr) => {
                     // get value and typecheck
-                    let _sem_ty = expr.inner().get_type();
-                    let (value, _wack_ty) = self.lower_expr(expr.into_inner(), instructions);
+                    let _sem_ty = expr.r#type();
+                    let (value, _wack_ty) = self.lower_expr(expr, instructions);
 
                     // perform exit instr
                     let instr = WackInstr::Exit(value);
                     instructions.push(instr);
                 }
-                TypedStat::Print(expr) => {
+                thir::Stat::Print(expr) => {
                     // grab the semantic type, and use it to obtain read type
-                    let sem_ty = expr.inner().get_type();
-                    let print_type = WackPrintType::from_semantic_type(sem_ty.clone())
+                    let sem_ty = expr.r#type();
+                    let print_type = WackPrintType::from_thir_type(sem_ty.clone())
                         .expect("This failing indicates frontend bug");
 
                     // get destination, and make sure types match up
-                    let (value, _wack_ty) = self.lower_expr(expr.into_inner(), instructions);
+                    let (value, _wack_ty) = self.lower_expr(expr, instructions);
                     // TODO: figure out a way to implement "weakening" check for lhs-rhs WACC types
                     //       so it is not strictly checking for equality -- as otherwise this will give false positives
                     // assert_eq!(WackType::from_semantic_type(sem_ty), wack_ty);
@@ -366,13 +376,13 @@ pub(crate) mod ast_lowering_ctx {
                     };
                     instructions.push(instr);
                 }
-                TypedStat::Println(expr) => {
-                    let sem_ty = expr.inner().get_type();
-                    let print_type = WackPrintType::from_semantic_type(sem_ty.clone())
+                thir::Stat::Println(expr) => {
+                    let sem_ty = expr.r#type();
+                    let print_type = WackPrintType::from_thir_type(sem_ty.clone())
                         .expect("This failing indicates frontend bug");
 
                     // get destination, and make sure types match up
-                    let (value, _wack_ty) = self.lower_expr(expr.into_inner(), instructions);
+                    let (value, _wack_ty) = self.lower_expr(expr, instructions);
                     // TODO: figure out a way to implement "weakening" check for lhs-rhs WACC types
                     //       so it is not strictly checking for equality -- as otherwise this will give false positives
                     // assert_eq!(WackType::from_semantic_type(sem_ty), wack_ty);
@@ -384,7 +394,7 @@ pub(crate) mod ast_lowering_ctx {
                     };
                     instructions.push(instr);
                 }
-                TypedStat::IfThenElse {
+                thir::Stat::IfThenElse {
                     if_cond,
                     then_body,
                     else_body,
@@ -398,7 +408,7 @@ pub(crate) mod ast_lowering_ctx {
                     let end_label = self.make_label("if_end");
 
                     // Evaluate the condition
-                    let (condition, _cond_ty) = self.lower_expr(if_cond.into_inner(), instructions);
+                    let (condition, _cond_ty) = self.lower_expr(if_cond, instructions);
 
                     // Jump to true branch if condition is true
                     instructions.push(Instr::JumpIfZero {
@@ -419,7 +429,7 @@ pub(crate) mod ast_lowering_ctx {
                     // End of if
                     instructions.push(Instr::Label(end_label));
                 }
-                TypedStat::WhileDo { while_cond, body } => {
+                thir::Stat::WhileDo { while_cond, body } => {
                     // TODO: add more type-checking code to lowerer SemTy vs. WackTy
 
                     // Makes my life easier
@@ -428,7 +438,7 @@ pub(crate) mod ast_lowering_ctx {
                     let end_label = self.make_label("while_end");
 
                     instructions.push(Instr::Label(start_label.clone()));
-                    let (val, _val_ty) = self.lower_expr(while_cond.into_inner(), instructions);
+                    let (val, _val_ty) = self.lower_expr(while_cond, instructions);
                     instructions.push(Instr::JumpIfZero {
                         condition: val,
                         target: end_label.clone(),
@@ -437,7 +447,9 @@ pub(crate) mod ast_lowering_ctx {
                     instructions.push(Instr::Jump(start_label));
                     instructions.push(Instr::Label(end_label));
                 }
-                TypedStat::Scoped(stat_block) => self.lower_stat_block(stat_block, instructions),
+                thir::Stat::Loop { .. } | thir::Stat::Break(_) | thir::Stat::Continue(_) => {
+                    todo!("implement this once loop-lowering is done")
+                }
             }
         }
 
@@ -445,22 +457,23 @@ pub(crate) mod ast_lowering_ctx {
         // TODO: i ignore types now but i doubt it'll be for long
         fn lower_expr(
             &mut self,
-            expr: TypedExpr,
+            expr: thir::Expr,
             instructions: &mut Vec<WackInstr>,
         ) -> (WackValue, WackType) {
             match expr {
-                TypedExpr::Liter(liter, sem_ty) => (
-                    Self::lower_literal(liter),
-                    WackType::from_semantic_type(sem_ty),
+                thir::Expr::Liter(liter) => (
+                    Self::lower_literal(liter.liter),
+                    WackType::from_thir_type(liter.r#type),
                 ),
-                TypedExpr::Ident(sn_ident, sem_ty) => {
-                    let (ident, wack_ty) = self.lower_ident(sn_ident.into_inner(), sem_ty);
+                thir::Expr::Ident(ident) => {
+                    let (ident, wack_ty) = self.lower_ident(ident);
                     (WackValue::Var(ident), wack_ty)
                 }
-                TypedExpr::ArrayElem(array_elem, sem_ty) => {
+                thir::Expr::ArrayElem(boxed) => {
                     // obtain pointer to the correct array element
+                    let array_elem = *boxed;
                     let (array_elem_src_ptr, elem_ptr_ty) =
-                        self.lower_array_elem_to_ptr(array_elem.into_inner(), sem_ty, instructions);
+                        self.lower_array_elem_to_ptr(array_elem, instructions);
                     let elem_ty = elem_ptr_ty
                         .deref_type()
                         .expect("The pointer to array elements must be typed");
@@ -481,72 +494,68 @@ pub(crate) mod ast_lowering_ctx {
                     // returned the obtained value
                     (WackValue::Var(dst_value), elem_ty)
                 }
-                TypedExpr::Unary(sn_unary, sn_expr, sem_ty) => {
+                thir::Expr::Unary(boxed) => {
+                    let unary_expr = *boxed;
                     let (dst, dst_ty) = self.lower_unary(
-                        sn_unary.into_inner(),
-                        sn_expr.into_inner(),
-                        sem_ty,
+                        unary_expr.expr.0,
+                        unary_expr.expr.1,
+                        unary_expr.r#type,
                         instructions,
                     );
 
                     (WackValue::Var(dst), dst_ty)
                 }
-                TypedExpr::Binary(sn_expr1, sn_binop, sn_expr2, sem_ty) => {
+                thir::Expr::Binary(boxed) => {
+                    let binary_expr = *boxed;
                     let (dst, dst_ty) = self.lower_binary(
-                        sem_ty,
-                        sn_expr1.into_inner(),
-                        sn_binop.into_inner(),
-                        sn_expr2.into_inner(),
+                        binary_expr.r#type,
+                        binary_expr.expr.0,
+                        binary_expr.expr.1,
+                        binary_expr.expr.2,
                         instructions,
                     );
                     (WackValue::Var(dst), dst_ty)
                 }
-                TypedExpr::Paren(sn_expr, _t) => {
-                    self.lower_expr(sn_expr.into_inner(), instructions)
-                }
-                TypedExpr::IfThenElse { .. } => {
+                thir::Expr::IfThenElse { .. } => {
                     todo!("Conditional expressions have not been implemented")
                 }
-                TypedExpr::Error(_) => unreachable!(
-                    "Unless there is a bug somewhere in frontend, this should not be reachable."
-                ),
             }
         }
 
         fn lower_rvalue(
             &mut self,
-            rvalue: TypedRValue,
+            rvalue: thir::RValue,
             instructions: &mut Vec<WackInstr>,
         ) -> (WackValue, WackType) {
             match rvalue {
-                TypedRValue::Expr(expr, _) => self.lower_expr(expr.into_inner(), instructions),
-                TypedRValue::ArrayLiter(elems, sym_type) => {
+                thir::RValue::Expr(expr) => self.lower_expr(expr, instructions),
+                thir::RValue::ArrayLiter(elems) => {
                     // convert to Wack type, which should be a pointer type to raw array
                     let ptr_wack_ty =
-                        WackPointerType::try_from_wack_type(WackType::from_semantic_type(sym_type))
+                        WackPointerType::try_from_wack_type(WackType::from_thir_type(elems.r#type))
                             .expect("Array types should be represented by pointers to the raw array-values in memory");
 
                     let (array_liter_ptr, ptr_ty) = self.lower_array_liter_to_ptr(
-                        elems.into_iter().map(Node::into_inner).collect(),
+                        elems.liter_values,
                         ptr_wack_ty,
                         instructions,
                     );
                     (WackValue::Var(array_liter_ptr), WackType::Pointer(ptr_ty))
                 }
-                TypedRValue::NewPair(fst, snd, sym_type) => {
+                thir::RValue::NewPair(newpair) => {
                     let (newpair_ptr, ptr_ty) = self.lower_newpair_to_ptr(
-                        (fst.into_inner(), snd.into_inner()),
+                        (newpair.fst, newpair.snd),
                         WackPointerType::try_from_wack_type(
-                            WackType::from_semantic_type(sym_type))
+                            WackType::from_thir_type(newpair.r#type))
                             .expect("Pair types should always be lowered to pointers to raw-pair values in memory"),
                         instructions,
                     );
                     (WackValue::Var(newpair_ptr), WackType::Pointer(ptr_ty))
                 }
-                TypedRValue::PairElem(elem, sem_type) => {
+                thir::RValue::PairElem(pair_elem) => {
                     // obtain pointer to the correct pair-element
                     let (pair_elem_src_ptr, elem_ptr_ty) =
-                        self.lower_pair_elem_to_ptr(elem.into_inner(), sem_type, instructions);
+                        self.lower_pair_elem_to_ptr(pair_elem, instructions);
                     let elem_ty = elem_ptr_ty
                         .deref_type()
                         .expect("The pointer to pair elements must be typed");
@@ -567,7 +576,7 @@ pub(crate) mod ast_lowering_ctx {
                     // returned the obtained value
                     (WackValue::Var(dst_value), elem_ty)
                 }
-                TypedRValue::Call {
+                thir::RValue::Call {
                     func_name,
                     args,
                     return_type,
@@ -575,11 +584,11 @@ pub(crate) mod ast_lowering_ctx {
                     // lower the arguments
                     let (wacky_args, _wacky_args_ty): (Vec<WackValue>, Vec<WackType>) = args
                         .into_iter()
-                        .map(|arg| self.lower_expr(arg.into_inner(), instructions))
+                        .map(|arg| self.lower_expr(arg, instructions))
                         .unzip();
 
                     // Covert return type, and fetch the function identifier
-                    let wack_ret_ty = WackType::from_semantic_type(return_type);
+                    let wack_ret_ty = WackType::from_thir_type(return_type);
                     let dst = self.make_temporary(wack_ret_ty.clone());
                     let wacky_func_name = self
                         .func_rename_map
@@ -602,25 +611,22 @@ pub(crate) mod ast_lowering_ctx {
         // the third parameter means whether this pointer should be automatically dereferenced when written
         fn lower_lvalue(
             &mut self,
-            lvalue: TypedLValue,
+            lvalue: thir::LValue,
             instructions: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackType, bool) {
             match lvalue {
-                TypedLValue::Ident(sn_ident, sem_ty) => {
-                    let (a, b) = self.lower_ident(sn_ident.into_inner(), sem_ty);
-
+                thir::LValue::Ident(ident) => {
+                    let (a, b) = self.lower_ident(ident);
                     (a, b, false)
                 }
-                TypedLValue::ArrayElem(array_elem, t) => {
+                thir::LValue::ArrayElem(array_elem) => {
                     // the lvalue evaluation only needs to return the pointer to the array element
-                    let (ptr, ptr_ty) =
-                        self.lower_array_elem_to_ptr(array_elem.into_inner(), t, instructions);
+                    let (ptr, ptr_ty) = self.lower_array_elem_to_ptr(array_elem, instructions);
                     (ptr, WackType::Pointer(ptr_ty), true)
                 }
-                TypedLValue::PairElem(elem, sem_type) => {
+                thir::LValue::PairElem(pair_elem) => {
                     // the rvalue evaluation only needs to return the pointer to the pair element
-                    let (ptr, ptr_ty) =
-                        self.lower_pair_elem_to_ptr(elem.into_inner(), sem_type, instructions);
+                    let (ptr, ptr_ty) = self.lower_pair_elem_to_ptr(pair_elem, instructions);
                     (ptr, WackType::Pointer(ptr_ty), true)
                 }
             }
@@ -629,7 +635,7 @@ pub(crate) mod ast_lowering_ctx {
         #[allow(clippy::arithmetic_side_effects)]
         fn lower_array_liter_to_ptr(
             &mut self,
-            elems: Box<[TypedExpr]>,
+            elems: Box<[thir::Expr]>,
             array_ptr_ty: WackPointerType,
             instructions: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackPointerType) {
@@ -644,7 +650,7 @@ pub(crate) mod ast_lowering_ctx {
             //   `alloc_size_bytes = array_len_bytes + (array_len * array_elem_bytes)`
             // the array is stored on the heap prefixed with its length, so it needs to allocate
             // memory to store that length-value as well.
-            let array_len_bytes = BaseType::ARRAY_LEN_BYTES;
+            let array_len_bytes = WackType::WACC_ARRAY_LEN_WIDTH.byte_width() as usize;
             let array_len = elems.len();
             let array_elem_bytes = elem_ty.try_size_of().unwrap();
             let alloc_size_bytes = array_len_bytes + array_len * array_elem_bytes;
@@ -713,7 +719,7 @@ pub(crate) mod ast_lowering_ctx {
         #[allow(clippy::arithmetic_side_effects)]
         fn lower_newpair_to_ptr(
             &mut self,
-            elems: (TypedExpr, TypedExpr),
+            elems: (thir::Expr, thir::Expr),
             newpair_ptr_ty: WackPointerType,
             instructions: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackPointerType) {
@@ -742,8 +748,8 @@ pub(crate) mod ast_lowering_ctx {
             // it should never be the case that these types disagree
             // TODO: it may be the case that element types can be coerced safely to the
             //       overall pair type, so this assert may trigger false-positives
-            let _fst_target_ty = WackType::from_semantic_type(elems.0.get_type());
-            let _snd_target_ty = WackType::from_semantic_type(elems.1.get_type());
+            let _fst_target_ty = WackType::from_thir_type(elems.0.r#type());
+            let _snd_target_ty = WackType::from_thir_type(elems.1.r#type());
             // TODO: figure out a way to implement "weakening" check for lhs-rhs WACC types
             //       so it is not strictly checking for equality -- as otherwise this will give false positives
             // Self::assert_eq_with_pairtype_erasure(fst_target_ty.clone(), fst_elem_type);
@@ -779,24 +785,23 @@ pub(crate) mod ast_lowering_ctx {
 
         fn lower_pair_elem_to_ptr(
             &mut self,
-            elem: TypedPairElem,
-            _elem_sem_type: SemanticType,
+            elem: thir::PairElem,
             instructions: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackPointerType) {
             // grab the inner value, and whether its Fst or Snd
-            let (lvalue, is_fst) = match elem {
-                TypedPairElem::Fst(lvalue) => (lvalue, true),
-                TypedPairElem::Snd(lvalue) => (lvalue, false),
-            };
+            let (lvalue, is_fst) = (
+                *elem.pair_elem.1,
+                match elem.pair_elem.0 {
+                    hir::PairElemSelector::Fst => true,
+                    hir::PairElemSelector::Snd => false,
+                },
+            );
             // grab lvalue type, which contains the _full_ backwards-propagated type
-            let lvalue_ty = match lvalue.clone().into_inner() {
-                LValue::Ident(_, t) | LValue::ArrayElem(_, t) | LValue::PairElem(_, t) => t,
-            };
-            let pair_ptr_ty = WackType::from_semantic_type(lvalue_ty);
+            let lvalue_ty = lvalue.r#type();
+            let pair_ptr_ty = WackType::from_thir_type(lvalue_ty);
 
             // the lvalue should evaluate to pointer of type pair
-            let (mut pair_src_ptr, _, derefed) =
-                self.lower_lvalue(lvalue.into_inner(), instructions);
+            let (mut pair_src_ptr, _, derefed) = self.lower_lvalue(lvalue, instructions);
             if derefed {
                 let tmp_ident = self.make_temporary(pair_ptr_ty.clone());
                 instructions.push(WackInstr::Load {
@@ -843,102 +848,163 @@ pub(crate) mod ast_lowering_ctx {
             (pair_elem_dst_ptr, pair_elem_ptr_ty)
         }
 
+        // #[allow(clippy::expect_used, clippy::unwrap_used)]
+        // fn lower_array_elem_to_ptr(
+        //     &mut self,
+        //     array_elem: thir::ArrayElem,
+        //     instructions: &mut Vec<WackInstr>,
+        // ) -> (WackTempIdent, WackPointerType) {
+        //     // we are returning a POINTER to the target type, rather than the target type itself
+        //     let _target_type = WackType::pointer_of(WackType::from_thir_type(array_elem.r#type()));
+        //
+        //     // get array name: the pointer to the beginning, and the element type
+        //     let mut src_array_ptr: WackTempIdent = array_elem.array_name.into_inner().into();
+        //     let mut array_ptr_ty = self
+        //         .symbol_table
+        //         .get(&src_array_ptr)
+        //         .expect("This symbol should always be found, unless a previous stage has bugs.")
+        //         .clone();
+        //
+        //     // first element is guaranteed to be there
+        //     let mut elem_ix_iter = array_elem.indices.into_iter();
+        //     let mut index = elem_ix_iter.next().unwrap().into_inner();
+        //
+        //     // track output element pointer
+        //     let mut elem_ptr_ty: WackPointerType;
+        //     let mut elem_dst_ptr: WackTempIdent;
+        //     loop {
+        //         // obtain index value, and the corresponding element type (for the scale)
+        //         let (index_value, _index_ty) = self.lower_expr(index.clone(), instructions);
+        //         // TODO: assert that type = int ??
+        //
+        //         // dereference pointer type to raw-array type, and extract element type from it
+        //         let raw_array_ty = WackPointerType::try_from_wack_type(array_ptr_ty.clone())
+        //             .expect("Lowered value should be a pointer to raw-array value")
+        //             .deref_type()
+        //             .expect("Lowered value should be a pointer to raw-array value");
+        //         // SAFETY: this is guaranteed to be an array-type, if not, previous stage has bugs.
+        //         let array_elem_ty = unsafe { raw_array_ty.into_array_elem_type() };
+        //
+        //         // obtain scale from the inner element type
+        //         let scale = array_elem_ty.try_size_of().unwrap();
+        //
+        //         // obtain pointer to element
+        //         elem_ptr_ty = WackPointerType::of(array_elem_ty.clone());
+        //         let elem_ptr_ty_wrapped = WackType::Pointer(elem_ptr_ty.clone());
+        //         elem_dst_ptr = self.make_temporary(elem_ptr_ty_wrapped.clone());
+        //         instructions.push(WackInstr::ArrayAccess {
+        //             src_array_ptr: WackValue::Var(src_array_ptr.clone()),
+        //             index: index_value,
+        //             scale,
+        //             dst_elem_ptr: elem_dst_ptr.clone(),
+        //         });
+        //
+        //         // if there is more indices, it means the element pointer points to an array;
+        //         // dereference it to obtain another array, and set up for another loop;
+        //         if let Some(next_index) = elem_ix_iter.next() {
+        //             // the element-type is a WACC array, i.e. in reality a pointer to an array,
+        //             // so update the "base" pointer-to array, to be that of the element type
+        //             array_ptr_ty = array_elem_ty;
+        //
+        //             // update `src_array_pointer` by dereferencing the `elem_dst_ptr`, and load
+        //             // the next index for iteration
+        //             src_array_ptr = self.make_temporary(array_ptr_ty.clone());
+        //             instructions.push(WackInstr::Load {
+        //                 src_ptr: WackValue::Var(elem_dst_ptr.clone()),
+        //                 dst: src_array_ptr.clone(),
+        //             });
+        //             index = next_index.into_inner();
+        //         } else {
+        //             // if this is the last index, check that the end-type doesn't disagree with
+        //             // semantic type; if it does, there is a bug in the frontend
+        //             // TODO: it may be the case that element types can be coerced safely to the
+        //             //       overall array type, so this assert may trigger false-positives
+        //             // TODO: figure out a way to implement "weakening" check for lhs-rhs WACC types
+        //             //       so it is not strictly checking for equality -- as otherwise this will give false positives
+        //             // assert_eq!(elem_ptr_ty_wrapped, target_type);
+        //             break;
+        //         }
+        //     }
+        //
+        //     // return variable holding pointer to element
+        //     (elem_dst_ptr, elem_ptr_ty)
+        // }
+
         #[allow(clippy::expect_used, clippy::unwrap_used)]
         fn lower_array_elem_to_ptr(
             &mut self,
-            array_elem: TypedArrayElem,
-            sem_type: SemanticType,
+            array_elem: thir::ArrayElem,
             instructions: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackPointerType) {
-            // we are returning a POINTER to the target type, rather than the target type itself
-            let _target_type = WackType::pointer_of(WackType::from_semantic_type(sem_type));
+            // array-access is potentially nested, and hence the first step is recursive
+            let (src_array_ptr, index, elem_type) = match array_elem {
+                // base case
+                thir::ArrayElem::FirstAccess {
+                    array_name,
+                    index,
+                    r#type,
+                } => {
+                    // the source array pointer is _initially_ the array-identifier
+                    let (src_array_ptr, _array_ptr_ty) = self.lower_ident(array_name);
+                    (src_array_ptr, index, r#type)
+                }
+                // recursive/nested case
+                thir::ArrayElem::NestedAccess {
+                    array_elem,
+                    index,
+                    r#type,
+                } => {
+                    // this is a nested access, so recursively access the array; what we get back is
+                    // a POINTER to a WACC array, which is _itself_ a POINTER to the _actual_ raw array
+                    let (elem_dst_ptr, elem_ptr_ty) =
+                        self.lower_array_elem_to_ptr(*array_elem, instructions);
 
-            // get array name: the pointer to the beginning, and the element type
-            let mut src_array_ptr: WackTempIdent = array_elem.array_name.into_inner().into();
-            let mut array_ptr_ty = self
-                .symbol_table
-                .get(&src_array_ptr)
-                .expect("This symbol should always be found, unless a previous stage has bugs.")
-                .clone();
-
-            // first element is guaranteed to be there
-            let mut elem_ix_iter = array_elem.indices.into_iter();
-            let mut index = elem_ix_iter.next().unwrap().into_inner();
-
-            // track output element pointer
-            let mut elem_ptr_ty: WackPointerType;
-            let mut elem_dst_ptr: WackTempIdent;
-            loop {
-                // obtain index value, and the corresponding element type (for the scale)
-                let (index_value, _index_ty) = self.lower_expr(index.clone(), instructions);
-                // TODO: assert that type = int ??
-
-                // dereference pointer type to raw-array type, and extract element type from it
-                let raw_array_ty = WackPointerType::try_from_wack_type(array_ptr_ty.clone())
-                    .expect("Lowered value should be a pointer to raw-array value")
-                    .deref_type()
-                    .expect("Lowered value should be a pointer to raw-array value");
-                // SAFETY: this is guaranteed to be an array-type, if not, previous stage has bugs.
-                let array_elem_ty = unsafe { raw_array_ty.into_array_elem_type() };
-
-                // obtain scale from the inner element type
-                let scale = array_elem_ty.try_size_of().unwrap();
-
-                // obtain pointer to element
-                elem_ptr_ty = WackPointerType::of(array_elem_ty.clone());
-                let elem_ptr_ty_wrapped = WackType::Pointer(elem_ptr_ty.clone());
-                elem_dst_ptr = self.make_temporary(elem_ptr_ty_wrapped.clone());
-                instructions.push(WackInstr::ArrayAccess {
-                    src_array_ptr: WackValue::Var(src_array_ptr.clone()),
-                    index: index_value,
-                    scale,
-                    dst_elem_ptr: elem_dst_ptr.clone(),
-                });
-
-                // if there is more indices, it means the element pointer points to an array;
-                // dereference it to obtain another array, and set up for another loop;
-                if let Some(next_index) = elem_ix_iter.next() {
-                    // the element-type is a WACC array, i.e. in reality a pointer to an array,
-                    // so update the "base" pointer-to array, to be that of the element type
-                    array_ptr_ty = array_elem_ty;
-
-                    // update `src_array_pointer` by dereferencing the `elem_dst_ptr`, and load
-                    // the next index for iteration
-                    src_array_ptr = self.make_temporary(array_ptr_ty.clone());
+                    // so we need to dereference the DOUBLE-pointer ONCE to get access to the _actual_ pointer to array
+                    let array_ptr_ty = elem_ptr_ty.deref_type().unwrap();
+                    let src_array_ptr = self.make_temporary(array_ptr_ty);
                     instructions.push(WackInstr::Load {
-                        src_ptr: WackValue::Var(elem_dst_ptr.clone()),
+                        src_ptr: WackValue::Var(elem_dst_ptr),
                         dst: src_array_ptr.clone(),
                     });
-                    index = next_index.into_inner();
-                } else {
-                    // if this is the last index, check that the end-type doesn't disagree with
-                    // semantic type; if it does, there is a bug in the frontend
-                    // TODO: it may be the case that element types can be coerced safely to the
-                    //       overall array type, so this assert may trigger false-positives
-                    // TODO: figure out a way to implement "weakening" check for lhs-rhs WACC types
-                    //       so it is not strictly checking for equality -- as otherwise this will give false positives
-                    // assert_eq!(elem_ptr_ty_wrapped, target_type);
-                    break;
-                }
-            }
 
-            // return variable holding pointer to element
+                    (src_array_ptr, index, r#type)
+                }
+            };
+
+            // obtain index value, and the corresponding element type (for the scale)
+            let (index_value, _index_ty) = self.lower_expr(index.clone(), instructions);
+            // TODO: assert that type = int ??
+
+            // convert array-element type, and obtain scale from it
+            let array_elem_ty = WackType::from_thir_type(r#elem_type);
+            let scale = array_elem_ty.try_size_of().unwrap();
+
+            // create destination pointer-identifier, and its type - which is
+            // a pointer of the array-element type
+            let elem_ptr_ty = WackPointerType::of(array_elem_ty);
+            let elem_dst_ptr = self.make_temporary(WackType::Pointer(elem_ptr_ty.clone()));
+
+            // push array-access instruction
+            instructions.push(WackInstr::ArrayAccess {
+                src_array_ptr: WackValue::Var(src_array_ptr),
+                index: index_value,
+                scale,
+                dst_elem_ptr: elem_dst_ptr.clone(),
+            });
+
+            // return identifier holding the pointer, and pointer-type
             (elem_dst_ptr, elem_ptr_ty)
         }
 
         // Very confusing but converts a syntax literal to Wacky Value
         // For now their definitions are basically the same
-        fn lower_literal(liter: ast::Liter) -> WackValue {
+        fn lower_literal(liter: hir::Liter) -> WackValue {
             WackValue::Literal(liter.into())
         }
 
-        fn lower_ident(
-            &mut self,
-            ident: RenamedName,
-            _sem_type: SemanticType,
-        ) -> (WackTempIdent, WackType) {
+        fn lower_ident(&mut self, ident: thir::Ident) -> (WackTempIdent, WackType) {
             // fetch associated type
-            let ident: WackTempIdent = ident.into();
+            let ident: WackTempIdent = ident.ident.into();
             let wack_ty = self
                 .symbol_table
                 .get(&ident)
@@ -957,16 +1023,16 @@ pub(crate) mod ast_lowering_ctx {
         // TODO: check this later
         fn lower_unary(
             &mut self,
-            unary_op: UnaryOper,
-            expr: TypedExpr,
-            sem_type: SemanticType,
+            unary_op: hir::UnaryOper,
+            expr: thir::Expr,
+            sem_type: thir::Type,
             instr: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackType) {
             // lower the inner expression
 
-            if let UnaryOper::Minus = unary_op {
+            if let hir::UnaryOper::Minus = unary_op {
                 let (src, _src_ty) = self.lower_expr(expr, instr);
-                let dst_ty = WackType::from_semantic_type(sem_type);
+                let dst_ty = WackType::from_thir_type(sem_type);
                 let dst_name = self.make_temporary(dst_ty.clone());
                 instr.push(WackInstr::Binary {
                     op: BinaryOp::Sub,
@@ -977,9 +1043,9 @@ pub(crate) mod ast_lowering_ctx {
                 return (dst_name, dst_ty);
             }
 
-            if let UnaryOper::Len = unary_op {
+            if let hir::UnaryOper::Len = unary_op {
                 let (src, src_ty) = self.lower_expr(expr, instr);
-                let dst_ty = WackType::from_semantic_type(sem_type);
+                let dst_ty = WackType::from_thir_type(sem_type);
                 let dst_name = self.make_temporary(dst_ty.clone());
                 let new_src = self.make_temporary(src_ty.clone());
                 instr.push(WackInstr::add_ptr_offset(src, -4, new_src.clone()));
@@ -997,7 +1063,7 @@ pub(crate) mod ast_lowering_ctx {
             // TODO: do something with this type
 
             // make new identifier of target type
-            let dst_ty = WackType::from_semantic_type(sem_type);
+            let dst_ty = WackType::from_thir_type(sem_type);
             let dst_name = self.make_temporary(dst_ty.clone());
 
             // push instruction + return result
@@ -1012,25 +1078,25 @@ pub(crate) mod ast_lowering_ctx {
 
         fn lower_binary(
             &mut self,
-            sem_ty: SemanticType,
-            expr1: TypedExpr,
-            binop: BinaryOper,
-            expr2: TypedExpr,
+            sem_ty: thir::Type,
+            expr1: thir::Expr,
+            binop: hir::BinaryOper,
+            expr2: thir::Expr,
             instr: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackType) {
             match binop {
-                BinaryOper::LAnd => self.lower_and_expr(sem_ty, expr1, expr2, instr),
-                BinaryOper::LOr => self.lower_or_expr(sem_ty, expr1, expr2, instr),
+                hir::BinaryOper::LAnd => self.lower_and_expr(sem_ty, expr1, expr2, instr),
+                hir::BinaryOper::LOr => self.lower_or_expr(sem_ty, expr1, expr2, instr),
                 _ => self.lower_normal_binary(sem_ty, expr1, binop, expr2, instr),
             }
         }
 
         fn lower_normal_binary(
             &mut self,
-            sem_ty: SemanticType,
-            expr1: TypedExpr,
-            binop: BinaryOper,
-            expr2: TypedExpr,
+            sem_ty: thir::Type,
+            expr1: thir::Expr,
+            binop: hir::BinaryOper,
+            expr2: thir::Expr,
             instr: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackType) {
             // We handle And/Or differently since we'll make them short circuit here
@@ -1039,7 +1105,7 @@ pub(crate) mod ast_lowering_ctx {
             // TODO: do something with these types??
 
             // make new identifier of target type
-            let dst_ty = WackType::from_semantic_type(sem_ty);
+            let dst_ty = WackType::from_thir_type(sem_ty);
             let dst_name = self.make_temporary(dst_ty.clone());
 
             // push instruction + return result
@@ -1055,9 +1121,9 @@ pub(crate) mod ast_lowering_ctx {
 
         fn lower_or_expr(
             &mut self,
-            sem_ty: SemanticType,
-            expr1: TypedExpr,
-            expr2: TypedExpr,
+            sem_ty: thir::Type,
+            expr1: thir::Expr,
+            expr2: thir::Expr,
             instr: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackType) {
             // Makes my life easier
@@ -1068,7 +1134,7 @@ pub(crate) mod ast_lowering_ctx {
             let end_label = self.make_label("or_end");
 
             // Create a temporary variable to store the result of expression
-            let dst_ty = WackType::from_semantic_type(sem_ty);
+            let dst_ty = WackType::from_thir_type(sem_ty);
             let dst = self.make_temporary(dst_ty.clone());
 
             // evaluate left, and short circuit conditionally
@@ -1107,9 +1173,9 @@ pub(crate) mod ast_lowering_ctx {
 
         fn lower_and_expr(
             &mut self,
-            sem_ty: SemanticType,
-            expr1: TypedExpr,
-            expr2: TypedExpr,
+            sem_ty: thir::Type,
+            expr1: thir::Expr,
+            expr2: thir::Expr,
             instr: &mut Vec<WackInstr>,
         ) -> (WackTempIdent, WackType) {
             // Makes my life easier
@@ -1120,7 +1186,7 @@ pub(crate) mod ast_lowering_ctx {
             let end_label = self.make_label("and_end");
 
             // Create a temporary variable to store the result of expression
-            let dst_ty = WackType::from_semantic_type(sem_ty);
+            let dst_ty = WackType::from_thir_type(sem_ty);
             let dst = self.make_temporary(dst_ty.clone());
 
             // evaluate left, and short circuit conditionally

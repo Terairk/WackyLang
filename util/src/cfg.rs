@@ -25,19 +25,19 @@ use std::{
 // TODO: figure out how I handle my rogue jumps to error handlers here
 
 use derive_more::Display;
-use internment::ArcIntern;
 // Location is either a Label or a Function
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Location((ArcIntern<str>, usize));
+pub struct Location((InternStr, usize));
 
 impl Location {
     #[must_use]
     #[inline]
-    pub const fn new(name: ArcIntern<str>, id: usize) -> Self {
+    pub const fn new(name: InternStr, id: usize) -> Self {
         Self((name, id))
     }
 }
 
+use crate::alias::InternStr;
 use SimpleInstr::{ConditionalJump, ErrorJump, Label, Other, Return, UnconditionalJump};
 
 /// A simplified instruction type that can represent both Wack and AssemblyIR

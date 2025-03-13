@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-use SimpleInstr::{ConditionalJump, Label, UnconditionalJump};
 use util::cfg::SimpleInstr;
-use util::{CFG, Instruction, cfg::NodeId};
+use util::{cfg::NodeId, Instruction, CFG};
+use SimpleInstr::{ConditionalJump, Label, UnconditionalJump};
 
 use super::cfg::EmptyCFG;
 #[must_use]

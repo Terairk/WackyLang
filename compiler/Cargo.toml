@@ -8,26 +8,26 @@ publish = false
 workspace = true
 
 [dependencies]
-syntax = { workspace = true }
+frontend = { workspace = true }
 middle = { workspace = true }
 backend = { workspace = true }
 ariadne = { workspace = true }
 util = { workspace = true }
 # Only used for testing graphviz output
-internment = { workspace = true, features = ["arc"] }
+internment = { workspace = true }
 
 chumsky = { workspace = true, features = [
-  "std",
-  "stacker",
-  "memoization",
-  "pratt",
-  "regex",
-  "nightly",
+    "std",
+    "stacker",
+    "memoization",
+    "pratt",
+    "regex",
+    "nightly",
 ] }
 clap = { workspace = true, features = ["derive"] }
 regex = { workspace = true }
 
-# Default binary 
+# Default binary
 [[bin]]
 name = "compiler"
 path = "src/main.rs"

@@ -9,7 +9,7 @@
 use crate::assembly_ast::AsmInstruction::{Binary, Cmp, Idiv, JmpCC, Lea, Mov, MovZeroExtend};
 use crate::assembly_ast::CondCode;
 use crate::assembly_ast::Operand::{Data, Memory, Reg};
-use crate::assembly_ast::Register::{R9, R10, R11};
+use crate::assembly_ast::Register::{R10, R11, R9};
 use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, Operand, Operand::Imm,
 };

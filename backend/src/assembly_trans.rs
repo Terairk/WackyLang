@@ -1,6 +1,21 @@
 use crate::assembly_ast::{
-    AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, FUNCTION,
-    LABEL, Operand, Register,
+    AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
+    Register, FUNCTION, LABEL,
+};
+use middle::ast_transform::WackIdentSymbolTable;
+use middle::types::{BitWidth, WackType};
+use middle::wackir::WackInstr::JumpToHandler;
+use middle::wackir::{
+    BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackPrintType, WackProgram,
+    WackReadType, WackTempIdent, WackValue,
+};
+use std::collections::{BTreeMap, HashMap};
+use util::gen_flags::{insert_flag_gbl, GenFlags};
+use util::gen_flags::{
+    INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO,
+    INBUILT_EXIT, INBUILT_FREE, INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS,
+    INBUILT_PRINTLN, INBUILT_PRINT_BOOL, INBUILT_PRINT_CHAR, INBUILT_PRINT_INT,
+    INBUILT_PRINT_PTR, INBUILT_PRINT_STRING, INBUILT_READ_CHAR, INBUILT_READ_INT,
 };
 use crate::registers::{ARR_INDEX_REG, ARR_LOAD_RETURN, ARR_PTR_REG, RegisterSet};
 use AsmInstruction::{
@@ -10,25 +25,11 @@ use AsmInstruction::{
 use AssemblyType::{Byte, Longword, Quadword};
 use CondCode::{E, G, GE, L, LE, NE};
 use Operand::{Data, Imm, Indexed, Memory, Pseudo, Reg};
-use Register::{AX, BP, CX, DI, DX, R8, R9, R10, SI, SP};
+use Register::{AX, BP, CX, DI, DX, R10, R8, R9, SI, SP};
 use WackInstr::{
     AddPtr, Alloc, ArrayAccess, Binary as WackBinary, Copy, CopyToOffset, Exit, FreeChecked,
     FreeUnchecked, FunCall, Jump, JumpIfNotZero, JumpIfZero, Label, Load, NullPtrGuard, Print,
     Println, Read, Return, Unary as WackUnary,
-};
-use middle::types::{BitWidth, WackType};
-use middle::wackir::WackInstr::JumpToHandler;
-use middle::wackir::{
-    BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackPrintType, WackProgram,
-    WackReadType, WackTempIdent, WackValue,
-};
-use std::collections::{BTreeMap, HashMap};
-use util::gen_flags::{GenFlags, insert_flag_gbl};
-use util::gen_flags::{
-    INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO,
-    INBUILT_EXIT, INBUILT_FREE, INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS,
-    INBUILT_PRINT_BOOL, INBUILT_PRINT_CHAR, INBUILT_PRINT_INT, INBUILT_PRINT_PTR,
-    INBUILT_PRINT_STRING, INBUILT_PRINTLN, INBUILT_READ_CHAR, INBUILT_READ_INT,
 };
 /* ================== PUBLIC API ================== */
 
@@ -42,7 +43,7 @@ const STACK_START_PARAM: i32 = 16;
 pub fn wacky_to_assembly(
     program: WackProgram,
     counter: usize,
-    symbol_table: HashMap<WackTempIdent, WackType>,
+    symbol_table: WackIdentSymbolTable,
 ) -> (AsmProgram, AsmGen) {
     let mut asm_gen = AsmGen::new(counter, symbol_table);
     let mut asm_functions: Vec<AsmFunction> = Vec::new();
@@ -107,8 +108,9 @@ const fn get_type_from_literal(lit: &WackLiteral) -> AssemblyType {
 }
 
 impl AsmGen {
-    fn new(counter: usize, symbol_table: HashMap<WackTempIdent, WackType>) -> Self {
+    fn new(counter: usize, symbol_table: WackIdentSymbolTable) -> Self {
         let symbol_table = symbol_table
+            .0
             .into_iter()
             .map(|(k, v)| (k, convert_type(&v)))
             .collect();

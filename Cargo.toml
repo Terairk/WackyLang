@@ -1,13 +1,13 @@
 [workspace]
 resolver = "3"
 members = [
-  "backend",
-  "compiler",
-  "middle",
-  "syntax",
-  "util",
-  "util/fn_pipe",
-  "util/fn_pipe/proc",
+    "backend",
+    "compiler",
+    "frontend",
+    "middle",
+    "util",
+    "util/fn_pipe",
+    "util/fn_pipe/proc",
 ]
 
 [profile.dev]
@@ -24,8 +24,8 @@ opt-level = 3
 ## Crate members as common dependencies
 backend = { path = "backend" }
 compiler = { path = "compiler" }
+frontend = { path = "frontend" }
 middle = { path = "middle" }
-syntax = { path = "syntax" }
 util = { path = "util" }
 fn_pipe = { path = "util/fn_pipe" }
 fn_pipe_proc = { path = "util/fn_pipe/proc" }
@@ -41,6 +41,7 @@ delegate = "0.13"
 impl-trait-for-tuples = "0.2"
 clap = "4.5"
 bitflags = "2.8"
+enum_primitive = "0.1"
 # Utility dependencies
 itertools = "0.14"
 thiserror = "2"
@@ -48,6 +49,8 @@ internment = "0.8"
 recursion = "0.5"
 once_cell = "1.20"
 regex = "1.11"
+bon = "3.4"
+generativity = "1.1"
 # Functional generics/lenses frameworks
 frunk_core = "0.4"
 frunk = "0.4"

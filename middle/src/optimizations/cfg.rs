@@ -1,19 +1,18 @@
 use std::collections::HashSet;
 
-use internment::ArcIntern;
 use util::{
-    CFG, Instruction, SimpleInstr,
-    cfg::{Location, NodeId},
+    cfg::{Location, NodeId}, Instruction, SimpleInstr,
+    CFG,
 };
 // temporary bCFG cus I want to leave everything the same
 
+use crate::alias::InternStr;
 use crate::wackir::{WackInstr, WackTempIdent};
 use WackInstr::{
     AddPtr, Alloc, ArrayAccess, Binary, Copy, CopyToOffset, Exit, FreeChecked, FreeUnchecked,
     FunCall, Jump, JumpIfNotZero, JumpIfZero, JumpToHandler, Label, Load, NullPtrGuard, Print,
     Println, Read, Return, Unary,
 };
-
 // TODO: Change the CFG to the proper CFG type
 // I'll figure this out as I go along
 
@@ -54,7 +53,7 @@ impl Instruction for WackInstr {
 impl From<WackTempIdent> for Location {
     #[inline]
     fn from(ident: WackTempIdent) -> Self {
-        let interned_string: ArcIntern<str> = ident.clone().into();
+        let interned_string: InternStr = ident.clone().into();
         let id = ident.get_id();
         Self::new(interned_string, id)
     }

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use derive_more::Display;
-use util::{CFG, cfg::BasicBlock, cfg::NodeId};
+use util::{cfg::BasicBlock, cfg::NodeId, CFG};
 
 use crate::wackir::{WackInstr, WackTempIdent, WackValue};
 
@@ -11,7 +11,7 @@ use WackInstr::{
     Println, Read, Return, Unary,
 };
 
-use super::cfg::{EmptyCFG, get_dst, reverse_postorder_block_ids};
+use super::cfg::{get_dst, reverse_postorder_block_ids, EmptyCFG};
 // TODO: make this more efficient to reduce the clones on the reaching copies and instructions
 pub fn copy_propagation(cfg: &EmptyCFG) -> EmptyCFG {
     let annotated_cfg = find_reaching_copies(cfg);

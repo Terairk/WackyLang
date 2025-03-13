@@ -1,18 +1,13 @@
 #![allow(clippy::arbitrary_source_item_ordering)]
 
-use crate::ext::ParserExt as _;
-use crate::{
-    alias, ast, private,
-    source::{SourcedNode, SourcedSpan},
-    token::Delim,
-    token::Token,
-    types,
-};
-use chumsky::input::{Checkpoint, Cursor};
-use chumsky::inspector::Inspector;
+use crate::parsing::alias::{ProgramExtra, ProgramOutput};
+use crate::parsing::ext::ParserExt;
+use crate::parsing::token::{Delim, Token};
+use crate::parsing::{alias, ast, build_syntactic_report};
+use crate::source::{SourcedBoxedNode, SourcedNode, SourcedSpan, StrSourceId};
+use crate::{private, StreamType};
 use chumsky::pratt::right;
 use chumsky::{
-    Parser,
     combinator::{DelimitedBy, MapWith},
     extra::ParserExtra,
     input::BorrowInput,
@@ -22,14 +17,17 @@ use chumsky::{
     primitive::Just,
     recovery::{RecoverWith, ViaParser},
     select_ref,
+    Parser,
 };
 use extend::ext;
-use std::fmt;
-use std::marker::PhantomData;
+use std::io;
+use std::io::Write;
+use thiserror::Error;
 use util::nonempty::NonemptyArray;
 
 /// A file-local type alias for better readability of type definitions
 type SN<T> = SourcedNode<T>;
+type SBN<T> = SourcedBoxedNode<T>;
 
 #[must_use]
 #[inline]
@@ -41,7 +39,7 @@ where
     // identifiers can be extracted directly from `Ident` tokens, copying
     // an internal atomic reference to an interned identifier string
     #[allow(clippy::pattern_type_mismatch)]
-    (select_ref! { Token::Ident(x) => x.clone() })
+    (select_ref! { Token::Ident(x) => x.clone().into() })
         .labelled("<ident>")
         .as_context()
 }
@@ -85,12 +83,12 @@ where
 pub fn array_elem_parser<'src, I, E, Ident, Expr>(
     ident: Ident,
     expr: Expr,
-) -> impl alias::Parser<'src, I, ast::ArrayElem<ast::Ident, ()>, E>
+) -> impl alias::Parser<'src, I, ast::ArrayElem, E>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
     Ident: alias::Parser<'src, I, ast::Ident, E>,
-    Expr: alias::Parser<'src, I, ast::Expr<ast::Ident, ()>, E>,
+    Expr: alias::Parser<'src, I, ast::Expr, E>,
 {
     let array_elem_indices = expr
         .delim_by(Delim::Bracket)
@@ -100,16 +98,17 @@ where
         .collect::<Vec<_>>()
         .pipe((NonemptyArray::try_from_boxed_slice, Result::unwrap));
     let array_elem = group((ident.sn(), array_elem_indices))
-        .map_group(ast::ArrayElem::<ast::Ident, ()>::new)
+        .map_group(ast::ArrayElem::new)
         .labelled("<array-elem>")
         .as_context();
 
     array_elem
 }
 
+#[allow(clippy::too_many_lines)]
 #[must_use]
 #[inline]
-pub fn expr_parser<'src, I, E>() -> impl alias::Parser<'src, I, ast::Expr<ast::Ident, ()>, E>
+pub fn expr_parser<'src, I, E>() -> impl alias::Parser<'src, I, ast::Expr, E>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan> + ValueInput<'src>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
@@ -117,34 +116,29 @@ where
     recursive(|expr| {
         let ident = ident_parser();
         let liter = liter_parser();
-        let array_elem = array_elem_parser(ident.clone(), expr.clone());
+        let array_elem = array_elem_parser(ident.clone(), expr.clone()).sbn();
 
         // parse parenthesized expressions
-        let paren_expr = expr.clone().delim_by(Delim::Paren).sn();
+        let paren_expr = expr.clone().delim_by(Delim::Paren).sbn();
 
         // parse if-then-else expressions
         let if_then_else = just(Token::If).ignore_then(group((
-            expr.clone().then_ignore(just(Token::Then)).sn(),
-            expr.clone().then_ignore(just(Token::Else)).sn(),
-            expr.clone().then_ignore(just(Token::Fi)).sn(),
+            expr.clone().then_ignore(just(Token::Then)).sbn(),
+            expr.clone().then_ignore(just(Token::Else)).sbn(),
+            expr.clone().then_ignore(just(Token::Fi)).sbn(),
         )));
 
         // 'Atoms' are expressions that contain no ambiguity
         let atom = choice((
-            liter.map(|lit| ast::Expr::Liter(lit, ())),
+            liter.sn().map(ast::Expr::Liter),
             // array elements begin with identifiers, so
             // give them precedence over identifiers
-            array_elem
-                .clone()
-                .sn()
-                .map(|elem| ast::Expr::ArrayElem(elem, ())),
+            array_elem.map(ast::Expr::ArrayElem),
             // Bootleg approach to get SN<Ident> from Ident parser
-            ident.clone().sn().map(|ident| ast::Expr::Ident(ident, ())),
-            paren_expr.map(|paren| ast::Expr::Paren(paren, ())),
+            ident.sn().map(ast::Expr::Ident),
+            paren_expr.map(ast::Expr::Paren),
             // if-then-else expression should be parsed after all others
-            if_then_else.map(|(if_cond, then_val, else_val)| {
-                ast::Expr::if_then_else(if_cond, then_val, else_val, ())
-            }),
+            if_then_else.map_group(ast::Expr::if_then_else),
         ));
 
         // Perform simplistic error recovery on Atom expressions
@@ -225,16 +219,16 @@ where
 
         // procedure to turn patterns into binary expressions
         let binary_create = |lhs, op, rhs, extra: &mut MapExtra<'src, '_, I, _>| {
-            SN::new(ast::Expr::Binary(lhs, op, rhs, ()), extra.span())
+            SBN::from_unboxed(ast::Expr::Binary(lhs, op, rhs), extra.span())
         };
 
         // a PRATT parser for prefix and left-infix operator expressions
         #[allow(clippy::shadow_unrelated)]
-        let atom = atom.sn().pratt((
+        let atom = atom.sbn().pratt((
             // We want unary operations to happen before any binary ones, so their precedence
             // is set to be the highest. But amongst themselves the precedence is the same.
             prefix(3, unary_oper, |op, rhs, extra| {
-                SN::new(ast::Expr::Unary(op, rhs, ()), extra.span())
+                SBN::from_unboxed(ast::Expr::Unary(op, rhs), extra.span())
             }),
             // Product ops (multiply, divide, and mod) have equal precedence, and the highest
             // binary operator precedence overall
@@ -267,13 +261,13 @@ where
         ));
 
         // as of now, no other type of expression exists
-        expr.map(SN::into_inner)
+        expr.map(SBN::into_inner_unboxed)
     })
 }
 
 #[must_use]
 #[inline]
-pub fn type_parser<'src, I, E>() -> impl alias::Parser<'src, I, types::Type, E>
+pub fn type_parser<'src, I, E>() -> impl alias::Parser<'src, I, ast::Type, E>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan> + ValueInput<'src>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
@@ -281,10 +275,10 @@ where
     recursive(|r#type| {
         // base types have no recursion
         let base_type = choice((
-            just(Token::Int).to(types::BaseType::Int),
-            just(Token::Bool).to(types::BaseType::Bool),
-            just(Token::Char).to(types::BaseType::Char),
-            just(Token::String).to(types::BaseType::String),
+            just(Token::Int).to(ast::BaseType::Int),
+            just(Token::Bool).to(ast::BaseType::Bool),
+            just(Token::Char).to(ast::BaseType::Char),
+            just(Token::String).to(ast::BaseType::String),
         ))
         .sn()
         .labelled("<base-type>")
@@ -305,14 +299,14 @@ where
                 .ignored()
                 .repeated(),
                 |ty, (), extra| {
-                    types::Type::ArrayType(SN::new(types::ArrayType::new(ty), extra.span()))
+                    ast::Type::ArrayType(SBN::from_unboxed(ast::ArrayType::new(ty), extra.span()))
                 },
             )
             // as explained above, in order to get the parser to consume tokens correctly, we have
             // to allow the possibility that at this point, this isn't even an ArrayType, so we are
             // filtering only for array types at this point
             .select_output(|ty, _| match ty {
-                types::Type::ArrayType(ty) => Some(ty),
+                ast::Type::ArrayType(ty) => Some(ty),
                 _ => None,
             })
             .memoized()
@@ -323,9 +317,9 @@ where
         // an array type and all other types look the same until the very last, so we should
         // give precedence to array types to make sure they are not incorrectly missed
         let pair_elem_type = choice((
-            array_type.clone().map(types::PairElemType::ArrayType),
-            base_type.clone().map(types::PairElemType::BaseType),
-            just(Token::Pair).to_span().map(types::PairElemType::Pair),
+            array_type.clone().map(ast::PairElemType::ArrayType),
+            base_type.clone().map(ast::PairElemType::BaseType),
+            just(Token::Pair).to_span().map(ast::PairElemType::Pair),
         ))
         .labelled("<pair-elem-type>")
         .as_context();
@@ -335,10 +329,10 @@ where
                     pair_elem_type.clone().then_ignore(just(Token::Comma)),
                     pair_elem_type,
                 ))
-                .map_group(types::Type::PairType)
+                .map_group(ast::Type::PairType)
                 .delim_by(Delim::Paren)
                 // Attempt to recover anything that looks like a (parenthesised) pair type but contains errors
-                .recover_with_delim(Delim::Paren, types::Type::Error),
+                .recover_with_delim(Delim::Paren, ast::Type::Error),
             )
             .labelled("<pair-type>")
             .as_context();
@@ -348,8 +342,8 @@ where
         // give precedence to array types to make sure they are not incorrectly missed
         #[allow(clippy::shadow_unrelated)]
         let r#type = choice((
-            array_type.map(types::Type::ArrayType),
-            base_type.map(types::Type::BaseType),
+            array_type.map(ast::Type::ArrayType),
+            base_type.map(ast::Type::BaseType),
             pair_type,
         ))
         .labelled("<type>")
@@ -359,14 +353,13 @@ where
     })
 }
 
+#[allow(clippy::too_many_lines)]
 #[inline]
-pub fn stat_parser<'src, I, E, P>(
-    stat_chain: P,
-) -> impl alias::Parser<'src, I, ast::Stat<ast::Ident, ()>, E>
+pub fn stat_parser<'src, I, E, P>(stat_chain: P) -> impl alias::Parser<'src, I, ast::Stat, E>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan> + ValueInput<'src>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
-    P: alias::Parser<'src, I, ast::StatBlock<ast::Ident, ()>, E>,
+    P: alias::Parser<'src, I, ast::StatBlock, E>,
 {
     let ident = ident_parser();
     let expr = expr_parser();
@@ -389,7 +382,7 @@ where
     let array_liter = expr_sequence
         .clone()
         .delim_by(Delim::Bracket)
-        .map(|lit| ast::RValue::ArrayLiter(lit, ()))
+        .map(ast::RValue::ArrayLiter)
         .labelled("<array-liter>")
         .as_context();
 
@@ -397,20 +390,23 @@ where
     let newpair = just(Token::Newpair).ignore_then(
         group((expr.clone().then_ignore(just(Token::Comma)), expr.clone()))
             .delim_by(Delim::Paren)
-            .map_group(|p1, p2| ast::RValue::NewPair(p1, p2, ())),
+            .map_group(ast::RValue::NewPair),
     );
 
     // declare the LValue parser
     let mut lvalue = Recursive::declare();
 
     // pair-elem parser
-    let pair_elem = choice((
-        just(Token::Fst).ignore_then(lvalue.clone().sn().map(ast::PairElem::Fst)),
-        just(Token::Snd).ignore_then(lvalue.clone().sn().map(ast::PairElem::Snd)),
-    ))
-    .sn()
-    .labelled("<pair-elem>")
-    .as_context();
+    let pair_elem_selector = choice((
+        just(Token::Fst).to(ast::PairElemSelector::Fst),
+        just(Token::Snd).to(ast::PairElemSelector::Snd),
+    ));
+    let pair_elem = pair_elem_selector
+        .then(lvalue.clone().sbn())
+        .map_group(ast::PairElem)
+        .sn()
+        .labelled("<pair-elem>")
+        .as_context();
 
     // function call parser
     let function_call = just(Token::Call).ignore_then(
@@ -420,11 +416,9 @@ where
     // define the lvalue parser: array-elem contains identifier within it, so it should be
     // given parsing precedence to disambiguate properly
     lvalue.define(choice((
-        array_elem.map(|elem| ast::LValue::ArrayElem(elem, ())),
-        pair_elem
-            .clone()
-            .map(|elem| ast::LValue::PairElem(elem, ())),
-        ident.clone().map(|ident| ast::LValue::Ident(ident, ())),
+        array_elem.map(ast::LValue::ArrayElem),
+        pair_elem.clone().map(ast::LValue::PairElem),
+        ident.clone().map(ast::LValue::Ident),
     )));
 
     let lvalue = lvalue.sn().labelled("<lvalue>").as_context();
@@ -433,13 +427,13 @@ where
     let rvalue = choice((
         array_liter,
         newpair,
-        pair_elem.map(|elem| ast::RValue::PairElem(elem, ())),
+        pair_elem.map(ast::RValue::PairElem),
         function_call,
         // TODO: the expression parser turns errors into error nodes, which makes it
         //       seem like the parser succeeded even if it failed. This messes with
         //       backtracking control flow, so until we figure out a way to "propagate"
         //       the erroneous state of the parser, expressions will have to be parsed last
-        expr.clone().map(|e| ast::RValue::Expr(e, ())),
+        expr.clone().map(ast::RValue::Expr),
     ))
     .sn()
     .labelled("<rvalue>")
@@ -514,7 +508,7 @@ where
 }
 
 #[inline]
-pub fn program_parser<'src, I, E>() -> impl alias::Parser<'src, I, ast::Program<ast::Ident, ()>, E>
+pub fn program_parser<'src, I, E>() -> impl alias::Parser<'src, I, ast::Program, E>
 where
     I: BorrowInput<'src, Token = Token, Span = SourcedSpan> + ValueInput<'src>,
     E: ParserExtra<'src, I, Error = Rich<'src, I::Token, I::Span>>,
@@ -598,37 +592,89 @@ where
         .as_context()
 }
 
-#[derive(Default)]
-pub struct DebugInspector<'src, I>(PhantomData<&'src I>)
-where
-    I: Input<'src>;
-
-impl<'src, I> Inspector<'src, I> for DebugInspector<'src, I>
-where
-    I: Input<'src>,
-    I::Token: fmt::Debug,
-{
-    type Checkpoint = usize;
-
-    fn on_token(&mut self, token: &I::Token) {
-        println!("DEBUG INSPECTOR: on token: {:#?}", token);
-    }
-
-    fn on_save<'parse>(&self, cursor: &Cursor<'src, 'parse, I>) -> Self::Checkpoint {
-        let location = I::cursor_location(cursor.inner());
-        println!("DEBUG INSPECTOR: on save: {:#?}", location);
-        location
-    }
-
-    fn on_rewind<'parse>(&mut self, marker: &Checkpoint<'src, 'parse, I, Self::Checkpoint>) {
-        let location = I::cursor_location(marker.cursor().inner());
-        let checkpoint = marker.inspector();
-        println!(
-            "DEBUG INSPECTOR: on rewind: from {:#?} to {:#?}",
-            location, checkpoint
-        );
-    }
+#[derive(Debug, Error)]
+pub enum ParsingPhaseError {
+    #[error("Encountered parsing error, corresponding error report written to provided output")]
+    ParsingErrorWritten,
+    #[error(transparent)]
+    IoError(#[from] io::Error),
 }
+
+/// # Errors
+/// TODO: add errors docs
+///
+#[allow(
+    clippy::missing_panics_doc,
+    clippy::expect_used,
+    clippy::needless_pass_by_value
+)]
+#[inline]
+pub fn parsing_phase<S: AsRef<str>, W: Write + Clone>(
+    source: S,
+    source_id: StrSourceId,
+    tokens: Vec<(Token, SourcedSpan)>,
+    parsing_error_code: i32,
+    stream_type: StreamType,
+    output_stream: W,
+) -> Result<ast::Program, ParsingPhaseError> {
+    // attach the span of each token to it before parsing, so it is not forgotten
+    let source = source.as_ref();
+    let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
+    let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
+
+    // parse the tree
+    #[allow(clippy::pattern_type_mismatch)]
+    let (parsed, parse_errs): ProgramOutput =
+        Parser::parse(&program_parser::<_, ProgramExtra>(), spanned_tokens).into_output_errors();
+
+    // return any parsed errors
+    if !parse_errs.is_empty() {
+        for e in &parse_errs {
+            build_syntactic_report(
+                e,
+                source.clone(),
+                parsing_error_code,
+                stream_type,
+                output_stream.clone(),
+            )?
+        }
+        return Err(ParsingPhaseError::ParsingErrorWritten);
+    }
+
+    Ok(parsed.expect("If lexing errors are not empty, tokens should be Valid"))
+}
+
+// #[derive(Default)]
+// pub struct DebugInspector<'src, I>(PhantomData<&'src I>)
+// where
+//     I: Input<'src>;
+//
+// impl<'src, I> Inspector<'src, I> for DebugInspector<'src, I>
+// where
+//     I: Input<'src>,
+//     I::Token: fmt::Debug,
+// {
+//     type Checkpoint = usize;
+//
+//     fn on_token(&mut self, token: &I::Token) {
+//         println!("DEBUG INSPECTOR: on token: {:#?}", token);
+//     }
+//
+//     fn on_save<'parse>(&self, cursor: &Cursor<'src, 'parse, I>) -> Self::Checkpoint {
+//         let location = I::cursor_location(cursor.inner());
+//         println!("DEBUG INSPECTOR: on save: {:#?}", location);
+//         location
+//     }
+//
+//     fn on_rewind<'parse>(&mut self, marker: &Checkpoint<'src, 'parse, I, Self::Checkpoint>) {
+//         let location = I::cursor_location(marker.cursor().inner());
+//         let checkpoint = marker.inspector();
+//         println!(
+//             "DEBUG INSPECTOR: on rewind: from {:#?} to {:#?}",
+//             location, checkpoint
+//         );
+//     }
+// }
 
 /// An extension trait for [Parser] local to this file, for convenient dot-syntax utility methods
 #[ext(name = LocalParserExt, supertraits = Sized + private::Sealed)]
@@ -646,6 +692,16 @@ where
         I: Input<'src, Token = Token, Span = SourcedSpan>,
     {
         self.map_with(|t, e| SN::new(t, e.span()))
+    }
+
+    /// Convenience method to wrap items in [SN] type.
+    #[allow(clippy::type_complexity)]
+    #[inline]
+    fn sbn(self) -> MapWith<Self, O, fn(O, &mut MapExtra<'src, '_, I, E>) -> SBN<O>>
+    where
+        I: Input<'src, Token = Token, Span = SourcedSpan>,
+    {
+        self.map_with(|t, e| SBN::from_unboxed(t, e.span()))
     }
 
     /// Convenience method to delimit a parser pattern by a [Delim].

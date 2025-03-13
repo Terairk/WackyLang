@@ -2,8 +2,8 @@
 // that our code will then call.
 
 use crate::assembly_ast::{
-    AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Directive, LABEL, Operand,
-    Register,
+    AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Directive, Operand, Register,
+    LABEL,
 };
 
 use crate::assembly_ast::AsmBinaryOperator::{Add, And, Sub};
@@ -25,6 +25,10 @@ use util::gen_flags::{
     INBUILT_PRINT_INT, INBUILT_PRINT_PTR, INBUILT_PRINT_STRING, INBUILT_PRINTLN, INBUILT_READ_CHAR,
     INBUILT_READ_INT,
 };
+use AssemblyType::{Byte, Longword, Quadword};
+use CondCode::{E, GE, L, NE};
+use Operand::{Data, Imm, Indexed, Memory, Reg};
+use Register::{AX, BP, BX, DI, DX, R10, R9, SI, SP};
 
 #[inline]
 pub fn generate_predefined(program: &mut AsmProgram) {

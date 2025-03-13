@@ -13,12 +13,16 @@ path = "src/lib.rs"
 workspace = true
 
 [dependencies]
+# macro dependencies
+extend = { workspace = true }
+enum_primitive = { workspace = true }
+
 # utility dependencies
 thiserror = { workspace = true }
 bitflags = { workspace = true }
 once_cell = { workspace = true }
-internment = { workspace = true, features = ["arc"] }
+internment = { workspace = true }
 derive_more = { workspace = true }
-# for now we only use bon in this crate 
-# but if we use it elsewhere, include it in the workspace
-bon = "3.4.0"
+bon = { workspace = true }
+recursion = { workspace = true }
+fn_pipe = { workspace = true }
