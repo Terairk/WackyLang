@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     fs::File,
     io::Write,
@@ -512,6 +512,128 @@ impl<T: Instruction + Clone + Display, V: Clone + Default + Debug> CFG<T, V> {
             ))
         }
     }
+}
+
+/// Helper function to sort blocks in reverse postorder (returns block IDs only)
+#[inline]
+pub fn reverse_postorder_block_ids<T: Clone + Debug, V: Clone>(
+    cfg: &CFG<T, V>,
+    blocks: &[usize],
+    is_reversed: bool,
+) -> Vec<usize> {
+    // First get postorder of NodeIds
+    let mut visited = HashSet::new();
+    let mut postorder = Vec::new();
+
+    // Start DFS from entry node
+    visit_dfs(NodeId::Entry, cfg, &mut visited, &mut postorder);
+
+    // Reverse the postorder if requested
+    if is_reversed {
+        postorder.reverse();
+    }
+
+    // Filter out Entry and Exit nodes, keep only Block nodes that were in the original list
+    // and extract the block IDs
+    postorder
+        .into_iter()
+        .filter_map(|id| {
+            if let NodeId::Block(block_id) = id {
+                if blocks.contains(&block_id) {
+                    return Some(block_id);
+                }
+            }
+            None
+        })
+        .collect()
+}
+
+/// Helper function for DFS traversal
+#[inline]
+pub fn visit_dfs<T: Clone + Debug, V: Clone>(
+    node: NodeId,
+    cfg: &CFG<T, V>,
+    visited: &mut HashSet<NodeId>,
+    postorder: &mut Vec<NodeId>,
+) {
+    if visited.contains(&node) {
+        return;
+    }
+
+    visited.insert(node);
+
+    // Get successor nodes
+    let successors = match node {
+        NodeId::Entry => &cfg.entry_succs,
+        NodeId::Block(id) => {
+            if let Some(block) = cfg.basic_blocks.get(&id) {
+                &block.succs
+            } else {
+                return;
+            }
+        }
+        NodeId::Exit => return, // Exit has no successors
+    };
+
+    // Visit each successor
+    for &succ in successors {
+        if !visited.contains(&succ) {
+            visit_dfs(succ, cfg, visited, postorder);
+        }
+    }
+
+    // Add node to postorder after visiting all its successors
+    postorder.push(node);
+}
+
+/// Performs a backwards dataflow analysis on a CFG
+#[inline]
+pub fn backwards_dataflow_analysis<T: Clone + Debug, V: Clone + PartialEq + Default>(
+    cfg: &CFG<T, V>,
+    meet: impl Fn(&BasicBlock<T, V>, &CFG<T, V>) -> V,
+    transfer: impl Fn(BasicBlock<T, V>, V) -> BasicBlock<T, V>,
+) -> CFG<T, V>
+where
+    T: Instruction,
+{
+    let mut worklist = Vec::new();
+
+    // Initialize CFG with default annotations
+    let mut result_cfg = cfg.clone().initialize_annotation(&V::default());
+
+    // Add all blocks to the worklist
+    for &block_id in result_cfg.basic_blocks.keys() {
+        worklist.push(block_id);
+    }
+
+    // Sort blocks in reverse postorder for efficiency
+    worklist = reverse_postorder_block_ids(&cfg, &worklist, false);
+
+    // Iterate until the worklist is empty
+    while let Some(block_id) = worklist.pop() {
+        let block = result_cfg.basic_blocks.get(&block_id).unwrap().clone();
+        let old_annotation = block.value.clone();
+
+        // Apply meet operator to compute values at exit
+        let vars_at_exit = meet(&block, &result_cfg);
+
+        // Apply transfer function and update the block in the CFG
+        let new_block = transfer(block, vars_at_exit);
+        result_cfg.update_basic_block(block_id, new_block);
+
+        // If the block's value has changed, add predecessors to the worklist
+        if result_cfg.get_block_value(block_id).unwrap() != &old_annotation {
+            for &pred_id in &result_cfg.basic_blocks.get(&block_id).unwrap().preds {
+                if let NodeId::Block(id) = pred_id {
+                    if !worklist.contains(&id) {
+                        worklist.push(id);
+                    }
+                }
+            }
+        }
+    }
+
+    result_cfg
 }
 
 // Example usage

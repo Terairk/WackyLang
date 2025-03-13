@@ -198,8 +198,8 @@ mod build_interference_graph {
     pub fn build_graph(instructions: &[AsmInstruction], func_name: &str) -> InterferenceGraph {
         let mut interference_graph = create_base_graph();
         add_pseudoregisters(&mut interference_graph, instructions);
-        let cfg = make_control_flow_graph(instructions, func_name);
-        analyze_lifeness(&cfg);
+        let mut cfg = make_control_flow_graph(instructions, func_name);
+        analyze_lifeness(&mut cfg);
         add_edges(&cfg, &mut interference_graph);
         interference_graph
     }
@@ -243,7 +243,7 @@ mod build_interference_graph {
         emptyCFG.initialize_annotation(&LiveRegisters::default())
     }
 
-    fn analyze_lifeness(cfg: &AsmCFG) {
+    fn analyze_lifeness(cfg: &mut AsmCFG) {
         todo!()
     }
 
