@@ -42,12 +42,13 @@ struct InterferenceGraph {
 
 /* ================== Impl's for Types ================= */
 impl Node {
+    pub const DEFAULT_SPILL_COST: f64 = 0.0;
     /// Creates a new node
     pub fn new(id: Operand) -> Self {
         Node {
             id,
             neighbors: Vec::new(),
-            spill_cost: 0.0,
+            spill_cost: Self::DEFAULT_SPILL_COST,
             color: None,
             pruned: false,
         }
@@ -91,18 +92,6 @@ impl Node {
     pub fn unprune(&mut self) {
         self.pruned = false;
     }
-
-    // pub fn add_neighbor(&mut self, neighbor: usize) {
-    //     self.neighbors.push(neighbor);
-    // }
-    //
-    // pub fn add_neighbors(&mut self, neighbors: &[usize]) {
-    //     self.neighbors.extend(neighbors.iter().cloned());
-    // }
-    //
-    // pub fn neighbors(&self) -> &[usize] {
-    //     &self.neighbors
-    // }
 }
 
 impl InterferenceGraph {
@@ -191,8 +180,11 @@ mod build_interference_graph {
     struct LiveRegisters;
     type AsmCFG = CFG<AsmInstruction, LiveRegisters>;
 
+    use crate::registers::ALL_HARDREGS;
+
     use super::*;
 
+    /// Build's interference graph for a function using a control flow graph internally
     pub fn build_graph(instructions: &[AsmInstruction], func_name: &str) -> InterferenceGraph {
         let mut interference_graph = create_base_graph();
         add_pseudoregisters(&mut interference_graph, instructions);
@@ -203,11 +195,37 @@ mod build_interference_graph {
     }
 
     fn create_base_graph() -> InterferenceGraph {
-        todo!()
+        let mut graph = InterferenceGraph::new();
+
+        // First, add all hardware registers as nodes
+        for &reg in &ALL_HARDREGS {
+            let operand = Operand::Reg(reg);
+            graph.add_node(&operand, f64::INFINITY); // Can't spill hardware registers
+        }
+
+        // Now add interference edges between all pairs of hardware registers
+        for &reg1 in &ALL_HARDREGS {
+            for &reg2 in &ALL_HARDREGS {
+                if reg1 != reg2 {
+                    let operand1 = Operand::Reg(reg1);
+                    let operand2 = Operand::Reg(reg2);
+                    graph.add_edge(&operand1, &operand2).unwrap();
+                }
+            }
+        }
+        graph
     }
 
     fn add_pseudoregisters(graph: &mut InterferenceGraph, instructions: &[AsmInstruction]) {
-        todo!()
+        for instruction in instructions {
+            for operand in get_operands(instruction) {
+                if let Operand::Pseudo(_) = operand {
+                    // We don't have any pseudoregisters with static storage duration
+                    // so simply add them
+                    graph.add_node(&operand, Node::DEFAULT_SPILL_COST);
+                }
+            }
+        }
     }
 
     fn make_control_flow_graph(instructions: &[AsmInstruction], func_name: &str) -> AsmCFG {
@@ -240,4 +258,127 @@ fn replace_pseudoregs(
     register_map: RegisterMap,
 ) -> Vec<AsmInstruction> {
     todo!()
+}
+
+/// Extract all operands from an instruction.
+/// NOTE: don't need to include implicit operands (e.g ax/dx for cdq)
+/// because we only use this to find pseudos
+fn get_operands(instruction: &AsmInstruction) -> Vec<Operand> {
+    match instruction {
+        AsmInstruction::Mov { src, dst, .. } => vec![src.clone(), dst.clone()],
+        AsmInstruction::Cmov { src, dst, .. } => vec![src.clone(), dst.clone()],
+        AsmInstruction::MovZeroExtend { src, dst, .. } => vec![src.clone(), dst.clone()],
+        AsmInstruction::Lea { src, dst } => vec![src.clone(), dst.clone()],
+        AsmInstruction::Unary { operand, .. } => vec![operand.clone()],
+        AsmInstruction::Binary { op1, op2, .. } => vec![op1.clone(), op2.clone()],
+        AsmInstruction::Cmp { op1, op2, .. } => vec![op1.clone(), op2.clone()],
+        AsmInstruction::Test { op1, op2, .. } => vec![op1.clone(), op2.clone()],
+        AsmInstruction::Idiv(op) => vec![op.clone()],
+        AsmInstruction::SetCC { operand, .. } => vec![operand.clone()],
+        AsmInstruction::Push(op) => vec![op.clone()],
+        AsmInstruction::Pop(_) => panic!("Shouldn't use this yet"),
+        // Instructions with no operands to extract
+        AsmInstruction::Label(_)
+        | AsmInstruction::Call(_, _)
+        | AsmInstruction::Ret
+        | AsmInstruction::Cdq
+        | AsmInstruction::JmpCC { .. }
+        | AsmInstruction::Jmp(_, _)
+        | AsmInstruction::Comment(_)
+        | AsmInstruction::AllocateStack(_)
+        | AsmInstruction::DeallocateStack(_) => vec![],
+    }
+}
+
+/// Map function f over all the operands in an instruction
+fn replace_ops(instruction: &AsmInstruction, f: impl Fn(Operand) -> Operand) -> AsmInstruction {
+    match *instruction {
+        AsmInstruction::Mov {
+            typ,
+            ref src,
+            ref dst,
+        } => AsmInstruction::Mov {
+            typ,
+            src: f(src.clone()),
+            dst: f(dst.clone()),
+        },
+        AsmInstruction::Cmov {
+            condition,
+            typ,
+            ref src,
+            ref dst,
+        } => AsmInstruction::Cmov {
+            condition,
+            typ,
+            src: f(src.clone()),
+            dst: f(dst.clone()),
+        },
+        AsmInstruction::MovZeroExtend {
+            src_type,
+            dst_type,
+            ref src,
+            ref dst,
+        } => AsmInstruction::MovZeroExtend {
+            src_type,
+            dst_type,
+            src: f(src.clone()),
+            dst: f(dst.clone()),
+        },
+        AsmInstruction::Lea { ref src, ref dst } => AsmInstruction::Lea {
+            src: f(src.clone()),
+            dst: f(dst.clone()),
+        },
+        AsmInstruction::Unary {
+            operator,
+            typ,
+            ref operand,
+        } => AsmInstruction::Unary {
+            operator,
+            typ,
+            operand: f(operand.clone()),
+        },
+        AsmInstruction::Binary {
+            operator,
+            typ,
+            ref op1,
+            ref op2,
+        } => AsmInstruction::Binary {
+            operator,
+            typ,
+            op1: f(op1.clone()),
+            op2: f(op2.clone()),
+        },
+        AsmInstruction::Cmp {
+            typ,
+            ref op1,
+            ref op2,
+        } => AsmInstruction::Cmp {
+            typ,
+            op1: f(op1.clone()),
+            op2: f(op2.clone()),
+        },
+        AsmInstruction::Test {
+            typ,
+            ref op1,
+            ref op2,
+        } => AsmInstruction::Test {
+            typ,
+            op1: f(op1.clone()),
+            op2: f(op2.clone()),
+        },
+        AsmInstruction::Idiv(ref op) => AsmInstruction::Idiv(f(op.clone())),
+        AsmInstruction::SetCC {
+            condition,
+            ref operand,
+        } => AsmInstruction::SetCC {
+            condition,
+            operand: f(operand.clone()),
+        },
+        AsmInstruction::Push(ref op) => AsmInstruction::Push(f(op.clone())),
+        AsmInstruction::Pop(_) => {
+            panic!("Shouldn't use this as Pop doesn't have any operands to replace")
+        }
+        // Instructions where we don't need to replace operands
+        _ => instruction.clone(),
+    }
 }

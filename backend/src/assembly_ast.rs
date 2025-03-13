@@ -155,7 +155,7 @@ pub enum Operand {
 #[derive(Debug, Clone)]
 pub struct Directive(pub &'static str, pub &'static str);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmBinaryOperator {
     Add,
     Sub,
@@ -166,12 +166,12 @@ pub enum AsmBinaryOperator {
 
 // sadly we don't use any other AsmUnaryOperator's
 // -smth is translated as 0 - smth else so it turns into binary
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmUnaryOperator {
     Not,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CondCode {
     E,  // Equal
     NE, // Not equal
