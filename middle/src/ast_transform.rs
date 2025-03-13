@@ -61,6 +61,14 @@ pub fn lower_program(
 }
 
 /* ================== INTERNAL API ================== */
+
+/// Used to keep track of loop-start and loop-end labels
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LoopRegion {
+    pub start_label: WackTempIdent,
+    pub end_label: WackTempIdent,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct AstLoweringCtx {
     ident_counter: usize,
@@ -68,11 +76,14 @@ pub(crate) struct AstLoweringCtx {
     symbol_table: WackIdentSymbolTable,
     /// used to rename function to wacc_function
     func_rename_map: HashMap<ast::Ident, WackGlobIdent>,
+
+    /// used to keep track of loop-start and loop-end labels
+    current_loop_nesting_stack: Vec<LoopRegion>,
 }
 
 // impls relating to `AstLoweringCtx`
 pub(crate) mod ast_lowering_ctx {
-    use crate::ast_transform::{AstLoweringCtx, WackIdentSymbolTable};
+    use crate::ast_transform::{AstLoweringCtx, LoopRegion, WackIdentSymbolTable};
     use crate::types::{WackFuncType, WackPointerType, WackType};
     use crate::wackir::{
         BinaryOp, WackFunction, WackGlobIdent, WackInstr, WackLiteral, WackPrintType, WackReadType, WackTempIdent,
@@ -180,6 +191,7 @@ pub(crate) mod ast_lowering_ctx {
                 func_table,
                 symbol_table,
                 func_rename_map,
+                current_loop_nesting_stack: Vec::new(),
             }
         }
 
@@ -207,9 +219,37 @@ pub(crate) mod ast_lowering_ctx {
         }
 
         // Makes a label for jump's for now
+        #[inline]
         fn make_label(&mut self, name: &str) -> WackTempIdent {
             let ident: WackTempIdent = ast::Ident::from_str(name).with_ctx_mut(self).into();
             ident
+        }
+
+        /// Create a new [`LoopRegion`] from a [`hir::LoopLabel`] for tracking start/end labels.
+        #[inline]
+        fn make_loop_region(&mut self, loop_label: hir::LoopLabel) -> LoopRegion {
+            let start_label = loop_label.into();
+            let end_label = self.make_label("loop_end");
+            LoopRegion {
+                start_label,
+                end_label,
+            }
+        }
+
+        /// Assuming a loop-label is already associated with a [`LoopRegion`] in stack,
+        /// we can look up that [`LoopRegion`] using the loop-label.
+        #[inline]
+        fn lookup_loop_region_from_stack(&self, loop_label: hir::LoopLabel) -> Option<LoopRegion> {
+            // convert loop label to wacky-ident
+            let start_label: WackTempIdent = loop_label.into();
+
+            // look for the loop-region corresponding to the loop-label in reverse (since its a stack)
+            for region in self.current_loop_nesting_stack.iter().rev() {
+                if start_label == region.start_label {
+                    return Some(region.clone());
+                }
+            }
+            None
         }
 
         pub(crate) fn lower_func(&mut self, func: thir::Func) -> WackFunction {
@@ -251,7 +291,7 @@ pub(crate) mod ast_lowering_ctx {
             }
         }
 
-        #[allow(clippy::too_many_lines)]
+        #[allow(clippy::too_many_lines, clippy::expect_used)]
         fn lower_stat(&mut self, stat: thir::Stat, instructions: &mut Vec<WackInstr>) {
             match stat {
                 // TODO: add more type-checking code to lowerer SemTy vs. WackTy
@@ -447,8 +487,43 @@ pub(crate) mod ast_lowering_ctx {
                     instructions.push(Instr::Jump(start_label));
                     instructions.push(Instr::Label(end_label));
                 }
-                thir::Stat::Loop { .. } | thir::Stat::Break(_) | thir::Stat::Continue(_) => {
-                    todo!("implement this once loop-lowering is done")
+                thir::Stat::Loop { label, body } => {
+                    // create new loop-region to keep track of start/end labels,
+                    // and create instruction corresponding to the start of the loop
+                    let loop_region = self.make_loop_region(label);
+                    instructions.push(WackInstr::Label(loop_region.start_label.clone()));
+
+                    // push loop-region onto the loop-stack to update the
+                    // context within which the loop-body will be lowered
+                    self.current_loop_nesting_stack.push(loop_region.clone());
+                    self.lower_stat_block(body, instructions);
+                    // pop the loop-region from the stack and sanity-check that we got back what we pushed
+                    assert_eq!(
+                        &self
+                            .current_loop_nesting_stack
+                            .pop()
+                            .expect("The stack should always pop the loop-region we just pushed"),
+                        &loop_region,
+                        "The stack should always pop the loop-region we just pushed"
+                    );
+
+                    // push jump-to-start instruction, and end-label, to complete the loop
+                    instructions.push(WackInstr::Jump(loop_region.start_label));
+                    instructions.push(WackInstr::Label(loop_region.end_label));
+                }
+                thir::Stat::Break(label) => {
+                    // find loop-label, it should always be there
+                    let loop_region = self.lookup_loop_region_from_stack(label).expect("Break-statement encountered outside a loop. This is a bug in the frontend!!!");
+
+                    // jump to the end of the loop
+                    instructions.push(WackInstr::Jump(loop_region.end_label));
+                }
+                thir::Stat::Continue(label) => {
+                    // find loop-label, it should always be there
+                    let loop_region = self.lookup_loop_region_from_stack(label).expect("Continue-statement encountered outside a loop. This is a bug in the frontend!!!");
+
+                    // jump to the start of the loop
+                    instructions.push(WackInstr::Jump(loop_region.start_label));
                 }
             }
         }
@@ -847,88 +922,6 @@ pub(crate) mod ast_lowering_ctx {
             // return pointer to element, and type
             (pair_elem_dst_ptr, pair_elem_ptr_ty)
         }
-
-        // #[allow(clippy::expect_used, clippy::unwrap_used)]
-        // fn lower_array_elem_to_ptr(
-        //     &mut self,
-        //     array_elem: thir::ArrayElem,
-        //     instructions: &mut Vec<WackInstr>,
-        // ) -> (WackTempIdent, WackPointerType) {
-        //     // we are returning a POINTER to the target type, rather than the target type itself
-        //     let _target_type = WackType::pointer_of(WackType::from_thir_type(array_elem.r#type()));
-        //
-        //     // get array name: the pointer to the beginning, and the element type
-        //     let mut src_array_ptr: WackTempIdent = array_elem.array_name.into_inner().into();
-        //     let mut array_ptr_ty = self
-        //         .symbol_table
-        //         .get(&src_array_ptr)
-        //         .expect("This symbol should always be found, unless a previous stage has bugs.")
-        //         .clone();
-        //
-        //     // first element is guaranteed to be there
-        //     let mut elem_ix_iter = array_elem.indices.into_iter();
-        //     let mut index = elem_ix_iter.next().unwrap().into_inner();
-        //
-        //     // track output element pointer
-        //     let mut elem_ptr_ty: WackPointerType;
-        //     let mut elem_dst_ptr: WackTempIdent;
-        //     loop {
-        //         // obtain index value, and the corresponding element type (for the scale)
-        //         let (index_value, _index_ty) = self.lower_expr(index.clone(), instructions);
-        //         // TODO: assert that type = int ??
-        //
-        //         // dereference pointer type to raw-array type, and extract element type from it
-        //         let raw_array_ty = WackPointerType::try_from_wack_type(array_ptr_ty.clone())
-        //             .expect("Lowered value should be a pointer to raw-array value")
-        //             .deref_type()
-        //             .expect("Lowered value should be a pointer to raw-array value");
-        //         // SAFETY: this is guaranteed to be an array-type, if not, previous stage has bugs.
-        //         let array_elem_ty = unsafe { raw_array_ty.into_array_elem_type() };
-        //
-        //         // obtain scale from the inner element type
-        //         let scale = array_elem_ty.try_size_of().unwrap();
-        //
-        //         // obtain pointer to element
-        //         elem_ptr_ty = WackPointerType::of(array_elem_ty.clone());
-        //         let elem_ptr_ty_wrapped = WackType::Pointer(elem_ptr_ty.clone());
-        //         elem_dst_ptr = self.make_temporary(elem_ptr_ty_wrapped.clone());
-        //         instructions.push(WackInstr::ArrayAccess {
-        //             src_array_ptr: WackValue::Var(src_array_ptr.clone()),
-        //             index: index_value,
-        //             scale,
-        //             dst_elem_ptr: elem_dst_ptr.clone(),
-        //         });
-        //
-        //         // if there is more indices, it means the element pointer points to an array;
-        //         // dereference it to obtain another array, and set up for another loop;
-        //         if let Some(next_index) = elem_ix_iter.next() {
-        //             // the element-type is a WACC array, i.e. in reality a pointer to an array,
-        //             // so update the "base" pointer-to array, to be that of the element type
-        //             array_ptr_ty = array_elem_ty;
-        //
-        //             // update `src_array_pointer` by dereferencing the `elem_dst_ptr`, and load
-        //             // the next index for iteration
-        //             src_array_ptr = self.make_temporary(array_ptr_ty.clone());
-        //             instructions.push(WackInstr::Load {
-        //                 src_ptr: WackValue::Var(elem_dst_ptr.clone()),
-        //                 dst: src_array_ptr.clone(),
-        //             });
-        //             index = next_index.into_inner();
-        //         } else {
-        //             // if this is the last index, check that the end-type doesn't disagree with
-        //             // semantic type; if it does, there is a bug in the frontend
-        //             // TODO: it may be the case that element types can be coerced safely to the
-        //             //       overall array type, so this assert may trigger false-positives
-        //             // TODO: figure out a way to implement "weakening" check for lhs-rhs WACC types
-        //             //       so it is not strictly checking for equality -- as otherwise this will give false positives
-        //             // assert_eq!(elem_ptr_ty_wrapped, target_type);
-        //             break;
-        //         }
-        //     }
-        //
-        //     // return variable holding pointer to element
-        //     (elem_dst_ptr, elem_ptr_ty)
-        // }
 
         #[allow(clippy::expect_used, clippy::unwrap_used)]
         fn lower_array_elem_to_ptr(

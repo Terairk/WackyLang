@@ -586,6 +586,13 @@ pub mod wack_temp_ident {
         }
     }
 
+    impl From<hir::LoopLabel> for WackTempIdent {
+        #[inline]
+        fn from(value: hir::LoopLabel) -> Self {
+            Self(value.ident.clone(), value.uuid)
+        }
+    }
+
     impl From<With<ast::Ident, &mut usize>> for WackTempIdent {
         #[inline]
         fn from(value: With<ast::Ident, &mut usize>) -> Self {
