@@ -35,7 +35,7 @@ pub fn lower_program(
 ) -> (WackProgram, usize, WackIdentSymbolTable) {
     // make context
     let program = hir_lowering.thir_program;
-    let mut ctx = AstLoweringCtx::new_from(
+    let mut ctx = ThirLoweringCtx::new_from(
         hir_lowering.func_symbol_table,
         hir_lowering.hir_ident_symbol_table,
         hir_lowering.ident_counter,
@@ -70,7 +70,7 @@ pub struct LoopRegion {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AstLoweringCtx {
+pub(crate) struct ThirLoweringCtx {
     ident_counter: usize,
     func_table: HashMap<WackGlobIdent, WackFuncType>,
     symbol_table: WackIdentSymbolTable,
@@ -81,9 +81,9 @@ pub(crate) struct AstLoweringCtx {
     current_loop_nesting_stack: Vec<LoopRegion>,
 }
 
-// impls relating to `AstLoweringCtx`
-pub(crate) mod ast_lowering_ctx {
-    use crate::ast_transform::{AstLoweringCtx, LoopRegion, WackIdentSymbolTable};
+// impls relating to `ThirLoweringCtx`
+pub(crate) mod thir_lowering_ctx {
+    use crate::thir_transform::{LoopRegion, ThirLoweringCtx, WackIdentSymbolTable};
     use crate::types::{WackFuncType, WackPointerType, WackType};
     use crate::wackir::{
         BinaryOp, WackFunction, WackGlobIdent, WackInstr, WackLiteral, WackPrintType, WackReadType, WackTempIdent,
@@ -156,7 +156,7 @@ pub(crate) mod ast_lowering_ctx {
         }
     }
 
-    impl AstLoweringCtx {
+    impl ThirLoweringCtx {
         pub(crate) fn new_from(
             func_symbol_table: ThirFuncSymbolTable,
             hir_ident_symbol_table: IdentSymbolTable,

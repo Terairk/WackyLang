@@ -2,8 +2,8 @@
 #![feature(trait_alias)]
 #![feature(stmt_expr_attributes)]
 
-pub mod ast_transform;
 pub mod optimizations;
+pub mod thir_transform;
 pub mod types;
 pub mod wackir;
 

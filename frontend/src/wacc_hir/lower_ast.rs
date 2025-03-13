@@ -151,7 +151,7 @@ struct LoweringCtx {
 }
 
 impl LoweringCtx {
-    const LOOP_LABEL_IDENT_BASE: &'static str = "_hidden_loop_label";
+    const LOOP_LABEL_IDENT_BASE: &'static str = "hidden_loop_label";
 
     #[inline]
     pub fn new() -> Self {
@@ -431,14 +431,17 @@ impl LoweringCtx {
         }
     }
 
-    /// Create a hidden `if cond then break else skip fi` statement which uses dummy source nodes
+    /// Create a hidden `if cond then skip else break fi` statement which uses dummy source nodes
     /// for the generated code paths.
     #[inline]
-    pub fn hidden_if_cond_break_statement(if_cond: SN<Expr>, loop_label: LoopLabel) -> Stat {
+    pub fn hidden_if_cond_skip_else_break_statement(
+        if_cond: SN<Expr>,
+        loop_label: LoopLabel,
+    ) -> Stat {
         Stat::IfThenElse {
             if_cond,
-            then_body: StatBlock::singleton(Self::wrap_with_dummy_sn(Stat::Break(loop_label))),
-            else_body: StatBlock::singleton(Self::wrap_with_dummy_sn(Stat::Skip)),
+            then_body: StatBlock::singleton(Self::wrap_with_dummy_sn(Stat::Skip)),
+            else_body: StatBlock::singleton(Self::wrap_with_dummy_sn(Stat::Break(loop_label))),
         }
     }
 
@@ -455,9 +458,9 @@ impl LoweringCtx {
     /// loop
     ///   if cond
     ///   then
-    ///     break
-    ///   else
     ///     skip
+    ///   else
+    ///     break
     ///   fi ;
     ///   foo ;
     ///   bar
@@ -474,7 +477,7 @@ impl LoweringCtx {
 
         // create the if-statement which breaks if condition is met
         let if_cond = self.lower_expr_sn(while_cond_sn); // lower the conditional expression
-        let if_break_stat = Self::hidden_if_cond_break_statement(if_cond, label.clone());
+        let if_break_stat = Self::hidden_if_cond_skip_else_break_statement(if_cond, label.clone());
 
         // accumulate new statement block
         let mut stats = vec![Self::wrap_with_dummy_sn(if_break_stat)];

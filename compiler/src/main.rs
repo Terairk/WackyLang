@@ -12,7 +12,7 @@ use frontend::source::StrSourceId;
 use frontend::wacc_hir::ast_lowering_phase;
 use frontend::wacc_thir::hir_lowering_phase;
 use frontend::StreamType;
-use middle::ast_transform::lower_program;
+use middle::thir_transform::lower_program;
 use std::io::stdout;
 use std::path::PathBuf;
 use std::process::ExitCode;

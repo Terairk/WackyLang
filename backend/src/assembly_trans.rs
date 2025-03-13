@@ -2,7 +2,7 @@ use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
     Register, FUNCTION, LABEL,
 };
-use middle::ast_transform::WackIdentSymbolTable;
+use middle::thir_transform::WackIdentSymbolTable;
 use middle::types::{BitWidth, WackType};
 use middle::wackir::WackInstr::JumpToHandler;
 use middle::wackir::{

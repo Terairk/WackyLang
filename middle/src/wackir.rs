@@ -547,8 +547,8 @@ pub struct WackTempIdent(ast::Ident, usize);
 // impls relating to `WackTempIdent`
 pub mod wack_temp_ident {
     use crate::alias::InternStr;
-    use crate::ast_transform::ast_lowering_ctx::With;
-    use crate::ast_transform::AstLoweringCtx;
+    use crate::thir_transform::thir_lowering_ctx::With;
+    use crate::thir_transform::ThirLoweringCtx;
     use crate::wackir::WackTempIdent;
     use frontend::parsing::ast;
     use frontend::wacc_hir::hir;
@@ -602,9 +602,9 @@ pub mod wack_temp_ident {
         }
     }
 
-    impl From<With<ast::Ident, &mut AstLoweringCtx>> for WackTempIdent {
+    impl From<With<ast::Ident, &mut ThirLoweringCtx>> for WackTempIdent {
         #[inline]
-        fn from(mut value: With<ast::Ident, &mut AstLoweringCtx>) -> Self {
+        fn from(mut value: With<ast::Ident, &mut ThirLoweringCtx>) -> Self {
             let counter = value.ctx_mut().inc_ident_counter();
             Self(value.into_inner(), counter)
         }
