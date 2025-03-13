@@ -408,10 +408,10 @@ mod impls {
 
         /// We use a counter to generate unique IDs, counter is automatically incremented
         /// Note we use the same counter for all identifiers.
-        /// Takes in [`SN<ast::Ident>`] as this is what we always get from the AST
+        /// Takes in [`ast::Ident`] as this is what we always get from the AST
         #[inline]
         #[must_use]
-        const fn new(counter: &mut usize, ident: ast::Ident) -> Self {
+        pub const fn new(counter: &mut usize, ident: ast::Ident) -> Self {
             // would rather crash in debug builds than define a saturating
             // so we can change this to u128
             // though I suspect we'd have bigger problems before then
@@ -460,46 +460,46 @@ mod impls {
         }
     }
 
-    // impl Ident {
-    //     pub const ZERO_UUID: usize = 0;
-    //
-    //     /// We use a counter to generate unique IDs, counter is automatically incremented
-    //     /// Note we use the same counter for all identifiers.
-    //     /// Takes in [`SN<ast::Ident>`] as this is what we always get from the AST
-    //     #[inline]
-    //     #[must_use]
-    //     const fn new(counter: &mut usize, ident: ast::Ident) -> Self {
-    //         // would rather crash in debug builds than define a saturating
-    //         // so we can change this to u128
-    //         // though I suspect we'd have bigger problems before then
-    //         #[allow(clippy::arithmetic_side_effects)]
-    //         *counter += 1;
-    //         Self {
-    //             ident,
-    //             uuid: *counter,
-    //         }
-    //     }
-    //
-    //     #[must_use]
-    //     #[inline]
-    //     pub fn new_sn(counter: &mut usize, ident_sn: SN<ast::Ident>) -> SN<Self> {
-    //         ident_sn.map_inner(Self::new.curry()(counter))
-    //     }
-    //
-    //     // Function used to create a rogue renamed so we can still build tree even if we have errors
-    //     #[must_use]
-    //     #[inline]
-    //     pub const fn new_rogue_zero(ident: ast::Ident) -> Self {
-    //         Self {
-    //             ident,
-    //             uuid: Self::ZERO_UUID,
-    //         }
-    //     }
-    //
-    //     #[must_use]
-    //     #[inline]
-    //     pub fn new_rouge_zero_sn(ident_sn: SN<ast::Ident>) -> SN<Self> {
-    //         ident_sn.map_inner(Self::new_rogue_zero)
-    //     }
-    // }
+    impl LoopLabel {
+        pub const ZERO_UUID: usize = 0;
+
+        /// We use a counter to generate unique IDs, counter is automatically incremented
+        /// Note we use the same counter for all identifiers.
+        /// Takes in [`ast::Ident`] as this is what we always get from the AST
+        #[inline]
+        #[must_use]
+        pub(crate) const fn new(counter: &mut usize, ident: ast::Ident) -> Self {
+            // would rather crash in debug builds than define a saturating
+            // so we can change this to u128
+            // though I suspect we'd have bigger problems before then
+            #[allow(clippy::arithmetic_side_effects)]
+            *counter += 1;
+            Self {
+                ident,
+                uuid: *counter,
+            }
+        }
+
+        // #[must_use]
+        // #[inline]
+        // pub fn new_sn(counter: &mut usize, ident_sn: SN<ast::Ident>) -> SN<Self> {
+        //     ident_sn.map_inner(Self::new.curry()(counter))
+        // }
+        //
+        // // Function used to create a rogue renamed so we can still build tree even if we have errors
+        // #[must_use]
+        // #[inline]
+        // pub const fn new_rogue_zero(ident: ast::Ident) -> Self {
+        //     Self {
+        //         ident,
+        //         uuid: Self::ZERO_UUID,
+        //     }
+        // }
+        //
+        // #[must_use]
+        // #[inline]
+        // pub fn new_rouge_zero_sn(ident_sn: SN<ast::Ident>) -> SN<Self> {
+        //     ident_sn.map_inner(Self::new_rogue_zero)
+        // }
+    }
 }
