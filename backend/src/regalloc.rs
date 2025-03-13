@@ -177,7 +177,10 @@ impl InterferenceGraph {
 mod build_interference_graph {
     use std::collections::HashSet;
 
-    use util::CFG;
+    use util::{
+        CFG,
+        cfg::{BasicBlock, NodeId},
+    };
     // TODO: replace LiveRegisters with the actual type
 
     // #[derive(Debug, Clone, Default)]
@@ -189,8 +192,9 @@ mod build_interference_graph {
 
     // type LiveVariables = HashSet<WackTempIdent>;
     type AsmCFG = CFG<AsmInstruction, LiveRegisters>;
+    type LiveBasicBlock = BasicBlock<AsmInstruction, LiveRegisters>;
 
-    use crate::registers::ALL_HARDREGS;
+    use crate::registers::{ALL_BASEREGS, ALL_HARDREGS};
 
     use super::*;
 
@@ -208,14 +212,14 @@ mod build_interference_graph {
         let mut graph = InterferenceGraph::new();
 
         // First, add all hardware registers as nodes
-        for &reg in &ALL_HARDREGS {
+        for &reg in &ALL_BASEREGS {
             let operand = Operand::Reg(reg);
             graph.add_node(&operand, f64::INFINITY); // Can't spill hardware registers
         }
 
         // Now add interference edges between all pairs of hardware registers
-        for &reg1 in &ALL_HARDREGS {
-            for &reg2 in &ALL_HARDREGS {
+        for &reg1 in &ALL_BASEREGS {
+            for &reg2 in &ALL_BASEREGS {
                 if reg1 != reg2 {
                     let operand1 = Operand::Reg(reg1);
                     let operand2 = Operand::Reg(reg2);
@@ -247,8 +251,144 @@ mod build_interference_graph {
         todo!()
     }
 
+    /// The meet operator calculates which registers are live at the end of a basic block.
+    /// It is the union of the live registers at the beginning of each successor block.
+    // We ignore the fact that callee-saved registers are technically live at the end of a function
+    // But we do something during the instruction fix-up pass
+    fn meet(block: &LiveBasicBlock, cfg: &AsmCFG) -> LiveRegisters {
+        let mut live_regs = LiveRegisters::new();
+        // println!("{:?}", cfg);
+        for succ_id in &block.succs {
+            match *succ_id {
+                NodeId::Entry => panic!("Entry node should not be a successor"),
+                NodeId::Exit => {
+                    live_regs.insert(Operand::Reg(Register::AX));
+                }
+                NodeId::Block(id) => {
+                    // println!("{:?}", id);
+                    let succ_live_regs = cfg
+                        .get_block_value(id)
+                        .expect("CFG is malformed or corrupted")
+                        .clone();
+                    live_regs = live_regs.union(&succ_live_regs).cloned().collect();
+                }
+            }
+        }
+        live_regs
+    }
+
     fn add_edges(cfg: &AsmCFG, graph: &mut InterferenceGraph) {
         todo!()
+    }
+
+    fn find_used_and_updated(instr: AsmInstruction) -> (Vec<Operand>, Vec<Operand>) {
+        let mut used = Vec::new();
+        let mut updated = Vec::new();
+
+        match instr {
+            AsmInstruction::Mov { src, dst, .. } => {
+                used.push(src);
+                updated.push(dst);
+            }
+            AsmInstruction::Cmov { src, dst, .. } => {
+                used.push(src);
+                used.push(dst.clone());
+                updated.push(dst);
+            }
+            AsmInstruction::MovZeroExtend { src, dst, .. } => {
+                used.push(src);
+                updated.push(dst);
+            }
+            AsmInstruction::Lea { src, dst, .. } => {
+                used.push(src);
+                updated.push(dst);
+            }
+            AsmInstruction::Unary { operand, .. } => {
+                used.push(operand.clone());
+                updated.push(operand);
+            }
+            AsmInstruction::Binary { op1, op2, .. } => {
+                used.push(op1);
+                used.push(op2.clone());
+                // Destination is both updated and used
+                updated.push(op2);
+            }
+            AsmInstruction::Cmp { op1, op2, .. } => {
+                used.push(op1);
+                used.push(op2);
+                // No updates for Cmp
+            }
+            AsmInstruction::Test { op1, op2, .. } => {
+                used.push(op1);
+                used.push(op2);
+                // No updates for Test
+            }
+            AsmInstruction::Idiv(divisor) => {
+                used.push(divisor);
+                used.push(Operand::Reg(Register::AX));
+                used.push(Operand::Reg(Register::DX));
+                updated.push(Operand::Reg(Register::AX));
+                updated.push(Operand::Reg(Register::DX));
+            }
+            AsmInstruction::Cdq => {
+                used.push(Operand::Reg(Register::AX));
+                updated.push(Operand::Reg(Register::DX));
+            }
+            AsmInstruction::Jmp(_, _) => {
+                // No registers used or updated
+            }
+            AsmInstruction::JmpCC { .. } => {
+                // No registers used or updated
+            }
+            AsmInstruction::SetCC { operand, .. } => {
+                updated.push(operand);
+            }
+            AsmInstruction::Label(_) => {
+                // No registers used or updated
+            }
+            AsmInstruction::Comment(_) => {
+                // No registers used or updated
+            }
+            AsmInstruction::AllocateStack(_) => {
+                // updated.push(Operand::Reg(Register::SP));
+            }
+            AsmInstruction::DeallocateStack(_) => {
+                // updated.push(Operand::Reg(Register::SP));
+            }
+            AsmInstruction::Push(operand) => {
+                used.push(operand);
+                // updated.push(Operand::Reg(Register::SP));
+            }
+            AsmInstruction::Pop(register) => {
+                // used.push(Operand::Reg(Register::SP));
+                // updated.push(Operand::Reg(register));
+                // updated.push(Operand::Reg(Register::SP));
+                panic!("Pop should not be used in this context");
+            }
+            AsmInstruction::Call(_, _) => {
+                // Parameter passing registers (typically first 6 parameters in x86-64)
+                used.push(Operand::Reg(Register::DI));
+                used.push(Operand::Reg(Register::SI));
+                used.push(Operand::Reg(Register::DX));
+                used.push(Operand::Reg(Register::CX));
+                used.push(Operand::Reg(Register::R8));
+                used.push(Operand::Reg(Register::R9));
+
+                // Caller-saved registers that might be modified by the callee
+                updated.push(Operand::Reg(Register::DI));
+                updated.push(Operand::Reg(Register::SI));
+                updated.push(Operand::Reg(Register::DX));
+                updated.push(Operand::Reg(Register::CX));
+                updated.push(Operand::Reg(Register::R8));
+                updated.push(Operand::Reg(Register::R9));
+                updated.push(Operand::Reg(Register::AX)); // Return value
+            }
+            AsmInstruction::Ret => {
+                used.push(Operand::Reg(Register::AX)); // Return value
+            }
+        }
+
+        (used, updated)
     }
 }
 

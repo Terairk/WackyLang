@@ -6,6 +6,10 @@ use bitflags::bitflags;
 pub const ALL_HARDREGS: [Register; 16] = [
     AX, BX, CX, DX, DI, SI, R8, R9, R10, R11, R12, R13, R14, R15, SP, BP,
 ];
+
+// These are the registers which we're gonna colour. Don't include BP and SP cus stack management
+// Don't include R10, R11 cus we use them in instruction-fix up
+pub const ALL_BASEREGS: [Register; 12] = [AX, BX, CX, DX, DI, SI, R8, R9, R12, R13, R14, R15];
 // Don't use R10 and R11 as we use them for our fixing instructions pass
 pub const CALLER_SAVED: [Register; 7] = [AX, CX, DX, SI, DI, R8, R9];
 
