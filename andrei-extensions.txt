@@ -1,0 +1,42 @@
+# Int literals: binary, octal, hex
+- supports `0b` `0B` (binary), `0o` `0O` (octal), and `0x` `0X` (hex)
+- written 3 basic tests in /valid/expressions
+- TODO: write more tests around all the edge cases of that
+
+# Bitwise ops: NOT (~), AND (&), XOR (^), OR (|)
+- added support to frontend for them
+- precedence is:
+- + ...all the rest of higher precedence unmodified
+- + equality (==, !=)
+- + b-and (&)
+- + b-xor (^)
+- + b-or (|)
+- + l-and (&&)
+- + l-or (||)
+- TODO: implement support for middle/backend for them
+- TODO: write more tests around all the edge cases of that
+
+# Expression if-conditional
+- added parser and typechecking support
+- TODO: implement support for middle/backend for them (lower to basic if-statement)
+- TODO: write more tests around all the edge cases of that
+
+# More types of if-statements: if-only, if-elif-elif-...-elif-else (maybe switch/match??)
+- TODO: add parser support
+- TODO: lower to normal if-else in frontend
+- TODO: write more tests around all the edge cases of that
+middle/backend won't have to change at all
+
+# More types of loop-related constructs: do-while, loop, break, continue, (maybe for-loop??)
+- TODO: add parser support
+- + do-while
+- + loop/break/continue
+- + (maybe for-loop??)
+- TODO: lower all to loop+conditional+break/continue in frontend
+- + do-while
+- + loop/break/continue
+- + (maybe for-loop??)
+- + check for loop-existence!!!!
+- TODO: write more tests around all the edge cases of that
+middle support loop+conditional+break/continue, which all other is lowered into
+backend doesn't have to change

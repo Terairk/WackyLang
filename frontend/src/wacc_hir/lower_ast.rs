@@ -422,6 +422,9 @@ impl LoweringCtx {
             ast::Stat::WhileDo { while_cond, body } => {
                 stat_sn(self.lower_while_do_loop(while_cond, body))
             }
+            ast::Stat::DoWhile { body, while_cond } => {
+                stat_sn(self.lower_do_while_loop(body, while_cond))
+            }
             ast::Stat::Scoped(block) => MultiItem::multi(self.lower_stat_block(block).0),
         }
     }
@@ -429,15 +432,33 @@ impl LoweringCtx {
     /// Create a hidden `if cond then skip else break fi` statement which uses dummy source nodes
     /// for the generated code paths.
     #[inline]
-    pub fn hidden_if_cond_skip_else_break_statement(
-        if_cond: SN<Expr>,
-        loop_label: LoopLabel,
-    ) -> Stat {
+    fn hidden_if_cond_skip_else_break_statement(if_cond: SN<Expr>, loop_label: LoopLabel) -> Stat {
         Stat::IfThenElse {
             if_cond,
             then_body: StatBlock::singleton(Self::wrap_with_dummy_sn(Stat::Skip)),
             else_body: StatBlock::singleton(Self::wrap_with_dummy_sn(Stat::Break(loop_label))),
         }
+    }
+
+    #[allow(clippy::expect_used)]
+    #[inline]
+    fn with_loop_nesting_context<O, F>(&mut self, label: &LoopLabel, f: F) -> O
+    where
+        F: FnOnce(&mut Self) -> O,
+    {
+        // push this label into the current loop-stack, and perform the supplied action within this updated context
+        self.current_loop_nesting_stack.push(label.clone());
+        let result = f(self);
+        // pop the label from the stack and sanity-check that we got back the same loop-label we just pushed
+        assert_eq!(
+            &self
+                .current_loop_nesting_stack
+                .pop()
+                .expect("The stack should always pop the label we just pushed"),
+            label,
+            "The stack should always pop the label we just pushed"
+        );
+        result
     }
 
     /// During this stage, `while-do` loops are desugared into a combination of `loop`, `if-then-else`
@@ -450,7 +471,7 @@ impl LoweringCtx {
     /// ```
     /// into
     /// ```
-    /// loop
+    /// loop do
     ///   if cond
     ///   then
     ///     skip
@@ -474,24 +495,61 @@ impl LoweringCtx {
         let if_cond = self.lower_expr_sn(while_cond_sn); // lower the conditional expression
         let if_break_stat = Self::hidden_if_cond_skip_else_break_statement(if_cond, label.clone());
 
-        // accumulate new statement block
+        // create statement accumulator, and make the generated conditional the first statement
         let mut stats = vec![Self::wrap_with_dummy_sn(if_break_stat)];
 
-        // push this label into the current loop-stack, and lower the loop body within this updated context
-        self.current_loop_nesting_stack.push(label.clone());
-        let body_block = self.lower_stat_block(body);
-        // pop the label from the stack and sanity-check that we got back the same loop-label we just pushed
-        assert_eq!(
-            &self
-                .current_loop_nesting_stack
-                .pop()
-                .expect("The stack should always pop the label we just pushed"),
-            &label,
-            "The stack should always pop the label we just pushed"
-        );
-
-        // extend the accumulating statements vector with lowered body, and construct loop-statement
+        // lower the loop-body within the loop's context, and extend the accumulator with the result
+        let body_block = self.with_loop_nesting_context(&label, |s| s.lower_stat_block(body));
         stats.extend(body_block.0);
+
+        // return resulting loop-construct
+        Stat::Loop {
+            label,
+            body: StatBlock::try_from(stats)
+                .expect("There should always be one statement in the stat-vector"),
+        }
+    }
+
+    /// During this stage, `do-while` loops are desugared into a combination of `loop`, `if-then-else`
+    /// and `break` statements. The general transformation goes from:
+    /// ```
+    /// do
+    /// foo ;
+    /// bar
+    /// while cond done
+    /// ```
+    /// into
+    /// ```
+    /// loop do
+    ///   foo ;
+    ///   bar ;
+    ///   if cond
+    ///   then
+    ///     skip
+    ///   else
+    ///     break
+    ///   fi ;
+    /// done
+    /// ```
+    #[allow(clippy::expect_used)]
+    pub fn lower_do_while_loop(
+        &mut self,
+        body: ast::StatBlock,
+        while_cond_sn: SN<ast::Expr>,
+    ) -> Stat {
+        // create hidden label for the new loop we are making (this label is not visible to  the source program)
+        let label = self.create_hidden_loop_label();
+
+        // lower the loop-body within the loop's context, and convert it into a statement-vector accumulator
+        let body_block = self.with_loop_nesting_context(&label, |s| s.lower_stat_block(body));
+        let mut stats = body_block.0.to_vec();
+
+        // create the if-statement which breaks if condition is met, and push it to the end of the statements
+        let if_cond = self.lower_expr_sn(while_cond_sn); // lower the conditional expression
+        let if_break_stat = Self::hidden_if_cond_skip_else_break_statement(if_cond, label.clone());
+        stats.push(Self::wrap_with_dummy_sn(if_break_stat));
+
+        // return resulting loop-construct
         Stat::Loop {
             label,
             body: StatBlock::try_from(stats)

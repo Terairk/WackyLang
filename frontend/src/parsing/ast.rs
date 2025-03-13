@@ -65,6 +65,10 @@ pub enum Stat {
         while_cond: SN<Expr>,
         body: StatBlock,
     },
+    DoWhile {
+        body: StatBlock,
+        while_cond: SN<Expr>,
+    },
     Scoped(StatBlock),
 }
 
@@ -360,6 +364,12 @@ mod impls {
         #[inline]
         pub const fn while_do(while_cond: SN<Expr>, body: StatBlock) -> Self {
             Self::WhileDo { while_cond, body }
+        }
+
+        #[must_use]
+        #[inline]
+        pub const fn do_while(body: StatBlock, while_cond: SN<Expr>) -> Self {
+            Self::WhileDo { body, while_cond }
         }
     }
 

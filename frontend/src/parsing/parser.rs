@@ -461,13 +461,22 @@ where
         .map_group(ast::Stat::if_then_else),
     );
 
-    // while-loop parser
+    // while-do loop parser
     let while_do = just(Token::While).ignore_then(
         group((
             expr.clone().then_ignore(just(Token::Do)),
             stat_chain.clone().then_ignore(just(Token::Done)),
         ))
         .map_group(ast::Stat::while_do),
+    );
+
+    // do-while loop parser
+    let do_while = just(Token::Do).ignore_then(
+        group((
+            stat_chain.clone().then_ignore(just(Token::While)),
+            expr.clone().then_ignore(just(Token::Done)),
+        ))
+        .map_group(ast::Stat::do_while),
     );
 
     // begin-end scope
@@ -498,6 +507,7 @@ where
             .map(ast::Stat::Println),
         if_then_else,
         while_do,
+        do_while,
         scoped,
     ))
     .labelled("<stmt>")
