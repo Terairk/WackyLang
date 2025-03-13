@@ -139,6 +139,13 @@ mod impls {
             Self::ArrayType(Box::new(ArrayType::UNKNOWN_ARRAY))
         }
 
+        /// See [`ArrayType::CHAR_ARRAY`].
+        #[must_use]
+        #[inline]
+        pub fn char_array() -> Type {
+            Self::ArrayType(Box::new(ArrayType::CHAR_ARRAY))
+        }
+
         /// See [`PairType::ERASED_PAIR`].
         #[must_use]
         #[inline]
@@ -400,8 +407,11 @@ mod impls {
     impl BaseType {}
 
     impl ArrayType {
-        /// Alias for type `array(any)`.
+        /// Alias for type `array[any]`.
         pub const UNKNOWN_ARRAY: Self = Self::new(Type::Any);
+
+        /// Alias for type `array[char]`.
+        pub const CHAR_ARRAY: Self = Self::new(Type::BaseType(BaseType::Char));
 
         #[inline]
         #[must_use]

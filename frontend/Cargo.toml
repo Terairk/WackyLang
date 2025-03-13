@@ -17,6 +17,7 @@ workspace = true
 extend = { workspace = true }
 delegate = { workspace = true }
 impl-trait-for-tuples = { workspace = true }
+derive_more = { workspace = true }
 
 # utility dependencies
 util = { workspace = true }
@@ -24,6 +25,7 @@ fn_pipe = { workspace = true }
 thiserror = { workspace = true }
 internment = { workspace = true }
 recursion = { workspace = true }
+generativity = { workspace = true }
 
 # parsing and error reporting
 ariadne = { workspace = true }

@@ -8,7 +8,7 @@
 
 use crate::parsing::ast;
 use crate::wacc_hir::hir::Program;
-use crate::wacc_hir::lower_ast::{lower_ast, AstLoweringPhaseResult, FuncSymbolTable};
+use crate::wacc_hir::lower_ast::{lower_ast, AstLoweringResult, HirFuncSymbolTable};
 use crate::{build_semantic_report, StreamType};
 use std::io;
 use std::io::Write;
@@ -27,6 +27,13 @@ pub enum AstLoweringPhaseError {
     IoError(#[from] io::Error),
 }
 
+#[derive(Debug)]
+pub struct AstLoweringPhaseOutput {
+    pub hir_program: Program,
+    pub func_symbol_table: HirFuncSymbolTable,
+    pub ident_counter: usize,
+}
+
 /// # Errors
 /// TODO: add errors docs
 ///
@@ -42,14 +49,15 @@ pub fn ast_lowering_phase<S: AsRef<str>, W: Write + Clone>(
     ast_lowering_error_code: i32,
     stream_type: StreamType,
     output_stream: W,
-) -> Result<(Program, FuncSymbolTable), AstLoweringPhaseError> {
+) -> Result<AstLoweringPhaseOutput, AstLoweringPhaseError> {
     let source = source.as_ref();
 
     // perform lowering
-    let AstLoweringPhaseResult {
+    let AstLoweringResult {
         output,
         errors,
         func_symbol_table,
+        ident_counter,
     } = lower_ast(program_ast);
 
     // Done to appease the borrow checker while displaying errors
@@ -66,5 +74,9 @@ pub fn ast_lowering_phase<S: AsRef<str>, W: Write + Clone>(
         return Err(AstLoweringPhaseError::AstLoweringErrorWritten);
     }
 
-    Ok((output, func_symbol_table))
+    Ok(AstLoweringPhaseOutput {
+        hir_program: output,
+        func_symbol_table,
+        ident_counter,
+    })
 }

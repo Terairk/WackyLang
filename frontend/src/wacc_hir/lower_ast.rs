@@ -77,19 +77,21 @@ impl From<AstLoweringError> for SemanticError<&'static str, String> {
     }
 }
 
-pub struct AstLoweringPhaseResult {
+#[derive(Debug)]
+pub struct AstLoweringResult {
     pub output: Program,
     pub errors: Vec<AstLoweringError>,
-    pub func_symbol_table: FuncSymbolTable,
+    pub func_symbol_table: HirFuncSymbolTable,
+    pub ident_counter: usize,
 }
 
 // We handle functions separately from variables since its easier
 #[derive(Debug)]
-pub struct FuncSymbolTable {
+pub struct HirFuncSymbolTable {
     pub functions: HashMap<ast::Ident, (Type, Box<[Type]>)>,
 }
 
-impl FuncSymbolTable {
+impl HirFuncSymbolTable {
     #[allow(clippy::pattern_type_mismatch)]
     #[inline]
     pub fn lookup_func_args(&self, ident: &SN<ast::Ident>) -> Result<Box<[Type]>, SourcedSpan> {
@@ -139,7 +141,7 @@ impl IDMapEntry {
 // struct responsible for traversing/folding the AST
 // holds state relevant for the renaming phase
 struct LoweringCtx {
-    func_symbol_table: FuncSymbolTable,
+    func_symbol_table: HirFuncSymbolTable,
     errors: Vec<AstLoweringError>,
     in_main: bool,
     counter: usize,
@@ -150,7 +152,7 @@ impl LoweringCtx {
     #[inline]
     pub fn new() -> Self {
         Self {
-            func_symbol_table: FuncSymbolTable {
+            func_symbol_table: HirFuncSymbolTable {
                 functions: HashMap::new(),
             },
             identifier_map: HashMap::new(),
@@ -170,7 +172,7 @@ impl LoweringCtx {
     }
 
     #[inline]
-    pub const fn get_func_table(&self) -> &FuncSymbolTable {
+    pub const fn get_func_table(&self) -> &HirFuncSymbolTable {
         &self.func_symbol_table
     }
 
@@ -206,7 +208,7 @@ impl LoweringCtx {
     }
 
     fn build_func_table(
-        id_func_table: &mut FuncSymbolTable,
+        id_func_table: &mut HirFuncSymbolTable,
         program: &ast::Program,
     ) -> Result<(), AstLoweringError> {
         program.funcs.iter().try_for_each(|func| {
@@ -700,13 +702,14 @@ impl LoweringCtx {
 }
 
 #[inline]
-pub fn lower_ast(program_ast: ast::Program) -> AstLoweringPhaseResult {
+pub fn lower_ast(program_ast: ast::Program) -> AstLoweringResult {
     // lower program AST and discard unnecessary transient information
     let mut ctx = LoweringCtx::new();
     let lowered_program = ctx.lower_program(program_ast);
-    AstLoweringPhaseResult {
+    AstLoweringResult {
         output: lowered_program,
         errors: ctx.errors,
         func_symbol_table: ctx.func_symbol_table,
+        ident_counter: ctx.counter,
     }
 }

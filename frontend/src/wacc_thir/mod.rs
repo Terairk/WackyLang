@@ -4,9 +4,10 @@
 //!
 //!
 
-use crate::wacc_hir::hir;
-use crate::wacc_hir::lower_ast::FuncSymbolTable;
-use crate::wacc_thir::lower_hir::{lower_hir, HirLoweringPhaseResult, IdentSymbolTable};
+use crate::wacc_hir::AstLoweringPhaseOutput;
+use crate::wacc_thir::lower_hir::{
+    lower_hir, HirLoweringResult, IdentSymbolTable, ThirFuncSymbolTable,
+};
 use crate::wacc_thir::thir::Program;
 use crate::{build_semantic_report, StreamType};
 use std::io;
@@ -28,6 +29,14 @@ pub enum HirLoweringPhaseError {
     IoError(#[from] io::Error),
 }
 
+#[derive(Debug)]
+pub struct HirLoweringPhaseOutput {
+    pub thir_program: Program,
+    pub func_symbol_table: ThirFuncSymbolTable,
+    pub hir_ident_symbol_table: IdentSymbolTable,
+    pub ident_counter: usize,
+}
+
 /// # Errors
 /// TODO: add errors docs
 ///
@@ -39,21 +48,21 @@ pub enum HirLoweringPhaseError {
 #[inline]
 pub fn hir_lowering_phase<S: AsRef<str>, W: Write + Clone>(
     source: S,
-    func_symbol_table: FuncSymbolTable,
-    hir_program: hir::Program,
+    ast_lowering: AstLoweringPhaseOutput,
     hir_lowering_error_code: i32,
     stream_type: StreamType,
     output_stream: W,
-) -> Result<(Program, FuncSymbolTable, IdentSymbolTable), crate::wacc_hir::AstLoweringPhaseError> {
+) -> Result<HirLoweringPhaseOutput, crate::wacc_hir::AstLoweringPhaseError> {
     let source = source.as_ref();
 
     // perform lowering
-    let HirLoweringPhaseResult {
+    let HirLoweringResult {
         output,
         errors,
         func_symbol_table,
         hir_ident_symbol_table,
-    } = lower_hir(func_symbol_table, hir_program);
+        ident_counter,
+    } = lower_hir(ast_lowering);
 
     // Done to appease the borrow checker while displaying errors
     if !errors.is_empty() {
@@ -69,5 +78,10 @@ pub fn hir_lowering_phase<S: AsRef<str>, W: Write + Clone>(
         return Err(crate::wacc_hir::AstLoweringPhaseError::AstLoweringErrorWritten);
     }
 
-    Ok((output, func_symbol_table, hir_ident_symbol_table))
+    Ok(HirLoweringPhaseOutput {
+        thir_program: output,
+        func_symbol_table,
+        hir_ident_symbol_table,
+        ident_counter,
+    })
 }

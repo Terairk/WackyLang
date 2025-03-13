@@ -69,8 +69,8 @@
 * unary_operator = Not | Negate | Len | Ord | Chr -- not sure if Len, Ord, Chr should be here
 * binary_operator = Mul | Div | Mod | Add | Sub | Gt | Gte | Lt | Lte | Eq | Neq | And | Or
 *
-* -- consts might just be our SemanticTypes tbh
- <const> ::= SemanticType - not sure on these yet
+* -- consts might just be our thir::Type-s tbh
+ <const> ::= thir::Type - not sure on these yet
 * */
 
 /* Note: I'm using Vec cus i cba to use Box instead, its more convenient to use vec
@@ -81,12 +81,13 @@
  * However I might change them to regular old Strings if i do a lot of modification etc
  * */
 
+use crate::alias::InternStr;
 use derive_more::Display;
-use internment::ArcIntern;
+use frontend::parsing::ast;
+use frontend::wacc_hir::hir;
+use frontend::wacc_thir::types::{BaseType, Type};
 use std::fmt::{self, Debug};
 use std::hash::Hash;
-use syntax::ast;
-use syntax::types::SemanticType;
 
 type PredefinedFunction = String;
 
@@ -294,7 +295,7 @@ pub enum WackLiteral {
     Int(i32),
     Bool(WackBool), // smallest possible repr is 1 byte
     Char(WackChar), // 7-bit ASCII fits within 1 byte
-    StringLit(ArcIntern<str>),
+    StringLit(InternStr),
     NullPair,
 }
 
@@ -398,88 +399,81 @@ impl WackInstr {
 }
 
 impl WackPrintType {
-    pub fn from_semantic_type(semantic_ty: SemanticType) -> Result<Self, Box<str>> {
-        match semantic_ty {
-            SemanticType::Int => Ok(Self::Int),
-            SemanticType::Bool => Ok(Self::Bool),
-            SemanticType::Char => Ok(Self::Char),
-            SemanticType::String => Ok(Self::StringOrCharArray),
-            SemanticType::Array(inner_ty) => match &*inner_ty {
-                SemanticType::Char => Ok(Self::StringOrCharArray),
-                SemanticType::AnyType | SemanticType::Error(_) => {
-                    Err(format!("found error/any semantic type `{}`", inner_ty).into())
-                }
+    pub fn from_thir_type(thir_type: Type) -> Result<Self, Box<str>> {
+        match thir_type.clone() {
+            Type::BaseType(BaseType::Int) => Ok(Self::Int),
+            Type::BaseType(BaseType::Bool) => Ok(Self::Bool),
+            Type::BaseType(BaseType::Char) => Ok(Self::Char),
+            Type::BaseType(BaseType::String) => Ok(Self::StringOrCharArray),
+            Type::ArrayType(boxed) => match (*boxed).elem_type {
+                Type::BaseType(BaseType::Char) => Ok(Self::StringOrCharArray),
+                Type::Any => Err(format!("found any THIR type `{}`", thir_type).into()),
                 _ => Ok(Self::OtherArray),
             },
-            SemanticType::Pair(_, _) | SemanticType::ErasedPair => Ok(Self::Pair),
-            SemanticType::AnyType | SemanticType::Error(_) => {
-                Err(format!("found error/any semantic type `{}`", semantic_ty).into())
-            }
+            Type::PairType(_) => Ok(Self::Pair),
+            Type::Any => Err(format!("found any THIR type `{}`", thir_type).into()),
         }
     }
 }
 
 impl WackReadType {
-    pub fn from_semantic_type(semantic_ty: SemanticType) -> Result<Self, Box<str>> {
-        match semantic_ty {
-            SemanticType::Int => Ok(Self::Int),
-            SemanticType::Char => Ok(Self::Char),
-            _ => Err(format!("incorrect semantic type found `{}`", semantic_ty).into()),
+    pub fn from_thir_type(thir_type: Type) -> Result<Self, Box<str>> {
+        match thir_type {
+            Type::BaseType(BaseType::Int) => Ok(Self::Int),
+            Type::BaseType(BaseType::Char) => Ok(Self::Char),
+            _ => Err(format!("incorrect THIR type found `{}`", thir_type).into()),
         }
     }
 }
 
-impl From<ast::BinaryOper> for BinaryOp {
+impl From<hir::BinaryOper> for BinaryOp {
     #[inline]
-    fn from(binop: ast::BinaryOper) -> Self {
+    fn from(binop: hir::BinaryOper) -> Self {
         match binop {
-            ast::BinaryOper::Mul => Self::Mul,
-            ast::BinaryOper::Div => Self::Div,
-            ast::BinaryOper::Mod => Self::Mod,
-            ast::BinaryOper::Add => Self::Add,
-            ast::BinaryOper::Sub => Self::Sub,
-            ast::BinaryOper::Lte => Self::Lte,
-            ast::BinaryOper::Lt => Self::Lt,
-            ast::BinaryOper::Gte => Self::Gte,
-            ast::BinaryOper::Gt => Self::Gt,
-            ast::BinaryOper::Eq => Self::Eq,
-            ast::BinaryOper::Neq => Self::Neq,
-            ast::BinaryOper::BAnd => Self::BAnd,
-            ast::BinaryOper::BXor => Self::BXor,
-            ast::BinaryOper::BOr => Self::BOr,
-            ast::BinaryOper::LAnd => Self::LAnd,
-            ast::BinaryOper::LOr => Self::LOr,
+            hir::BinaryOper::Mul => Self::Mul,
+            hir::BinaryOper::Div => Self::Div,
+            hir::BinaryOper::Mod => Self::Mod,
+            hir::BinaryOper::Add => Self::Add,
+            hir::BinaryOper::Sub => Self::Sub,
+            hir::BinaryOper::Lte => Self::Lte,
+            hir::BinaryOper::Lt => Self::Lt,
+            hir::BinaryOper::Gte => Self::Gte,
+            hir::BinaryOper::Gt => Self::Gt,
+            hir::BinaryOper::Eq => Self::Eq,
+            hir::BinaryOper::Neq => Self::Neq,
+            hir::BinaryOper::BAnd => Self::BAnd,
+            hir::BinaryOper::BXor => Self::BXor,
+            hir::BinaryOper::BOr => Self::BOr,
+            hir::BinaryOper::LAnd => Self::LAnd,
+            hir::BinaryOper::LOr => Self::LOr,
         }
     }
 }
 
-impl From<ast::UnaryOper> for UnaryOp {
+impl From<hir::UnaryOper> for UnaryOp {
     #[inline]
-    fn from(unop: ast::UnaryOper) -> Self {
+    fn from(unop: hir::UnaryOper) -> Self {
         match unop {
-            ast::UnaryOper::BNot => Self::BNot,
-            ast::UnaryOper::LNot => Self::LNot,
-            ast::UnaryOper::Minus => Self::Negate,
-            ast::UnaryOper::Len => Self::Len,
-            ast::UnaryOper::Ord => Self::Ord,
-            ast::UnaryOper::Chr => Self::Chr,
+            hir::UnaryOper::BNot => Self::BNot,
+            hir::UnaryOper::LNot => Self::LNot,
+            hir::UnaryOper::Minus => Self::Negate,
+            hir::UnaryOper::Len => Self::Len,
+            hir::UnaryOper::Ord => Self::Ord,
+            hir::UnaryOper::Chr => Self::Chr,
         }
     }
 }
 
 // TODO: check that these give the right answers
-impl From<ast::Liter> for WackLiteral {
+impl From<hir::Liter> for WackLiteral {
     #[inline]
-    fn from(liter: ast::Liter) -> Self {
+    fn from(liter: hir::Liter) -> Self {
         match liter {
-            ast::Liter::IntLiter(i) => Self::Int(i),
-            ast::Liter::BoolLiter(b) => Self::Bool(b.into()),
-            ast::Liter::CharLiter(c) => {
-                // Should be ok to do since literal characters from the parser are guaranteed to be ASCII
-                Self::Char(u8::try_from(c).expect("frontend should ensure char is ASCII"))
-            }
-            ast::Liter::StrLiter(s) => Self::StringLit(s),
-            ast::Liter::PairLiter => Self::NullPair,
+            hir::Liter::IntLiter(i) => Self::Int(i),
+            hir::Liter::BoolLiter(b) => Self::Bool(b),
+            hir::Liter::CharLiter(c) => Self::Char(c),
+            hir::Liter::StrLiter(s) => Self::StringLit(s),
+            hir::Liter::PairLiter => Self::NullPair,
         }
     }
 }
@@ -489,30 +483,30 @@ impl From<ast::Liter> for WackLiteral {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Display)]
 #[repr(transparent)]
 #[display("{_0}")]
-pub struct WackGlobIdent(ArcIntern<str>);
+pub struct WackGlobIdent(InternStr);
 
 // impls relating to `WackGlobIdent`
 mod wack_glob_ident {
+    use crate::alias::InternStr;
     use crate::wackir::WackGlobIdent;
-    use internment::ArcIntern;
-    use syntax::ast;
+    use frontend::parsing::ast;
 
     impl WackGlobIdent {
         #[must_use]
         #[inline]
-        pub const fn new(r#str: ArcIntern<str>) -> Self {
+        pub const fn new(r#str: InternStr) -> Self {
             Self(r#str)
         }
 
         #[must_use]
         #[inline]
-        pub fn from_ref(r#str: &ArcIntern<str>) -> Self {
+        pub fn from_ref(r#str: &InternStr) -> Self {
             Self(r#str.clone())
         }
 
         #[must_use]
         #[inline]
-        pub fn into_inner(self) -> ArcIntern<str> {
+        pub fn into_inner(self) -> InternStr {
             self.0
         }
     }
@@ -559,15 +553,15 @@ pub struct WackTempIdent(ast::Ident, usize);
 
 // impls relating to `WackTempIdent`
 pub mod wack_temp_ident {
+    use crate::alias::InternStr;
     use crate::ast_transform::ast_lowering_ctx::With;
     use crate::ast_transform::AstLoweringCtx;
     use crate::wackir::WackTempIdent;
-    use internment::ArcIntern;
+    use frontend::parsing::ast;
+    use frontend::wacc_hir::hir;
     use std::fmt;
     use std::fmt::{Debug, Formatter};
     use std::hash::{Hash, Hasher};
-    use syntax::ast::{self, Ident};
-    use syntax::rename::RenamedName;
 
     impl Debug for WackTempIdent {
         #[inline]
@@ -592,9 +586,9 @@ pub mod wack_temp_ident {
         }
     }
 
-    impl From<RenamedName> for WackTempIdent {
+    impl From<hir::Ident> for WackTempIdent {
         #[inline]
-        fn from(value: RenamedName) -> Self {
+        fn from(value: hir::Ident) -> Self {
             Self(value.ident.clone(), value.uuid)
         }
     }
@@ -630,16 +624,16 @@ pub mod wack_temp_ident {
         }
     }
 
-    impl From<WackTempIdent> for ArcIntern<str> {
+    impl From<WackTempIdent> for InternStr {
         #[inline]
-        fn from(mid_ident: WackTempIdent) -> ArcIntern<str> {
+        fn from(mid_ident: WackTempIdent) -> InternStr {
             mid_ident.0.into_inner()
         }
     }
 
     impl WackTempIdent {
         pub fn create_new(ident: &str, counter: &mut usize) -> Self {
-            Self(Ident::from_str(ident), *counter)
+            Self(ast::Ident::from_str(ident), *counter)
         }
 
         pub fn get_id(&self) -> usize {
@@ -907,12 +901,12 @@ mod tests {
     #[test]
     fn test_liter_conversion() {
         // Test integer literal conversion
-        let int_liter = ast::Liter::IntLiter(42);
+        let int_liter = hir::Liter::IntLiter(42);
         assert_eq!(WackLiteral::from(int_liter), WackLiteral::Int(42));
 
         // Test boolean literal conversion
-        let bool_liter_true = ast::Liter::BoolLiter(true);
-        let bool_liter_false = ast::Liter::BoolLiter(false);
+        let bool_liter_true = hir::Liter::BoolLiter(true);
+        let bool_liter_false = hir::Liter::BoolLiter(false);
         assert_eq!(WackLiteral::from(bool_liter_true), WackLiteral::Bool(TRUE));
         assert_eq!(
             WackLiteral::from(bool_liter_false),
@@ -920,13 +914,13 @@ mod tests {
         );
 
         // Test char literal conversion
-        let char_liter = ast::Liter::CharLiter('A');
-        let char_liter2 = ast::Liter::CharLiter('a');
+        let char_liter = hir::Liter::CharLiter('A' as u8);
+        let char_liter2 = hir::Liter::CharLiter('a' as u8);
         assert_eq!(WackLiteral::from(char_liter), WackLiteral::Char(65)); // ASCII value of 'A'
         assert_eq!(WackLiteral::from(char_liter2), WackLiteral::Char(97)); // ASCII value of 'a'
 
         // Test pair literal conversion
-        let pair_liter = ast::Liter::PairLiter;
+        let pair_liter = hir::Liter::PairLiter;
         assert_eq!(WackLiteral::from(pair_liter), WackLiteral::NullPair);
     }
 }

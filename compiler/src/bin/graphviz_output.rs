@@ -1,5 +1,5 @@
-use internment::ArcIntern;
-use middle::optimizations::{eliminate_unreachable_code, make_cfg};
+use internment::Intern;
+use middle::optimizations::make_cfg;
 use middle::wackir::{WackGlobIdent, WackInstr, WackLiteral, WackTempIdent, WackValue};
 
 fn main() {
@@ -14,7 +14,7 @@ fn main() {
         },
         WackInstr::Jump(target_ident.clone()),
         WackInstr::FunCall {
-            fun_name: WackGlobIdent::new(ArcIntern::from("my_function")),
+            fun_name: WackGlobIdent::new(Intern::from("my_function")),
             args: vec![],
             dst: x_ident.clone(),
         },

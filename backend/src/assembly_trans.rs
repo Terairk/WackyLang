@@ -2,6 +2,7 @@ use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Operand,
     Register, FUNCTION, LABEL,
 };
+use middle::ast_transform::WackIdentSymbolTable;
 use middle::types::{BitWidth, WackType};
 use middle::wackir::WackInstr::JumpToHandler;
 use middle::wackir::{
@@ -41,7 +42,7 @@ const STACK_START_PARAM: i32 = 16;
 pub fn wacky_to_assembly(
     program: WackProgram,
     counter: usize,
-    symbol_table: HashMap<WackTempIdent, WackType>,
+    symbol_table: WackIdentSymbolTable,
 ) -> (AsmProgram, AsmGen) {
     let mut asm_gen = AsmGen::new(counter, symbol_table);
     let mut asm_functions: Vec<AsmFunction> = Vec::new();
@@ -106,8 +107,9 @@ const fn get_type_from_literal(lit: &WackLiteral) -> AssemblyType {
 }
 
 impl AsmGen {
-    fn new(counter: usize, symbol_table: HashMap<WackTempIdent, WackType>) -> Self {
+    fn new(counter: usize, symbol_table: WackIdentSymbolTable) -> Self {
         let symbol_table = symbol_table
+            .0
             .into_iter()
             .map(|(k, v)| (k, convert_type(&v)))
             .collect();

@@ -220,10 +220,10 @@ dependencies = [
  "backend",
  "chumsky",
  "clap",
+ "frontend",
  "internment",
  "middle",
  "regex",
- "syntax",
  "util",
 ]
 
@@ -376,8 +376,10 @@ dependencies = [
  "ariadne",
  "chumsky",
  "delegate",
+ "derive_more",
  "extend",
  "fn_pipe",
+ "generativity",
  "impl-trait-for-tuples",
  "internment",
  "parse_int",
@@ -385,6 +387,12 @@ dependencies = [
  "thiserror",
  "util",
 ]
+
+[[package]]
+name = "generativity"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5881e4c3c2433fe4905bb19cfd2b5d49d4248274862b68c27c33d9ba4e13f9ec"
 
 [[package]]
 name = "getrandom"
@@ -492,9 +500,9 @@ version = "0.1.0"
 dependencies = [
  "derive_more",
  "extend",
+ "frontend",
  "internment",
  "itertools",
- "syntax",
  "thiserror",
  "util",
 ]

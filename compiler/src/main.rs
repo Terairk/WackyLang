@@ -5,40 +5,18 @@ use backend::assembly_trans::wacky_to_assembly;
 use backend::emission::AssemblyFormatter;
 use backend::predefined::generate_predefined;
 use backend::replace_pseudo::replace_pseudo_in_program;
-use chumsky::error::Rich;
-use chumsky::input::{Input, WithContext};
-use chumsky::{extra, Parser};
 use clap::Parser as ClapParser;
+use frontend::parsing::lexer::lexing_phase;
+use frontend::parsing::parser::parsing_phase;
+use frontend::source::StrSourceId;
+use frontend::wacc_hir::ast_lowering_phase;
+use frontend::wacc_thir::hir_lowering_phase;
+use frontend::StreamType;
 use middle::ast_transform::lower_program;
+use std::io::stdout;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use syntax::ast;
-use syntax::parser::program_parser;
-use syntax::rename::rename;
-use syntax::source::{SourcedSpan, StrSourceId};
-use syntax::token::{lexer, Token};
-use syntax::typecheck::typecheck;
-use syntax::{build_semantic_error_report, build_syntactic_report};
 use util::opt_flags::OptimizationConfig;
-
-// type aliases, because Rust's type inference can't yet handle this, and typing the same
-// stuff over and over is very annoying and unreadable :)
-
-// pub type ErrorExtra<'a, E> = extra::Full<E, DebugInspector<'a, I>, ()>;
-pub type ErrorExtra<'a, E> = extra::Full<E, (), ()>;
-pub type ParseOutput<'a, O, E> = (Option<O>, Vec<E>);
-
-pub type InputError<'a, I> = Rich<'a, <I as Input<'a>>::Token, <I as Input<'a>>::Span>;
-pub type InputExtra<'a, I> = ErrorExtra<'a, InputError<'a, I>>;
-pub type InputParseOutput<'a, I, O> = ParseOutput<'a, O, InputError<'a, I>>;
-
-type LexerInput<'a> = WithContext<SourcedSpan, &'a str>;
-type LexerExtra<'a> = InputExtra<'a, LexerInput<'a>>;
-type LexerOutput<'a> = InputParseOutput<'a, LexerInput<'a>, Vec<(Token, SourcedSpan)>>;
-
-type ProgramError<'a> = Rich<'a, Token, SourcedSpan>;
-type ProgramExtra<'a> = ErrorExtra<'a, ProgramError<'a>>;
-type ProgramOutput<'a> = ParseOutput<'a, ast::Program<ast::Ident, ()>, ProgramError<'a>>;
 
 #[derive(ClapParser)]
 #[command(author, version, about)]
@@ -123,8 +101,8 @@ impl Args {
     }
 }
 
-static SEMANTIC_ERR_CODE: u8 = 200;
-static SYNTAX_ERR_CODE: u8 = 100;
+const SEMANTIC_ERR_CODE: u8 = 200;
+const SYNTAX_ERR_CODE: u8 = 100;
 
 #[allow(clippy::too_many_lines)]
 fn main() -> ExitCode {
@@ -143,6 +121,10 @@ fn main() -> ExitCode {
 
     let file_path: String = file_path.to_str().unwrap().to_owned();
 
+    // create `Stdout` reference for printing
+    let stdout = &stdout();
+
+    // load source, and source-ID
     let source = match std::fs::read_to_string(&file_path) {
         Ok(content) => content,
         Err(e) => {
@@ -150,54 +132,53 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-
+    let source = source.as_str(); // reduce repetitive &str borrowings
     let source_id = StrSourceId::from_str(&file_path);
-    let eoi_span = SourcedSpan::new(source_id.clone(), (source.len()..source.len()).into());
 
     // -------------------------------------------------------------------------
     //                          Lexing Phase
     // -------------------------------------------------------------------------
 
-    // so the pattern is, make everything generic asf and supply the concrete implementations later :)
-    let (tokens, lexing_errs): LexerOutput = Parser::parse(
-        &lexer::<_, LexerExtra>(),
-        source.with_context((source_id, ())),
-    )
-    .into_output_errors();
+    let lexing_result = lexing_phase(
+        source,
+        source_id.clone(),
+        SYNTAX_ERR_CODE as i32,
+        StreamType::Stderr,
+        stdout,
+    );
 
-    // Done to appease the borrow checker while displaying errors
-    if !lexing_errs.is_empty() {
-        for e in &lexing_errs {
-            build_syntactic_report(e, source.clone());
-        }
-        return ExitCode::from(SYNTAX_ERR_CODE);
-    }
+    // If there are syntax errors, return an appropriate result
+    let tokens = match lexing_result {
+        Ok(tokens) => tokens,
+        Err(_) => return ExitCode::from(SYNTAX_ERR_CODE),
+    };
 
     if args.lexing {
         println!("{tokens:#?}");
         return ExitCode::SUCCESS;
     }
-    let tokens = tokens.expect("If lexing errors are not empty, tokens should be Valid");
-    // attach the span of each token to it before parsing, so it is not forgotten
-    let spanned_tokens = tokens.as_slice().map(eoi_span, |(t, s)| (t, s));
 
     // -------------------------------------------------------------------------
     //                          Parsing Phase
     // -------------------------------------------------------------------------
 
-    #[allow(clippy::pattern_type_mismatch)]
-    let (parsed, parse_errs): ProgramOutput =
-        Parser::parse(&program_parser::<_, ProgramExtra>(), spanned_tokens).into_output_errors();
+    let parsing_result = parsing_phase(
+        source,
+        source_id,
+        tokens,
+        SYNTAX_ERR_CODE as i32,
+        StreamType::Stderr,
+        stdout,
+    );
 
-    if !parse_errs.is_empty() {
-        for e in &parse_errs {
-            build_syntactic_report(e, source.clone());
-        }
-        return ExitCode::from(SYNTAX_ERR_CODE);
-    }
+    // If there are syntax errors, return an appropriate result
+    let ast_program = match parsing_result {
+        Ok(program) => program,
+        Err(_) => return ExitCode::from(SYNTAX_ERR_CODE),
+    };
 
     if args.parsing {
-        println!("{parsed:#?}");
+        println!("{ast_program:#?}");
         return ExitCode::SUCCESS;
     }
 
@@ -205,45 +186,48 @@ fn main() -> ExitCode {
     //                          Renaming Phase
     // -------------------------------------------------------------------------
 
-    let (renamed_ast, renamer) =
-        rename(parsed.expect("If parse errors are not empty, parsed should be Valid"));
+    let lowering_result = ast_lowering_phase(
+        source,
+        ast_program,
+        SEMANTIC_ERR_CODE as i32,
+        StreamType::Stderr,
+        stdout,
+    );
+
+    // If there are semantic errors, return an appropriate result
+    let ast_lowering = match lowering_result {
+        Ok(lowering) => lowering,
+        Err(_) => return ExitCode::from(SEMANTIC_ERR_CODE),
+    };
 
     if args.renaming {
-        println!("{renamed_ast:#?}");
-        return ExitCode::from(SEMANTIC_ERR_CODE);
-    }
-    let renamed_errors = renamer.return_errors();
-    // we'll need this info later on so we return if error
-    // but we still continue so we can identify type errors
-    // as well
-    let renamed_errors_not_empty = !renamed_errors.is_empty();
-    if renamed_errors_not_empty {
-        for e in &renamed_errors {
-            build_semantic_error_report(e, source.clone());
-        }
+        println!("{:#?}", ast_lowering.hir_program);
+        return ExitCode::SUCCESS;
     }
 
     // -------------------------------------------------------------------------
     //                          Typechecking Phase
     // -------------------------------------------------------------------------
 
-    let (typed_ast, type_resolver) = typecheck(renamer, renamed_ast);
+    // Perform HIR lowering (typechecking)
+    let lowering_result = hir_lowering_phase(
+        source,
+        ast_lowering,
+        SEMANTIC_ERR_CODE as i32,
+        StreamType::Stderr,
+        stdout,
+    );
+
+    // If there are semantic errors, return an appropriate result
+    let hir_lowering = match lowering_result {
+        Ok(lowering) => lowering,
+        Err(_) => return ExitCode::from(SEMANTIC_ERR_CODE),
+    };
 
     if args.typechecking {
-        println!("{typed_ast:?}");
-        println!("{:?}", type_resolver.symid_table);
+        println!("{:?}", hir_lowering.thir_program);
+        println!("{:?}", hir_lowering.hir_ident_symbol_table);
         return ExitCode::SUCCESS;
-    }
-    let type_errors = &type_resolver.type_errors;
-    if !type_errors.is_empty() {
-        for e in type_errors {
-            build_semantic_error_report(e, source.clone());
-        }
-        return ExitCode::from(SEMANTIC_ERR_CODE);
-    }
-
-    if renamed_errors_not_empty {
-        return ExitCode::from(SEMANTIC_ERR_CODE);
     }
 
     // -------------------------------------------------------------------------
@@ -252,7 +236,7 @@ fn main() -> ExitCode {
 
     // TODO: add string constant pass to either this pass or assembly pass
     // may need to modify my Wacky IR / Assembly Ast
-    let (wacky_ir, counter, symbol_table) = lower_program(typed_ast, type_resolver);
+    let (wacky_ir, counter, symbol_table) = lower_program(hir_lowering);
     let wacky_ir = middle::optimizations::optimize(wacky_ir, optimization_config);
 
     if args.wacky {

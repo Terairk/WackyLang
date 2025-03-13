@@ -1,4 +1,6 @@
-use syntax::types::SemanticType;
+use frontend::wacc_thir::thir::Type;
+use frontend::wacc_thir::types::BaseType;
+use util::ext::BoxedSliceExt;
 
 /// These are separate types for now, but will be merged later
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -8,9 +10,9 @@ pub struct WackFuncType {
 }
 
 impl WackFuncType {
-    pub fn from_semantic_type(args: Vec<SemanticType>, ret: SemanticType) -> Self {
-        let args: Box<[WackType]> = args.into_iter().map(WackType::from_semantic_type).collect();
-        let ret = Box::new(WackType::from_semantic_type(ret));
+    pub fn from_thir_type(args: Box<[Type]>, ret: Type) -> Self {
+        let args: Box<[WackType]> = args.map(WackType::from_thir_type);
+        let ret = Box::new(WackType::from_thir_type(ret));
         Self { args, ret }
     }
 }
@@ -35,6 +37,9 @@ impl WackType {
     /// A pointer on a 64-bit machine is 8 bytes.
     pub const PTR_BYTES: usize = 8;
 
+    /// The width of the integer-length of a WACC array.
+    pub const WACC_ARRAY_LEN_WIDTH: BitWidth = BitWidth::W32;
+
     pub const ANY_POINTER: WackType = WackType::Pointer(WackPointerType::Any);
 
     pub fn pointer_of(of: WackType) -> Self {
@@ -50,47 +55,43 @@ impl WackType {
     }
 
     #[inline]
-    pub fn from_semantic_type(semantic_type: SemanticType) -> Self {
-        match semantic_type {
-            SemanticType::Bool => Self::Int {
+    pub fn from_thir_type(thir_type: Type) -> Self {
+        match thir_type {
+            Type::BaseType(BaseType::Bool) => Self::Int {
                 width: BitWidth::W8,
             },
-            SemanticType::Char => Self::Int {
+            Type::BaseType(BaseType::Char) => Self::Int {
                 width: BitWidth::W8,
             },
-            SemanticType::Int => Self::Int {
+            Type::BaseType(BaseType::Int) => Self::Int {
                 width: BitWidth::W32,
             },
             // a string has the same type-representation as `char[]`
-            SemanticType::String => {
-                Self::from_semantic_type(SemanticType::Array(Box::new(SemanticType::Char)))
-            }
+            Type::BaseType(BaseType::String) => Self::from_thir_type(Type::char_array()),
             // an array type in WACC translates to a __pointer__ to an array in memory
-            SemanticType::Array(elem_ty) => {
-                Self::pointer_of(Self::array(match Self::from_semantic_type(*elem_ty) {
-                    // arrays of type Any: `any[]` are a direct result of them being
-                    // empty array literals, meaning it is fine to default to untyped pointer-elements
-                    // in order to avoid weird typing bugs
-                    Self::Uninhabited => Self::Pointer(WackPointerType::Any),
-                    other => other,
-                }))
+            Type::ArrayType(boxed) => {
+                Self::pointer_of(Self::array(
+                    match Self::from_thir_type((*boxed).elem_type) {
+                        // arrays of type Any: `any[]` are a direct result of them being
+                        // empty array literals, meaning it is fine to default to untyped pointer-elements
+                        // in order to avoid weird typing bugs
+                        Self::Uninhabited => Self::Pointer(WackPointerType::Any),
+                        other => other,
+                    },
+                ))
             }
             // a pair type in WACC translates to a __pointer__ to a pair in memory
-            SemanticType::Pair(fst, snd) => Self::pointer_of(Self::pair(
-                Self::from_semantic_type(*fst),
-                Self::from_semantic_type(*snd),
+            Type::PairType(boxed) => Self::pointer_of(Self::pair(
+                Self::from_thir_type((*boxed).fst_type.clone()),
+                Self::from_thir_type((*boxed).fst_type),
             )),
-            // an erased-pair type can point to just-about anything...
-            SemanticType::ErasedPair => Self::ANY_POINTER,
+            // TODO: if compile bugs, not handling this this might be the culprit.....
+            // // an erased-pair type can point to just-about anything...
+            // SemanticType::ErasedPair => Self::ANY_POINTER,
 
             // Map AnyType to Uninhabited, as they are logically the same thing - types that will
             // never be inhabited/used directly
-            SemanticType::AnyType => Self::Uninhabited,
-
-            // something went wrong in the frontend if these branches were reached
-            SemanticType::Error(_) => {
-                unreachable!("There should not be `Error` types by this stage")
-            }
+            Type::Any => Self::Uninhabited,
         }
     }
 
@@ -108,12 +109,12 @@ impl WackType {
     }
 
     /// # Safety
-    /// If you are _sure_ the semantic type is that of an array, you can unsafely extract
+    /// If you are _sure_ the THIR type is that of an array, you can unsafely extract
     /// the inner element type; if it isn't an array-type, a runtime panic will occur.
     #[inline]
     #[must_use]
     pub unsafe fn into_array_elem_type(self) -> Self {
-        // extract the semantic types
+        // extract the THIR types
         match self {
             Self::Array(elems_ty) => *elems_ty,
             _ => unreachable!("The type is assumed to be array, but wasn't."),
@@ -121,17 +122,17 @@ impl WackType {
     }
 
     /// # Safety
-    /// If you are _sure_ the semantic type is that of a pair, you can unsafely extract
+    /// If you are _sure_ the THIR type is that of a pair, you can unsafely extract
     /// the inner element types; if it isn't a pair-type, a runtime panic will occur.
     #[inline]
     #[must_use]
     pub unsafe fn into_pair_elem_types(self) -> (Self, Self) {
-        // extract the semantic types
+        // extract the THIR types
         match self {
             Self::Pair(fst, snd) => (*fst, *snd),
 
             //
-            // TODO: this was copied from the semantic-version of the same function: update this function somehow to reflect the same changes
+            // TODO: this was copied from the THIR-version of the same function: update this function somehow to reflect the same changes
             //
             // // TODO: Check if it correct
             // // According to the Spec, we should allow one side of the assignments to be untyped, i.e.:

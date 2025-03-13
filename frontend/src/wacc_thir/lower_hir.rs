@@ -1,7 +1,8 @@
+use crate::parsing::ast;
 use crate::source::{SourcedBoxedNode, SourcedNode, SourcedSpan};
-use crate::wacc_hir::hir;
 use crate::wacc_hir::hir::PairElemSelector;
-use crate::wacc_hir::lower_ast::FuncSymbolTable;
+use crate::wacc_hir::lower_ast::HirFuncSymbolTable;
+use crate::wacc_hir::{hir, AstLoweringPhaseOutput};
 use crate::wacc_thir::thir::{
     ArrayElem, ArrayLiter, BinaryExpr, Expr, Func, Ident, LValue, Liter, NewPair, PairElem,
     Program, RValue, Stat, StatBlock, UnaryExpr,
@@ -161,6 +162,12 @@ impl From<HirLoweringError> for SemanticError<&'static str, String> {
     }
 }
 
+// We handle functions separately from variables since its easier
+#[derive(Debug)]
+pub struct ThirFuncSymbolTable {
+    pub functions: HashMap<ast::Ident, (Type, Box<[Type]>)>,
+}
+
 #[derive(Debug, Clone)]
 #[repr(transparent)]
 pub struct IdentSymbolTable(pub HashMap<hir::Ident, Type>);
@@ -182,22 +189,23 @@ impl DerefMut for IdentSymbolTable {
 }
 
 #[derive(Debug)]
-pub struct HirLoweringPhaseResult {
+pub struct HirLoweringResult {
     pub output: Program,
     pub errors: Vec<HirLoweringError>,
-    pub func_symbol_table: FuncSymbolTable,
+    pub func_symbol_table: ThirFuncSymbolTable,
     pub hir_ident_symbol_table: IdentSymbolTable,
+    pub ident_counter: usize,
 }
 
 struct HirLoweringCtx {
     errors: Vec<HirLoweringError>,
-    func_symbol_table: FuncSymbolTable,
+    func_symbol_table: HirFuncSymbolTable,
     current_func_hir_return_type: Option<hir::Type>,
     hir_ident_symbol_table: IdentSymbolTable,
 }
 
 impl HirLoweringCtx {
-    fn new(func_symbol_table: FuncSymbolTable) -> Self {
+    fn new(func_symbol_table: HirFuncSymbolTable) -> Self {
         Self {
             errors: Vec::new(),
             func_symbol_table,
@@ -1167,16 +1175,32 @@ impl HirLoweringCtx {
 
 #[inline]
 #[must_use]
-pub fn lower_hir(
-    func_symbol_table: FuncSymbolTable,
-    hir_program: hir::Program,
-) -> HirLoweringPhaseResult {
-    let mut ctx = HirLoweringCtx::new(func_symbol_table);
-    let thir_program = ctx.lower_program(hir_program);
-    HirLoweringPhaseResult {
+pub fn lower_hir(ast_lowering: AstLoweringPhaseOutput) -> HirLoweringResult {
+    // map program
+    let mut ctx = HirLoweringCtx::new(ast_lowering.func_symbol_table);
+    let thir_program = ctx.lower_program(ast_lowering.hir_program);
+
+    // map function symbol table
+    let func_symbol_table = ctx
+        .func_symbol_table
+        .functions
+        .iter()
+        .map(|(ident, (ret_ty, args_ty))| {
+            let ret_ty = HirLoweringCtx::lower_type(ret_ty);
+            let args_ty = args_ty.iter().map(HirLoweringCtx::lower_type).collect();
+
+            (ident.clone(), (ret_ty, args_ty))
+        })
+        .collect();
+
+    // return result
+    HirLoweringResult {
         output: thir_program,
         errors: ctx.errors,
-        func_symbol_table: ctx.func_symbol_table,
+        func_symbol_table: ThirFuncSymbolTable {
+            functions: func_symbol_table,
+        },
         hir_ident_symbol_table: ctx.hir_ident_symbol_table,
+        ident_counter: ast_lowering.ident_counter,
     }
 }

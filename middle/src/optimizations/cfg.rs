@@ -1,5 +1,5 @@
-use internment::ArcIntern;
-use util::{CFG, Instruction, SimpleInstr, cfg::Location};
+use crate::alias::InternStr;
+use util::{cfg::Location, Instruction, SimpleInstr, CFG};
 // temporary bCFG cus I want to leave everything the same
 
 use crate::wackir::{WackInstr, WackTempIdent};
@@ -44,7 +44,7 @@ impl Instruction for WackInstr {
 impl From<WackTempIdent> for Location {
     #[inline]
     fn from(ident: WackTempIdent) -> Self {
-        let interned_string: ArcIntern<str> = ident.clone().into();
+        let interned_string: InternStr = ident.clone().into();
         let id = ident.get_id();
         Self::new(interned_string, id)
     }

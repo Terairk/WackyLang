@@ -64,10 +64,9 @@ pub fn run_single_test(path: &Path) -> Result<String, String> {
     };
 
     // Perform parsing (syntax analysis)
-    #[allow(clippy::pattern_type_mismatch)]
     let parsing_result = parsing_phase(
         source,
-        source_id.clone(),
+        source_id,
         tokens,
         SYNTAX_ERR_CODE,
         StreamType::Stderr,
@@ -90,16 +89,15 @@ pub fn run_single_test(path: &Path) -> Result<String, String> {
     );
 
     // If there are semantic errors, return an appropriate result
-    let (hir_program, func_symbol_table) = match lowering_result {
-        Ok(program) => program,
+    let ast_lowering = match lowering_result {
+        Ok(lowering) => lowering,
         Err(_) => return Err(SEMANTIC_ERR_STR.to_owned()),
     };
 
     // Perform HIR lowering (typechecking)
     let lowering_result = hir_lowering_phase(
         source,
-        func_symbol_table,
-        hir_program,
+        ast_lowering,
         SEMANTIC_ERR_CODE,
         StreamType::Stderr,
         stdout,

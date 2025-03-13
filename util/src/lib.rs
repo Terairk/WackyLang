@@ -29,6 +29,13 @@ pub(crate) mod private {
     impl<T: ?Sized> Sealed for T {}
 }
 
+/// Namespace for all the type/trait aliases used by this crate.
+pub(crate) mod alias {
+    use internment::Intern;
+
+    pub type InternStr = Intern<str>;
+}
+
 /// Namespace for crate-wide extension traits/methods
 pub mod ext {
     use extend::ext;

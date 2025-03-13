@@ -1,6 +1,6 @@
 use crate::parsing::ast;
 use crate::wacc_hir::hir;
-use crate::wacc_thir::types::Type;
+pub use crate::wacc_thir::types::Type;
 use thiserror::Error;
 use util::nonempty::NonemptyArray;
 
