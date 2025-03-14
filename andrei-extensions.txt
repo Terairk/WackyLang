@@ -36,3 +36,8 @@
 - + with syntax `<ident>: <loop-stmt>` for loop statements
 - + with syntax `break <ident>` and `nextloop <ident>` for `break`/`nextloop` keywords
 - TODO: write more tests around all the edge cases of that
+
+# Tail-Recursion Optimisation
+- directly self-recursive functions are optimized into loops
+- TODO: write tests, and measure performance
+- TODO: maybe add enforcement annotation?? e.g. `tailrec <type> <ident>(...) is <stmt> done` ??

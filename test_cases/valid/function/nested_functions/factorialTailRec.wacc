@@ -1,0 +1,38 @@
+# tail-recursively calculate the nth factorial number
+
+# Input: 12
+
+# Output:
+# This program calculates the nth factorial number tail-recursively.
+# Please enter n (should not be too large): The input n is 12
+# The nth factorial number is 479001600
+#
+
+# Program:
+
+begin
+  int fac_go(int n, int a) is
+    if n <= 1
+    then
+      return a
+    else
+      int ret_val = call fac_go(n - 1, n * a) ;
+      return ret_val
+    fi
+  end
+
+  int fac(int n) is
+    int ret_val = call fac_go(n, 1) ;
+    return ret_val
+  end
+
+  println "This program calculates the nth factorial number tail-recursively." ;
+  print "Please enter n (should not be too large): " ;
+  int n = 0;
+  read n ;
+  print "The input n is " ;
+  println n ;
+  print "The nth factorial number is " ;
+  int result = call fac(n) ;
+  println  result
+end

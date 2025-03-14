@@ -370,7 +370,7 @@ impl HirLoweringCtx {
     }
 
     #[inline]
-    pub fn make_new_loop_label(&mut self, ident: ast::Ident) -> hir::LoopLabel {
+    pub const fn make_new_loop_label(&mut self, ident: ast::Ident) -> hir::LoopLabel {
         hir::LoopLabel::new(&mut self.ident_counter, ident)
     }
 
