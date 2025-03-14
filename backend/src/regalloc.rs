@@ -218,7 +218,7 @@ mod build_interference_graph {
         add_pseudoregisters(&mut interference_graph, instructions);
         let mut cfg = make_control_flow_graph(instructions, func_name);
         analyze_lifeness(&mut cfg, &func_reg);
-        add_edges(&cfg, &mut interference_graph);
+        add_edges(&cfg, &mut interference_graph, &func_reg);
         interference_graph
     }
 
@@ -329,8 +329,38 @@ mod build_interference_graph {
         block
     }
 
-    fn add_edges(cfg: &AsmCFG, graph: &mut InterferenceGraph) {
-        todo!()
+    fn add_edges(cfg: &AsmCFG, graph: &mut InterferenceGraph, func_regs: &FunctionRegisters) {
+        // Iterate through all nodes in the CFG
+        for (block_id, block) in &cfg.basic_blocks {
+            if block.id == NodeId::Entry || block.id == NodeId::Exit {
+                continue;
+            }
+
+            // Process each instruction in the block
+            for (live_regs, instr) in &block.instructions {
+                let (used, updated) = find_used_and_updated(instr.clone(), func_regs);
+
+                // Check each live register against updated registers
+                for l in live_regs {
+                    let is_move_with_l_as_src = match instr {
+                        AsmInstruction::Mov { src, .. } if src == l => true,
+                        _ => false,
+                    };
+
+                    if is_move_with_l_as_src {
+                        // If l is the source of a move, it is not live after the instruction
+                        continue;
+                    }
+
+                    // For each updated register, add interference edge if l and u are different
+                    for u in &updated {
+                        if l != u {
+                            let _ = graph.add_edge(l, u);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn find_used_and_updated(
