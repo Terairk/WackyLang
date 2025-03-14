@@ -6,14 +6,18 @@
 // We'll use R10D as a scratch register because it usually doesn't serve
 // any special purpose
 
-use crate::assembly_ast::AsmInstruction::{Binary, Cmp, Idiv, JmpCC, Lea, Mov, MovZeroExtend};
+use crate::assembly_ast::AsmInstruction::{
+    Binary, Cmp, Idiv, JmpCC, Lea, Mov, MovZeroExtend, Pop, Ret,
+};
 use crate::assembly_ast::Operand::{Data, Memory, Reg};
-use crate::assembly_ast::Register::{R9, R10, R11};
+use crate::assembly_ast::Register::{BP, R10, R11, SP};
 use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, Operand, Operand::Imm,
 };
 use crate::assembly_ast::{AsmLabel, CondCode};
 use crate::predefined::GEN_USIZE;
+use crate::regalloc::FunctionCallee;
+use AssemblyType::Quadword;
 use util::gen_flags::INBUILT_OVERFLOW;
 
 ///
@@ -21,7 +25,7 @@ use util::gen_flags::INBUILT_OVERFLOW;
 /// Some instructions have special requirements such as needing a register as 2nd operand
 #[must_use]
 #[inline]
-pub fn fix_program(program: AsmProgram) -> AsmProgram {
+pub fn fix_program(program: AsmProgram, func_callee_regs: &FunctionCallee) -> AsmProgram {
     use Imm;
     // Process each function separately
     let mut new_functions: Vec<AsmFunction> = Vec::new();
@@ -53,6 +57,22 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
                 Cmp { typ, op1, op2 } => fix_cmp(&mut new_func_body, typ, op1, op2),
                 Lea { src, dst } => {
                     fix_lea(&mut new_func_body, src, dst);
+                }
+                Ret => {
+                    // If we have a return instruction, we need to pop the callee saved registers
+                    // before returning
+
+                    for reg in func_callee_regs.get(&func.name).unwrap().iter().rev() {
+                        new_func_body.push(Pop(*reg));
+                    }
+                    new_func_body.push(Mov {
+                        typ: Quadword,
+                        src: Reg(BP),
+                        dst: Reg(SP),
+                    });
+                    new_func_body.push(Pop(BP));
+
+                    new_func_body.push(Ret);
                 }
                 // All other instructions are left unchanged as they dont have special requirements
                 _ => new_func_body.push(instr),
@@ -335,7 +355,7 @@ mod tests {
         };
 
         // Run the fix instructions pass
-        let fixed_program = fix_program(program);
+        let fixed_program = fix_program(program, &FunctionCallee::new());
 
         // Now inspect the program
         // We expect 3 instructions total with the invalid mov split into 2 instructions

@@ -4,14 +4,15 @@ use backend::assembly_fix::fix_program;
 use backend::assembly_trans::wacky_to_assembly;
 use backend::emission::AssemblyFormatter;
 use backend::predefined::generate_predefined;
+use backend::regalloc::{FunctionCallee, allocate_registers_program};
 use backend::replace_pseudo::replace_pseudo_in_program;
 use clap::Parser as ClapParser;
+use frontend::StreamType;
 use frontend::parsing::lexer::lexing_phase;
 use frontend::parsing::parser::parsing_phase;
 use frontend::source::StrSourceId;
 use frontend::wacc_hir::ast_lowering_phase;
 use frontend::wacc_thir::hir_lowering_phase;
-use frontend::StreamType;
 use middle::ast_transform::lower_program;
 use std::io::stdout;
 use std::path::PathBuf;
@@ -48,6 +49,10 @@ struct Args {
     #[arg(long)]
     assembly: bool,
 
+    /// Stop after register allocation and print the info
+    #[arg(long)]
+    print_reg_alloc: bool,
+
     /// Stop after replacing pseudo registers
     #[arg(long)]
     pseudo: bool,
@@ -77,6 +82,9 @@ struct Args {
     #[arg(long = "rm-dead-stores")]
     eliminate_dead_stores: bool,
 
+    #[arg(long = "reg-alloc")]
+    reg_alloc: bool,
+
     /// Whether to print the CFG
     #[arg(long = "print-cfg")]
     print_cfg: bool,
@@ -96,6 +104,7 @@ impl Args {
             .copy_propagation(self.optimize || self.copy_propagation)
             .eliminate_unreachable_code(self.optimize || self.eliminate_unreachable_code)
             .eliminate_dead_stores(self.optimize || self.eliminate_dead_stores)
+            .reg_alloc(self.optimize || self.reg_alloc)
             .print_cfg(self.print_cfg)
             .build()
     }
@@ -250,17 +259,38 @@ fn main() -> ExitCode {
     // -------------------------------------------------------------------------
 
     // TODO: find how to use asm_gen for future passes
-    let (mut assembly_ast, asm_gen) = wacky_to_assembly(wacky_ir, counter, symbol_table);
+    let (mut assembly_ast, asm_gen, mut function_callee_regs) =
+        wacky_to_assembly(wacky_ir, counter, symbol_table);
     if args.assembly {
         println!("{assembly_ast:#?}");
         return ExitCode::SUCCESS;
     }
 
     // -------------------------------------------------------------------------
+    //                     Register Allocation Pass
+    // -------------------------------------------------------------------------
+
+    if optimization_config.has_reg_alloc() {
+        assembly_ast = allocate_registers_program(
+            assembly_ast,
+            &asm_gen.function_regs,
+            &mut function_callee_regs,
+        );
+        if args.print_reg_alloc {
+            println!("{assembly_ast:#?}");
+            return ExitCode::SUCCESS;
+        }
+    }
+
+    // -------------------------------------------------------------------------
     //                      Replace Pseudoreg Pass
     // -------------------------------------------------------------------------
 
-    replace_pseudo_in_program(&mut assembly_ast, &asm_gen.symbol_table);
+    replace_pseudo_in_program(
+        &mut assembly_ast,
+        &asm_gen.symbol_table,
+        &function_callee_regs,
+    );
     if args.pseudo {
         println!("{assembly_ast:#?}");
         return ExitCode::SUCCESS;
@@ -270,7 +300,7 @@ fn main() -> ExitCode {
     //                      Fixing Instructions Pass
     // -------------------------------------------------------------------------
 
-    let mut assembly_ast = fix_program(assembly_ast);
+    let mut assembly_ast = fix_program(assembly_ast, &function_callee_regs);
     if args.fixing {
         println!("{assembly_ast:#?}");
         return ExitCode::SUCCESS;

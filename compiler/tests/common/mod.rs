@@ -2,13 +2,14 @@ use backend::assembly_fix::fix_program;
 use backend::assembly_trans::wacky_to_assembly;
 use backend::emission::AssemblyFormatter;
 use backend::predefined::generate_predefined;
+use backend::regalloc::{FunctionCallee, allocate_registers_program};
 use backend::replace_pseudo::replace_pseudo_in_program;
+use frontend::StreamType;
 use frontend::parsing::lexer::lexing_phase;
 use frontend::parsing::parser::parsing_phase;
 use frontend::source::StrSourceId;
 use frontend::wacc_hir::ast_lowering_phase;
 use frontend::wacc_thir::hir_lowering_phase;
-use frontend::StreamType;
 use middle::ast_transform::lower_program;
 use middle::optimizations::optimize;
 use regex::Regex;
@@ -50,6 +51,12 @@ const RM_DEAD_STORES: bool = true;
 #[cfg(not(feature = "rm-deadstores"))]
 const RM_DEAD_STORES: bool = false;
 
+#[cfg(feature = "reg-alloc")]
+const REG_ALLOC: bool = true;
+
+#[cfg(not(feature = "reg-alloc"))]
+const REG_ALLOC: bool = false;
+
 /// Recursively collects all `.wacc` files from the given directory.
 pub fn get_test_files(dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
     let mut test_files = Vec::new();
@@ -78,6 +85,7 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
         .eliminate_unreachable_code(RM_UNREACHABLE)
         .eliminate_dead_stores(RM_DEAD_STORES)
         .print_cfg(false)
+        .reg_alloc(REG_ALLOC)
         .build();
 
     // println!("Compiling: {}", path.display());
@@ -185,19 +193,36 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
     // -------------------------------------------------------------------------
 
     // TODO: find how to use asm_gen for future passes
-    let (mut assembly_ast, asm_gen) = wacky_to_assembly(wacky_ir, counter, symbol_table);
+    let (mut assembly_ast, asm_gen, mut function_callee_regs) =
+        wacky_to_assembly(wacky_ir, counter, symbol_table);
+
+    // -------------------------------------------------------------------------
+    //                     Register Allocation Pass
+    // -------------------------------------------------------------------------
+
+    if REG_ALLOC {
+        assembly_ast = allocate_registers_program(
+            assembly_ast,
+            &asm_gen.function_regs,
+            &mut function_callee_regs,
+        );
+    }
 
     // -------------------------------------------------------------------------
     //                      Replace Pseudoreg Pass
     // -------------------------------------------------------------------------
 
-    replace_pseudo_in_program(&mut assembly_ast, &asm_gen.symbol_table);
+    replace_pseudo_in_program(
+        &mut assembly_ast,
+        &asm_gen.symbol_table,
+        &function_callee_regs,
+    );
 
     // -------------------------------------------------------------------------
     //                      Fixing Instructions Pass
     // -------------------------------------------------------------------------
 
-    let mut assembly_ast = fix_program(assembly_ast);
+    let mut assembly_ast = fix_program(assembly_ast, &function_callee_regs);
 
     // -------------------------------------------------------------------------
     //                          Code Generation Pass

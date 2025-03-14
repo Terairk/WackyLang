@@ -22,12 +22,17 @@ use crate::assembly_ast::AsmInstruction::{
     AllocateStack, Binary, Cmov, Cmp, Comment, Idiv, Lea, Mov, MovZeroExtend, Push, SetCC, Test,
     Unary,
 };
-use crate::assembly_ast::Operand::{Memory, Pseudo};
+use crate::assembly_ast::Operand::{Memory, Pseudo, Reg};
 use crate::assembly_ast::Register::BP;
+use crate::regalloc::FunctionCallee;
 
 /* ================== PUBLIC API ================== */
 #[inline]
-pub fn replace_pseudo_in_program(program: &mut AsmProgram, symbol_table: &SymbolTableWack) {
+pub fn replace_pseudo_in_program(
+    program: &mut AsmProgram,
+    symbol_table: &SymbolTableWack,
+    func_callee_regs: &FunctionCallee,
+) {
     // Quick dirty fix since I don't have WackTempIdent's anymore and only have String's
     // This is a temporary fix until I can figure out how to get the WackTempIdent's back
     // / don't convert them to Strings
@@ -61,11 +66,23 @@ pub fn replace_pseudo_in_program(program: &mut AsmProgram, symbol_table: &Symbol
         last_offset = round_down_16(last_offset);
         // index 2 here since we have push rbp and mov rbp, rsp
         if last_offset != 0 {
-            func.instructions.insert(2, AllocateStack(-last_offset));
-            func.instructions.insert(
-                2,
+            let mut new_instructions = vec![
+                AllocateStack(-last_offset),
                 Comment("This allocate ensures stack is 16-byte aligned".to_owned()),
-            );
+            ];
+
+            // Push callee saved registers onto the stack
+            let callee_regs = func_callee_regs.get(&func.name).unwrap();
+            for reg in callee_regs {
+                new_instructions.push(Push(Reg(*reg)));
+            }
+            func.instructions.splice(2..2, new_instructions);
+
+            // func.instructions.insert(2, AllocateStack(-last_offset));
+            // func.instructions.insert(
+            //     2,
+            //     Comment("This allocate ensures stack is 16-byte aligned".to_owned()),
+            // );
         }
     }
 }

@@ -3,6 +3,7 @@ use crate::assembly_ast::{
     FUNCTION, LABEL, Operand, Register,
 };
 use crate::predefined::{GEN_USIZE, add_regsets};
+use crate::regalloc::FunctionCallee;
 use crate::registers::{ARR_INDEX_REG, ARR_LOAD_RETURN, ARR_PTR_REG, RegisterSet};
 use AsmInstruction::{
     AllocateStack, Binary, Call, Cdq, Cmov, Cmp, Comment, DeallocateStack, Idiv, Jmp, JmpCC, Lea,
@@ -39,6 +40,7 @@ use util::gen_flags::{
 const PARAM_STACK_SIZE: i32 = 8;
 // Parameters are stored at 16(%rbp) and onwards
 const STACK_START_PARAM: i32 = 16;
+pub const MAIN_NAME: &str = "main";
 
 #[inline]
 #[must_use]
@@ -46,7 +48,8 @@ pub fn wacky_to_assembly(
     program: WackProgram,
     counter: usize,
     symbol_table: WackIdentSymbolTable,
-) -> (AsmProgram, AsmGen) {
+) -> (AsmProgram, AsmGen, FunctionCallee) {
+    let mut function_callee_regs = FunctionCallee::new();
     let mut asm_gen = AsmGen::new(counter, symbol_table);
     let mut asm_functions: Vec<AsmFunction> = Vec::new();
     asm_functions.push(asm_gen.lower_main_asm(program.main_body));
@@ -54,11 +57,15 @@ pub fn wacky_to_assembly(
         asm_functions.push(asm_gen.lower_function(wack_function));
     }
 
+    for function in &asm_functions {
+        function_callee_regs.insert(function.name.clone(), Vec::new());
+    }
+
     // Add the function to registers mapping to the register set
     add_regsets(&mut asm_gen);
     // println!("{:?}", asm_gen.function_regs);
 
-    (AsmProgram { asm_functions }, asm_gen)
+    (AsmProgram { asm_functions }, asm_gen, function_callee_regs)
 }
 
 /* ================== INTERNAL API ================== */
@@ -164,12 +171,12 @@ impl AsmGen {
             self.lower_instruction(wack_instr, &mut asm_instructions);
         }
 
-        asm_instructions.push(Mov {
-            typ: Quadword,
-            src: Reg(BP),
-            dst: Reg(SP),
-        });
-        asm_instructions.push(Pop(BP));
+        // asm_instructions.push(Mov {
+        //     typ: Quadword,
+        //     src: Reg(BP),
+        //     dst: Reg(SP),
+        // });
+        // asm_instructions.push(Pop(BP));
         asm_instructions.push(Mov {
             typ: Quadword,
             src: Imm(0),
@@ -179,7 +186,7 @@ impl AsmGen {
 
         // any functions we generate ourselves are not external
         AsmFunction {
-            name: "main".to_owned(),
+            name: MAIN_NAME.to_owned(),
             global: true,
             instructions: asm_instructions,
             directives: vec![],
@@ -764,12 +771,13 @@ impl AsmGen {
             }
         }
 
-        asm_instructions.push(Mov {
-            typ: Quadword,
-            src: Reg(BP),
-            dst: Reg(SP),
-        });
-        asm_instructions.push(Pop(BP));
+        // TODO: if my thing doesn't work, we can just do this
+        // asm_instructions.push(Mov {
+        //     typ: Quadword,
+        //     src: Reg(BP),
+        //     dst: Reg(SP),
+        // });
+        // asm_instructions.push(Pop(BP));
 
         asm_instructions.push(Ret);
     }

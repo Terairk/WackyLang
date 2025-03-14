@@ -18,18 +18,20 @@ pub type FunctionCallee = HashMap<String, Vec<Register>>;
 pub fn allocate_registers_program(
     program: AsmProgram,
     func_regs: &FunctionRegisters,
+    func_callee_regs: &mut FunctionCallee,
 ) -> AsmProgram {
-    let mut func_callee_regs: FunctionCallee = FunctionCallee::new();
     let mut new_functions = Vec::new();
 
     for function in program.asm_functions {
-        let new_function = allocate_registers(function, func_regs, &mut func_callee_regs);
+        let new_function = allocate_registers(function, func_regs, func_callee_regs);
         new_functions.push(new_function);
     }
 
-    AsmProgram {
+    let updated_program = AsmProgram {
         asm_functions: new_functions,
-    }
+    };
+
+    updated_program
 }
 
 fn allocate_registers(

@@ -14,6 +14,9 @@ pub struct OptimizationConfig {
     /// Eliminate dead stores
     eliminate_dead_stores: bool,
 
+    /// Perform register allocation
+    reg_alloc: bool,
+
     /// Print the CFG
     print_cfg: bool,
 }
@@ -42,6 +45,11 @@ impl OptimizationConfig {
     #[inline]
     pub const fn has_eliminate_dead_stores(&self) -> bool {
         self.eliminate_dead_stores
+    }
+
+    #[inline]
+    pub const fn has_reg_alloc(&self) -> bool {
+        self.reg_alloc
     }
 
     #[inline]
