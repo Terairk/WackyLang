@@ -775,14 +775,17 @@ fn replace_pseudoregs(
     //         Pseudo(p) => register_map.ge
     //     }
     // }
-    let map_pseudo = |reg: Operand| match reg {
+    let map_pseudo = |op: Operand| match op {
         Operand::Pseudo(p) => {
             let hardreg = register_map.get(&p);
-            println!("operator p in replace_pseudoregs: {:?}", p);
-            let hardreg = hardreg.expect("Pseudo register not found in register map");
-            Operand::Reg(*hardreg)
+            // println!("operator p in replace_pseudoregs: {:?}", p);
+            if let Some(hardreg) = hardreg {
+                Operand::Reg(*hardreg)
+            } else {
+                Operand::Pseudo(p)
+            }
         }
-        _ => reg,
+        _ => op,
     };
 
     instructions
@@ -823,7 +826,7 @@ fn get_operands(instruction: &AsmInstruction) -> Vec<Operand> {
 
 /// Map function f over all the operands in an instruction
 fn replace_ops(instruction: AsmInstruction, f: impl Fn(Operand) -> Operand) -> AsmInstruction {
-    println!("instruction in get_operands: {:?}", instruction);
+    // println!("instruction in get_operands: {:?}", instruction);
     match instruction {
         AsmInstruction::Mov { typ, src, dst } => AsmInstruction::Mov {
             typ,
