@@ -3,6 +3,7 @@ use crate::source::{SourcedBoxedNode, SourcedNode, SourcedSpan};
 use crate::wacc_hir::hir::PairElemSelector;
 use crate::wacc_hir::lower_ast::HirFuncSymbolTable;
 use crate::wacc_hir::{hir, AstLoweringPhaseOutput};
+use crate::wacc_thir::optimizations::unreachable_code_elimination;
 use crate::wacc_thir::thir::{
     ArrayElem, ArrayLiter, BinaryExpr, Expr, Func, Ident, LValue, Liter, NewPair, PairElem,
     Program, RValue, Stat, StatBlock, UnaryExpr,
@@ -364,6 +365,7 @@ impl HirLoweringCtx {
             r#type: refinement_ty,
         }
     }
+
     // ----
 
     pub fn lower_program(&mut self, program: hir::Program) -> Program {
@@ -374,6 +376,32 @@ impl HirLoweringCtx {
             funcs: folded_funcs,
             body: folded_body,
         }
+    }
+
+    fn simple_tail_recursion_optimization(&mut self, func: Func) {
+        // look for any call-statements that are self-recursive, if none found
+        // then no tail-recursive optimization is applicable
+        if !func.body.any(|s| s.has_call_to_func(&func.name)) {
+            return;
+        }
+
+        // // If all calls to this function are tailcalls, then continue.
+        // // A tailcall is defined as either:
+        // // 1) define new variable as function-call return value, and immediately return that variable
+        // // 2) assign the function-call return value to some LHS, and immediately return that same LHS
+        // func.body.for_each_call(|stat_block, (i, call)| {
+        //     // make sure we are only checking for the self-recursive tailcalls
+        //     if call.call_rvalue().1 != &func.name {
+        //         return;
+        //     }
+        //
+        //     //
+        //     let num_stats = stat_block.0.len();
+        //     let last_stat_index = num_stats - 1;
+        //     let expected_tailcall_index = last_stat_index - 1;
+        // });
+
+        let tailrec_ident = &func.name;
     }
 
     #[inline]
@@ -401,10 +429,14 @@ impl HirLoweringCtx {
         }
     }
 
-    #[allow(clippy::expect_used)]
+    #[allow(clippy::expect_used, clippy::let_and_return)]
     #[inline]
     pub fn lower_stat_block(&mut self, stat_block: hir::StatBlock) -> StatBlock {
-        StatBlock(stat_block.0.map(|stat| self.lower_stat(stat.into_inner())))
+        let unoptimized = StatBlock(stat_block.0.map(|stat| self.lower_stat(stat.into_inner())));
+
+        // apply optimizations
+        let optimized = unreachable_code_elimination(unoptimized);
+        optimized
     }
 
     #[allow(clippy::too_many_lines)]

@@ -4,13 +4,13 @@ pub use crate::wacc_thir::types::Type;
 use thiserror::Error;
 use util::nonempty::NonemptyArray;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Program {
     pub funcs: Box<[Func]>,
     pub body: StatBlock,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Func {
     pub return_type: Type,
     pub name: ast::Ident,
@@ -18,7 +18,7 @@ pub struct Func {
     pub body: StatBlock,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 #[repr(transparent)]
 pub struct StatBlock(pub NonemptyArray<Stat>);
 
@@ -26,7 +26,7 @@ pub struct StatBlock(pub NonemptyArray<Stat>);
 #[error("Cannot create to `StatBlock` because the supplied `Vec<Stat>` is empty")]
 pub struct EmptyStatVecError;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Stat {
     Skip,
     VarDefinition {
@@ -54,6 +54,18 @@ pub enum Stat {
     },
     Break(hir::LoopLabel),
     NextLoop(hir::LoopLabel),
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub enum CallStat {
+    VarDefinition {
+        name: Ident,
+        call_rvalue: (Type, ast::Ident, Box<[Expr]>),
+    },
+    Assignment {
+        lvalue: LValue,
+        call_rvalue: (Type, ast::Ident, Box<[Expr]>),
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -153,8 +165,8 @@ pub struct Ident {
 mod impls {
     use crate::parsing::ast;
     use crate::wacc_thir::thir::{
-        ArrayElem, ArrayLiter, BinaryExpr, EmptyStatVecError, Expr, Func, Ident, LValue, Liter,
-        NewPair, PairElem, Program, RValue, Stat, StatBlock, UnaryExpr,
+        ArrayElem, ArrayLiter, BinaryExpr, CallStat, EmptyStatVecError, Expr, Func, Ident, LValue,
+        Liter, NewPair, PairElem, Program, RValue, Stat, StatBlock, UnaryExpr,
     };
     use crate::wacc_thir::types::Type;
     use delegate::delegate;
@@ -298,6 +310,69 @@ mod impls {
             }
         }
 
+        // #[inline]
+        // pub fn for_each_call<F: Fn(&Self, (usize, CallStat))>(&mut self, f: F) {
+        //     for (i, s) in self.0.iter_mut().enumerate() {
+        //         match *s {
+        //             Stat::VarDefinition {
+        //                 ref name,
+        //                 rvalue:
+        //                     RValue::Call {
+        //                         ref return_type,
+        //                         ref func_name,
+        //                         ref args,
+        //                     },
+        //                 ..
+        //             } => f(
+        //                 self,
+        //                 (
+        //                     i,
+        //                     CallStat::VarDefinition {
+        //                         name: name.clone(),
+        //                         call_rvalue: (return_type.clone(), func_name.clone(), args.clone()),
+        //                     },
+        //                 ),
+        //             ),
+        //             Stat::Assignment {
+        //                 ref lvalue,
+        //                 rvalue:
+        //                     RValue::Call {
+        //                         ref return_type,
+        //                         ref func_name,
+        //                         ref args,
+        //                     },
+        //                 ..
+        //             } => f(
+        //                 self,
+        //                 (
+        //                     i,
+        //                     CallStat::Assignment {
+        //                         lvalue: lvalue.clone(),
+        //                         call_rvalue: (return_type.clone(), func_name.clone(), args.clone()),
+        //                     },
+        //                 ),
+        //             ),
+        //             Stat::IfThenElse {
+        //                 ref mut then_body,
+        //                 ref mut else_body,
+        //                 ..
+        //             } => {
+        //                 then_body.for_each_call(&f);
+        //                 else_body.for_each_call(&f);
+        //             }
+        //             Stat::LoopDo { ref body, .. } => {
+        //                 body.for_each_call(&f);
+        //             }
+        //             _ => {}
+        //         }
+        //     }
+        // }
+
+        #[inline]
+        pub fn any<F: FnMut(&Stat) -> bool>(&self, f: F) -> bool {
+            self.0.iter().any(f)
+        }
+
         delegate! {
             to self.0 {
                 #[inline]
@@ -347,6 +422,55 @@ mod impls {
                 if_cond,
                 then_body,
                 else_body,
+            }
+        }
+
+        /// Check if this statement contains a call to the specified function.
+        #[inline]
+        #[must_use]
+        pub fn has_call_to_func(&self, func_name: &ast::Ident) -> bool {
+            match *self {
+                Self::VarDefinition {
+                    rvalue:
+                        RValue::Call {
+                            func_name: ref call_func_name,
+                            ..
+                        },
+                    ..
+                }
+                | Self::Assignment {
+                    rvalue:
+                        RValue::Call {
+                            func_name: ref call_func_name,
+                            ..
+                        },
+                    ..
+                } => call_func_name == func_name,
+                Self::IfThenElse {
+                    ref then_body,
+                    ref else_body,
+                    ..
+                } => {
+                    then_body.any(|s| s.has_call_to_func(func_name))
+                        || else_body.any(|s| s.has_call_to_func(func_name))
+                }
+                Self::LoopDo { ref body, .. } => body.any(|s| s.has_call_to_func(func_name)),
+                _ => false,
+            }
+        }
+    }
+
+    impl CallStat {
+        #[inline]
+        #[must_use]
+        pub fn call_rvalue(&self) -> (&Type, &ast::Ident, &Box<[Expr]>) {
+            match *self {
+                CallStat::VarDefinition {
+                    ref call_rvalue, ..
+                }
+                | CallStat::Assignment {
+                    ref call_rvalue, ..
+                } => (&call_rvalue.0, &call_rvalue.1, &call_rvalue.2),
             }
         }
     }

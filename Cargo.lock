@@ -381,6 +381,7 @@ dependencies = [
  "generativity",
  "impl-trait-for-tuples",
  "internment",
+ "itertools",
  "parse_int",
  "recursion",
  "thiserror",

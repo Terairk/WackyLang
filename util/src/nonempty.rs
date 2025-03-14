@@ -79,6 +79,12 @@ impl<T> NonemptyArray<T> {
         self.0.iter()
     }
 
+    #[allow(clippy::iter_without_into_iter)]
+    #[inline]
+    pub fn iter_mut(&mut self) -> slice::IterMut<'_, T> {
+        self.0.iter_mut()
+    }
+
     #[inline]
     #[must_use]
     pub fn map<U, F: FnMut(T) -> U>(self, f: F) -> NonemptyArray<U> {

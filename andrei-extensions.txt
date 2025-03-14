@@ -25,7 +25,6 @@
 - added if-elif-only statements with syntax: `if <expr> then <stmt> (elif <expr> then <stmt>)* fi`
 - removed one test from CI which was testing for presence of "else" in if statements
 - TODO: write more tests around all the edge cases of that
-middle/backend won't have to change at all
 
 # More types of loop-related constructs: do-while, loop, break, nextloop
 - added `do-while` statement with syntax: `do <stmt> while <expr> done`
@@ -37,9 +36,3 @@ middle/backend won't have to change at all
 - + with syntax `<ident>: <loop-stmt>` for loop statements
 - + with syntax `break <ident>` and `nextloop <ident>` for `break`/`nextloop` keywords
 - TODO: write more tests around all the edge cases of that
-- + do-while
-- + loop
-- + break+continue
-- + explicit loop labels
-middle support loop+conditional+break/continue, which all other is lowered into
-backend doesn't have to change

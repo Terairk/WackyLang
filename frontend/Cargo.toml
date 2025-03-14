@@ -26,6 +26,7 @@ thiserror = { workspace = true }
 internment = { workspace = true }
 recursion = { workspace = true }
 generativity = { workspace = true }
+itertools = { workspace = true }
 
 # parsing and error reporting
 ariadne = { workspace = true }

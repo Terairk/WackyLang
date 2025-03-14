@@ -15,6 +15,7 @@ use std::io::Write;
 use thiserror::Error;
 
 pub mod lower_hir;
+pub(crate) mod optimizations;
 pub mod thir;
 mod type_set;
 pub mod types;
