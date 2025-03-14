@@ -101,7 +101,7 @@ fn replace_pseudo_operand(
             // Correct alignment to match System V ABI;
             let asm_type = symbol_table.get(ident).unwrap();
             let alignment = get_alignment(*asm_type);
-            *next_stack_offset -= alignment;
+            *next_stack_offset -= 8;
             *next_stack_offset = round_down(*next_stack_offset, alignment);
 
             let offset = *next_stack_offset;
@@ -109,7 +109,10 @@ fn replace_pseudo_operand(
             *last_offset = offset;
             // may have unexpected side effects if it underflows
             // *op = Operand::Stack(offset);
-            println!("Replaced pseudo {} with stack offset {}", ident, offset);
+            // println!(
+            //     "Replaced pseudo {} with stack offset {} and type: {:?}",
+            //     ident, offset, asm_type
+            // );
             *op = Memory(BP, offset);
         }
     }

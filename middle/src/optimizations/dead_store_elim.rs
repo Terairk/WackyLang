@@ -18,11 +18,11 @@ pub(crate) fn eliminate_dead_stores(cfg: &EmptyCFG) -> EmptyCFG {
     // Get annotated CFG with live variables
     let mut annotated_cfg = find_live_variables(cfg);
 
-    // unsafe {
-    //     if let Ok(png_path) = annotated_cfg.print_graphviz(&mut CFG_COUNT) {
-    //         println!("Generated CFG deadstore visualization: {}", png_path);
-    //     }
-    // }
+    unsafe {
+        if let Ok(png_path) = annotated_cfg.print_graphviz(&mut CFG_COUNT) {
+            println!("Generated CFG deadstore visualization: {}", png_path);
+        }
+    }
     // println!("{:?}", annotated_cfg);
     // println!("===================================================");
 
