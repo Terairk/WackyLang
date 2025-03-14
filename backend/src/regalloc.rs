@@ -6,27 +6,55 @@ use std::collections::HashMap;
 use build_interference_graph::build_graph;
 
 use crate::{
-    assembly_ast::{AsmInstruction, Operand, Register},
+    assembly_ast::{AsmFunction, AsmInstruction, AsmProgram, Operand, Register},
     assembly_trans::FunctionRegisters,
-    registers::{LEN_ALL_BASEREGS, is_callee_saved},
+    registers::{LEN_ALL_BASEREGS, RegisterSet, is_callee_saved, is_callee_saved_reg},
 };
+pub type FunctionCallee = HashMap<String, Vec<Register>>;
+
+// This is messy code but I can fix this later
+#[must_use]
+#[inline]
+pub fn allocate_registers_program(
+    program: AsmProgram,
+    func_regs: &FunctionRegisters,
+) -> AsmProgram {
+    let mut func_callee_regs: FunctionCallee = FunctionCallee::new();
+    let mut new_functions = Vec::new();
+
+    for function in program.asm_functions {
+        let new_function = allocate_registers(function, func_regs, &mut func_callee_regs);
+        new_functions.push(new_function);
+    }
+
+    AsmProgram {
+        asm_functions: new_functions,
+    }
+}
 
 fn allocate_registers(
-    instructions: Vec<AsmInstruction>,
-    func_name: &str,
+    mut function: AsmFunction,
     func_regs: &FunctionRegisters,
-) -> Vec<AsmInstruction> {
+    func_callee_regs: &mut FunctionCallee,
+) -> AsmFunction {
+    let func_name = function.name.as_str();
+    let instructions = function.instructions;
+
+    // Main register allocation logic
     let mut interference_graph = build_graph(&instructions, func_name, func_regs);
     add_spill_costs(&mut interference_graph, &instructions);
     color_graph(&mut interference_graph);
-    let register_map = create_register_map(&interference_graph);
-    let transformed_instructions = replace_pseudoregs(instructions, register_map);
-    transformed_instructions
+    let register_map = create_register_map(&interference_graph, func_callee_regs, func_name);
+    let transformed_instructions = replace_pseudoregs(instructions, &register_map);
+
+    // Update the function with the transformed instructions
+    function.instructions = transformed_instructions;
+    function
 }
 
 /* ======================== TYPES ======================== */
 // Some of these are placeholder types
-type PseudoReg = usize;
+type PseudoReg = String;
 type RegisterMap = HashMap<PseudoReg, Register>;
 
 /// Represents a node in the interference graph
@@ -99,6 +127,10 @@ impl Node {
     /// Unmarks the node as pruned
     pub fn unprune(&mut self) {
         self.pruned = false;
+    }
+
+    pub fn get_id(&self) -> &Operand {
+        &self.id
     }
 }
 
@@ -177,6 +209,10 @@ impl InterferenceGraph {
             .map(|&idx| &self.nodes[idx])
             .collect();
         Ok(neighbors)
+    }
+
+    pub fn nodes(&self) -> &Vec<Node> {
+        &self.nodes
     }
 }
 
@@ -662,15 +698,69 @@ fn color_graph(graph: &mut InterferenceGraph) {
     }
 }
 
-fn create_register_map(graph: &InterferenceGraph) -> RegisterMap {
-    todo!()
+fn create_register_map(
+    graph: &InterferenceGraph,
+    func_callee_regs: &mut FunctionCallee,
+    func_name: &str,
+) -> RegisterMap {
+    // build map from colours to hard registers
+    let mut colour_map: HashMap<i32, Register> = HashMap::new();
+    for node in graph.nodes() {
+        match node.get_id() {
+            Operand::Reg(r) => {
+                colour_map.insert(
+                    node.color().expect("hard registers should have a colour"),
+                    *r,
+                );
+            }
+            Operand::Pseudo(_) => {}
+            _ => panic!("Shouldn't expect other things here"),
+        }
+    }
+
+    // build map from pseudo registers to hard reisters
+    let mut register_map: RegisterMap = RegisterMap::new();
+    let mut callee_saved_regs: Vec<Register> = Vec::new();
+
+    for node in graph.nodes() {
+        match node.get_id() {
+            Operand::Pseudo(p) => match node.color() {
+                Some(colour) => {
+                    let hardreg = colour_map.get(&colour).unwrap();
+                    register_map.insert(p.clone(), hardreg.clone());
+                    if is_callee_saved_reg(hardreg) {
+                        callee_saved_regs.push(*hardreg)
+                    }
+                }
+                None => {}
+            },
+            Operand::Reg(_) => {}
+            _ => panic!("Shouldn't expect other Operands in the graph"),
+        }
+    }
+
+    func_callee_regs.insert(func_name.to_owned(), callee_saved_regs);
+    register_map
 }
 
 fn replace_pseudoregs(
     instructions: Vec<AsmInstruction>,
-    register_map: RegisterMap,
+    register_map: &RegisterMap,
 ) -> Vec<AsmInstruction> {
-    todo!()
+    // fn map_pseudo(reg: Operand) -> Operand {
+    //     match reg {
+    //         Pseudo(p) => register_map.ge
+    //     }
+    // }
+    let map_pseudo = |reg: Operand| match reg {
+        Operand::Pseudo(p) => Operand::Reg(*register_map.get(&p).unwrap()),
+        _ => reg,
+    };
+
+    instructions
+        .into_iter()
+        .map(|instr| replace_ops(instr, map_pseudo))
+        .collect()
 }
 
 /// Extract all operands from an instruction.
@@ -704,13 +794,9 @@ fn get_operands(instruction: &AsmInstruction) -> Vec<Operand> {
 }
 
 /// Map function f over all the operands in an instruction
-fn replace_ops(instruction: &AsmInstruction, f: impl Fn(Operand) -> Operand) -> AsmInstruction {
-    match *instruction {
-        AsmInstruction::Mov {
-            typ,
-            ref src,
-            ref dst,
-        } => AsmInstruction::Mov {
+fn replace_ops(instruction: AsmInstruction, f: impl Fn(Operand) -> Operand) -> AsmInstruction {
+    match instruction {
+        AsmInstruction::Mov { typ, src, dst } => AsmInstruction::Mov {
             typ,
             src: f(src.clone()),
             dst: f(dst.clone()),
@@ -718,8 +804,8 @@ fn replace_ops(instruction: &AsmInstruction, f: impl Fn(Operand) -> Operand) -> 
         AsmInstruction::Cmov {
             condition,
             typ,
-            ref src,
-            ref dst,
+            src,
+            dst,
         } => AsmInstruction::Cmov {
             condition,
             typ,
@@ -729,22 +815,22 @@ fn replace_ops(instruction: &AsmInstruction, f: impl Fn(Operand) -> Operand) -> 
         AsmInstruction::MovZeroExtend {
             src_type,
             dst_type,
-            ref src,
-            ref dst,
+            src,
+            dst,
         } => AsmInstruction::MovZeroExtend {
             src_type,
             dst_type,
             src: f(src.clone()),
             dst: f(dst.clone()),
         },
-        AsmInstruction::Lea { ref src, ref dst } => AsmInstruction::Lea {
+        AsmInstruction::Lea { src, dst } => AsmInstruction::Lea {
             src: f(src.clone()),
             dst: f(dst.clone()),
         },
         AsmInstruction::Unary {
             operator,
             typ,
-            ref operand,
+            operand,
         } => AsmInstruction::Unary {
             operator,
             typ,
@@ -753,41 +839,30 @@ fn replace_ops(instruction: &AsmInstruction, f: impl Fn(Operand) -> Operand) -> 
         AsmInstruction::Binary {
             operator,
             typ,
-            ref op1,
-            ref op2,
+            op1,
+            op2,
         } => AsmInstruction::Binary {
             operator,
             typ,
             op1: f(op1.clone()),
             op2: f(op2.clone()),
         },
-        AsmInstruction::Cmp {
-            typ,
-            ref op1,
-            ref op2,
-        } => AsmInstruction::Cmp {
+        AsmInstruction::Cmp { typ, op1, op2 } => AsmInstruction::Cmp {
             typ,
             op1: f(op1.clone()),
             op2: f(op2.clone()),
         },
-        AsmInstruction::Test {
-            typ,
-            ref op1,
-            ref op2,
-        } => AsmInstruction::Test {
+        AsmInstruction::Test { typ, op1, op2 } => AsmInstruction::Test {
             typ,
             op1: f(op1.clone()),
             op2: f(op2.clone()),
         },
-        AsmInstruction::Idiv(ref op) => AsmInstruction::Idiv(f(op.clone())),
-        AsmInstruction::SetCC {
-            condition,
-            ref operand,
-        } => AsmInstruction::SetCC {
+        AsmInstruction::Idiv(op) => AsmInstruction::Idiv(f(op.clone())),
+        AsmInstruction::SetCC { condition, operand } => AsmInstruction::SetCC {
             condition,
             operand: f(operand.clone()),
         },
-        AsmInstruction::Push(ref op) => AsmInstruction::Push(f(op.clone())),
+        AsmInstruction::Push(op) => AsmInstruction::Push(f(op.clone())),
         AsmInstruction::Pop(_) => {
             panic!("Shouldn't use this as Pop doesn't have any operands to replace")
         }

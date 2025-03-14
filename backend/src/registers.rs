@@ -47,6 +47,12 @@ pub fn is_callee_saved(operand: &Operand) -> bool {
     }
 }
 
+#[must_use]
+#[inline]
+pub fn is_callee_saved_reg(reg: &Register) -> bool {
+    CALLEE_SAVED.contains(reg)
+}
+
 /// Converts a `RegisterSet` bitflag into a Vec of the corresponding Register values
 #[must_use]
 #[inline]
