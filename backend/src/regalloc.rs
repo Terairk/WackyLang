@@ -226,7 +226,9 @@ mod build_interference_graph {
 
     use util::{
         CFG,
-        cfg::{BasicBlock, NodeId, backwards_dataflow_analysis},
+        cfg::{
+            BasicBlock, NodeId, backwards_dataflow_analysis, backwards_dataflow_analysis_complex,
+        },
     };
     // TODO: replace LiveRegisters with the actual type
 
@@ -256,16 +258,16 @@ mod build_interference_graph {
     ) -> InterferenceGraph {
         let mut interference_graph = create_base_graph();
         add_pseudoregisters(&mut interference_graph, instructions);
-        let mut cfg = make_control_flow_graph(instructions, func_name);
-        analyze_lifeness(&mut cfg, &func_reg);
+        let cfg = make_control_flow_graph(instructions, func_name);
+        let new_cfg = analyze_lifeness(&cfg, &func_reg);
 
-        // Print CFG visualization
-        let mut counter = 80;
-        if let Ok(png_path) = cfg.print_graphviz(&mut counter) {
-            println!("Generated CFG visualization: {png_path}");
-        }
+        // Print CFG visualization, useful for debugging
+        // let mut counter = 80;
+        // if let Ok(png_path) = new_cfg.print_graphviz(&mut counter) {
+        //     println!("Generated CFG visualization: {png_path}");
+        // }
 
-        add_edges(&cfg, &mut interference_graph, &func_reg);
+        add_edges(&new_cfg, &mut interference_graph, &func_reg);
         interference_graph
     }
 
@@ -308,13 +310,11 @@ mod build_interference_graph {
         emptyCFG.initialize_annotation(&LiveRegisters::default())
     }
 
-    fn analyze_lifeness(cfg: &mut AsmCFG, func_regs: &FunctionRegisters) {
+    fn analyze_lifeness(cfg: &AsmCFG, func_regs: &FunctionRegisters) -> AsmCFG {
         // Perform backwards dataflow analysis to compute live registers at each instruction
         // Use closures to capture the function's register set
-        let transfer_meet = |block: LiveBasicBlock, end_live_registers: LiveRegisters| {
-            transfer(block, end_live_registers, func_regs)
-        };
-        backwards_dataflow_analysis(cfg, meet, transfer_meet);
+        let new_cfg = backwards_dataflow_analysis_complex(cfg, meet, transfer, func_regs);
+        new_cfg
     }
 
     /// The meet operator calculates which registers are live at the end of a basic block.
@@ -355,16 +355,31 @@ mod build_interference_graph {
             // Annotate the instructions with the current live registers
             instr.0 = current_live_registers.clone();
             let (used, updated) = find_used_and_updated(instr.1.clone(), func_regs);
-
+            // println!("instr: {:?},", instr.1);
+            // println!("used: {:?}, updated: {:?}", used, updated);
+            // println!("========================================");
+            //
             for v in updated {
-                if let Operand::Reg(reg) = v {
-                    current_live_registers.remove(&Operand::Reg(reg));
+                match v {
+                    Operand::Pseudo(_) => {
+                        current_live_registers.remove(&v);
+                    }
+                    Operand::Reg(_) => {
+                        current_live_registers.remove(&v);
+                    }
+                    _ => {}
                 }
             }
 
             for v in used {
-                if let Operand::Reg(reg) = v {
-                    current_live_registers.insert(Operand::Reg(reg));
+                match v {
+                    Operand::Pseudo(_) => {
+                        current_live_registers.insert(v);
+                    }
+                    Operand::Reg(_) => {
+                        current_live_registers.insert(v);
+                    }
+                    _ => {}
                 }
             }
         }
@@ -761,7 +776,12 @@ fn replace_pseudoregs(
     //     }
     // }
     let map_pseudo = |reg: Operand| match reg {
-        Operand::Pseudo(p) => Operand::Reg(*register_map.get(&p).unwrap()),
+        Operand::Pseudo(p) => {
+            let hardreg = register_map.get(&p);
+            println!("operator p in replace_pseudoregs: {:?}", p);
+            let hardreg = hardreg.expect("Pseudo register not found in register map");
+            Operand::Reg(*hardreg)
+        }
         _ => reg,
     };
 
@@ -803,6 +823,7 @@ fn get_operands(instruction: &AsmInstruction) -> Vec<Operand> {
 
 /// Map function f over all the operands in an instruction
 fn replace_ops(instruction: AsmInstruction, f: impl Fn(Operand) -> Operand) -> AsmInstruction {
+    println!("instruction in get_operands: {:?}", instruction);
     match instruction {
         AsmInstruction::Mov { typ, src, dst } => AsmInstruction::Mov {
             typ,

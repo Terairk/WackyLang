@@ -544,7 +544,7 @@ mod wack_glob_ident {
 /// We use this display for predefined functions and local static analysis
 /// Which affects emission
 #[derive(Clone, Display)]
-#[display("{_0}")]
+#[display("{_0}.{_1}")]
 pub struct WackTempIdent(ast::Ident, usize);
 
 // impls relating to `WackTempIdent`
