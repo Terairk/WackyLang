@@ -1,4 +1,5 @@
 use fn_pipe::FnMutPipe;
+use std::slice::SliceIndex;
 use std::{ops, slice};
 use thiserror::Error;
 
@@ -64,6 +65,15 @@ impl<T> NonemptyArray<T> {
     #[inline]
     pub fn last(&self) -> &T {
         &self.0[self.0.len() - 1]
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn get<I>(&self, index: I) -> Option<&I::Output>
+    where
+        I: SliceIndex<[T]>,
+    {
+        self.0.get(index)
     }
 
     #[allow(clippy::len_without_is_empty)]

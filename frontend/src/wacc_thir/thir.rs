@@ -57,18 +57,6 @@ pub enum Stat {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub enum CallStat {
-    VarDefinition {
-        name: Ident,
-        call_rvalue: (Type, ast::Ident, Box<[Expr]>),
-    },
-    Assignment {
-        lvalue: LValue,
-        call_rvalue: (Type, ast::Ident, Box<[Expr]>),
-    },
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum LValue {
     Ident(Ident),
     ArrayElem(ArrayElem),
@@ -165,8 +153,8 @@ pub struct Ident {
 mod impls {
     use crate::parsing::ast;
     use crate::wacc_thir::thir::{
-        ArrayElem, ArrayLiter, BinaryExpr, CallStat, EmptyStatVecError, Expr, Func, Ident, LValue,
-        Liter, NewPair, PairElem, Program, RValue, Stat, StatBlock, UnaryExpr,
+        ArrayElem, ArrayLiter, BinaryExpr, EmptyStatVecError, Expr, Func, Ident, LValue, Liter,
+        NewPair, PairElem, Program, RValue, Stat, StatBlock, UnaryExpr,
     };
     use crate::wacc_thir::types::Type;
     use delegate::delegate;
@@ -278,14 +266,14 @@ mod impls {
     impl StatBlock {
         #[must_use]
         #[inline]
-        pub fn singleton(spanned_stat: Stat) -> Self {
-            Self(NonemptyArray::singleton(spanned_stat))
+        pub fn singleton(stat: Stat) -> Self {
+            Self(NonemptyArray::singleton(stat))
         }
 
         #[allow(clippy::missing_errors_doc)]
         #[inline]
-        pub fn try_new(spanned_stats: Vec<Stat>) -> Result<Self, EmptyStatVecError> {
-            NonemptyArray::try_from_boxed_slice(spanned_stats)
+        pub fn try_new(stats: Vec<Stat>) -> Result<Self, EmptyStatVecError> {
+            NonemptyArray::try_from_boxed_slice(stats)
                 .map(Self)
                 .map_err(|_| EmptyStatVecError)
         }
@@ -310,67 +298,111 @@ mod impls {
             }
         }
 
-        // #[inline]
-        // pub fn for_each_call<F: Fn(&Self, (usize, CallStat))>(&mut self, f: F) {
-        //     for (i, s) in self.0.iter_mut().enumerate() {
-        //         match *s {
-        //             Stat::VarDefinition {
-        //                 ref name,
-        //                 rvalue:
-        //                     RValue::Call {
-        //                         ref return_type,
-        //                         ref func_name,
-        //                         ref args,
-        //                     },
-        //                 ..
-        //             } => f(
-        //                 self,
-        //                 (
-        //                     i,
-        //                     CallStat::VarDefinition {
-        //                         name: name.clone(),
-        //                         call_rvalue: (return_type.clone(), func_name.clone(), args.clone()),
-        //                     },
-        //                 ),
-        //             ),
-        //             Stat::Assignment {
-        //                 ref lvalue,
-        //                 rvalue:
-        //                     RValue::Call {
-        //                         ref return_type,
-        //                         ref func_name,
-        //                         ref args,
-        //                     },
-        //                 ..
-        //             } => f(
-        //                 self,
-        //                 (
-        //                     i,
-        //                     CallStat::Assignment {
-        //                         lvalue: lvalue.clone(),
-        //                         call_rvalue: (return_type.clone(), func_name.clone(), args.clone()),
-        //                     },
-        //                 ),
-        //             ),
-        //             Stat::IfThenElse {
-        //                 ref mut then_body,
-        //                 ref mut else_body,
-        //                 ..
-        //             } => {
-        //                 then_body.for_each_call(&f);
-        //                 else_body.for_each_call(&f);
-        //             }
-        //             Stat::LoopDo { ref body, .. } => {
-        //                 body.for_each_call(&f);
-        //             }
-        //             _ => {}
-        //         }
-        //     }
-        // }
+        /// Checks if all calls to a specified function are  tailcalls.
+        /// A tailcalls are defined as:
+        /// 1) A call to the specified function is assigned to a new variable
+        /// 2) The very next statement is a return statement that returns _precisely_ this new variable
+        #[must_use]
+        #[inline]
+        pub fn all_calls_are_tail_calls(&self, func_name: &ast::Ident) -> bool {
+            for (i, s) in self.0.iter().enumerate() {
+                match *s {
+                    // All tail-calls must be assigning variable-definitions, since OTHER assignment
+                    // may lead to stateful side effects (e.g. assigning to array-element), and
+                    // optimizing away such stateful side effects (tail-call optimizations) will alter
+                    // semantics of the program
+                    Stat::Assignment {
+                        rvalue:
+                            RValue::Call {
+                                func_name: ref rvalue_func_name,
+                                ..
+                            },
+                        ..
+                    } => {
+                        if func_name == rvalue_func_name {
+                            return false;
+                        }
+                    }
+
+                    // All tail-call variable-definitions must happen as the penultimate statement
+                    // of the block - before a final "return" statement that contains exactly the
+                    // identifier of the variable that was just assigned to
+                    Stat::VarDefinition {
+                        ref name,
+                        rvalue:
+                            RValue::Call {
+                                func_name: ref rvalue_func_name,
+                                ..
+                            },
+                        ..
+                    } => {
+                        // we only care about tail-calls of the specified function
+                        if func_name != rvalue_func_name {
+                            continue;
+                        }
+
+                        // if this is the last statement of the block, its not a tail-call
+                        let Some(next_stat) = &self.0.get(i + 1) else {
+                            return false;
+                        };
+
+                        // if the next statement is not return-statement, its not a tail-call
+                        let Stat::Return(return_val) = next_stat else {
+                            return false;
+                        };
+
+                        // if the return-value isn't PRECISELY the identifier just defined, then
+                        // it isn't a tail-call
+                        if return_val != &Expr::Ident(name.clone()) {
+                            return false;
+                        }
+                    }
+
+                    // apply the same rules recursively to any inner-statement blocks
+                    Stat::IfThenElse {
+                        ref then_body,
+                        ref else_body,
+                        ..
+                    } => {
+                        if !then_body.all_calls_are_tail_calls(func_name)
+                            || !else_body.all_calls_are_tail_calls(func_name)
+                        {
+                            return false;
+                        }
+                    }
+                    Stat::LoopDo { ref body, .. } => {
+                        if !body.all_calls_are_tail_calls(func_name) {
+                            return false;
+                        }
+                    }
+
+                    _ => {}
+                }
+            }
+
+            // if we checked all (possibly-recursively) statements, and all calls are tail-calls
+            // then return true to indicate this
+            true
+        }
 
         #[inline]
         pub fn any<F: FnMut(&Stat) -> bool>(&self, f: F) -> bool {
             self.0.iter().any(f)
+        }
+
+        #[inline]
+        pub fn all<F: FnMut(&Stat) -> bool>(&self, f: F) -> bool {
+            self.0.iter().all(f)
+        }
+
+        /// Checks that the conditional `P => Q` holds on statements in this statement block.
+        #[inline]
+        pub fn forall_if_then<P: FnMut(&Stat) -> bool, Q: FnMut(&Stat) -> bool>(
+            &self,
+            mut if_pred: P,
+            then_pred: Q,
+        ) -> bool {
+            self.0.iter().filter(|s| if_pred(s)).all(then_pred)
         }
 
         delegate! {
@@ -456,21 +488,6 @@ mod impls {
                 }
                 Self::LoopDo { ref body, .. } => body.any(|s| s.has_call_to_func(func_name)),
                 _ => false,
-            }
-        }
-    }
-
-    impl CallStat {
-        #[inline]
-        #[must_use]
-        pub fn call_rvalue(&self) -> (&Type, &ast::Ident, &Box<[Expr]>) {
-            match *self {
-                CallStat::VarDefinition {
-                    ref call_rvalue, ..
-                }
-                | CallStat::Assignment {
-                    ref call_rvalue, ..
-                } => (&call_rvalue.0, &call_rvalue.1, &call_rvalue.2),
             }
         }
     }

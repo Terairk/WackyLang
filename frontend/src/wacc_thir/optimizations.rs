@@ -1,4 +1,9 @@
-use crate::wacc_thir::thir::{Stat, StatBlock};
+use crate::parsing::ast;
+use crate::wacc_hir::hir;
+use crate::wacc_thir::thir::{Expr, Func, Ident, LValue, RValue, Stat, StatBlock};
+use util::ext::{BoxedSliceExt, VecExt};
+
+const TAILREC_LOOP: &str = "outermost_tailrec_loop";
 
 /// Detects early "terminator" statements such as `return` or `exit` and
 /// eliminates any subsequent unreachable code in the same block.
@@ -45,6 +50,120 @@ pub fn unreachable_code_elimination(stat_block: StatBlock) -> StatBlock {
         },
         _ => s,
     }))
+}
+
+pub fn tail_recursion_optimization<L>(mk_loop_label: L, func: Func) -> Func
+where
+    L: FnOnce(&'static str) -> hir::LoopLabel,
+{
+    // look for any call-statements that are self-recursive, if none found
+    // then no tail-recursive optimization is applicable
+    if !func.body.any(|s| s.has_call_to_func(&func.name)) {
+        return func;
+    }
+
+    // check that all recursive calls are tail-calls (i.e. the function is tail-recursive)
+    if !func.body.all_calls_are_tail_calls(&func.name) {
+        return func;
+    }
+
+    // we now put the entire function body into a giant outer-loop label,
+    // and replace all tail-recursive calls (and returns) with
+    // 1) in-place function-parameter updates, and
+    // 2) `nextloop` statements targeting this new outer-most loop
+    let loop_label = mk_loop_label(TAILREC_LOOP);
+    #[allow(clippy::items_after_statements, clippy::expect_used)]
+    fn rewrite_tailrec_calls(
+        func_name: &ast::Ident,
+        func_params: &[Ident],
+        tailrec_loop_label: &hir::LoopLabel,
+        stat_block: StatBlock,
+    ) -> StatBlock {
+        // accumulate rewritten statements
+        let mut accum = vec![];
+
+        let mut stat_block_iter = stat_block.0.into_iter();
+        while let Some(stat) = stat_block_iter.next() {
+            // we are looking for variable-definition statements that call a function
+            let Stat::VarDefinition {
+                name,
+                rvalue:
+                    RValue::Call {
+                        func_name: rvalue_func_name,
+                        args,
+                        ..
+                    },
+                ..
+            } = stat.clone()
+            else {
+                accum.push(stat);
+                continue;
+            };
+
+            // we are looking for that function name to match, so its tail-recursive
+            if &rvalue_func_name != func_name {
+                accum.push(stat);
+                continue;
+            }
+
+            // the next item has to be there, and it has to be a return statement
+            // (this was ensured by the previous checks performed)
+            let Some(return_stat) = stat_block_iter.next() else {
+                unreachable!()
+            };
+            let Stat::Return(return_val) = return_stat else {
+                unreachable!()
+            };
+            // at this point, the return value should be precisely equal to the identifier just defined
+            assert_eq!(return_val, Expr::Ident(name));
+
+            // now, push one in-place parameter-update assignment statement, per parameter of function
+            for (param, new_value) in func_params.iter().zip(args.into_iter()) {
+                accum.push(Stat::Assignment {
+                    lvalue: LValue::Ident(param.clone()),
+                    rvalue: RValue::Expr(new_value),
+                });
+            }
+
+            // finally, push a "nextloop" statement which starts the next iteration of the
+            // giant "tail-recursion" outer-loop, which simulates the return statement
+            accum.push(Stat::NextLoop(tailrec_loop_label.clone()));
+        }
+
+        // now apply the same transformation recursively to any nested stat-blocks
+        let recursive_transformation =
+            |body| rewrite_tailrec_calls(func_name, func_params, tailrec_loop_label, body);
+        let accum = accum.map(|s| match s {
+            Stat::IfThenElse {
+                if_cond,
+                then_body,
+                else_body,
+            } => Stat::IfThenElse {
+                if_cond,
+                then_body: recursive_transformation(then_body),
+                else_body: recursive_transformation(else_body),
+            },
+            Stat::LoopDo { label, body } => Stat::LoopDo {
+                label,
+                body: recursive_transformation(body),
+            },
+            _ => s,
+        });
+        StatBlock::try_from(accum).expect("There should always be at least one statement left")
+    }
+
+    // finally, stick the resulting transformed block into an outer-loop and return the result
+    let transformed = rewrite_tailrec_calls(&func.name, &func.params, &loop_label, func.body);
+    let body = StatBlock::singleton(Stat::LoopDo {
+        label: loop_label,
+        body: transformed,
+    });
+    Func {
+        return_type: func.return_type,
+        name: func.name,
+        params: func.params,
+        body,
+    }
 }
 
 #[cfg(test)]

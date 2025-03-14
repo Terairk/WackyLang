@@ -3,7 +3,7 @@ use crate::source::{SourcedBoxedNode, SourcedNode, SourcedSpan};
 use crate::wacc_hir::hir::PairElemSelector;
 use crate::wacc_hir::lower_ast::HirFuncSymbolTable;
 use crate::wacc_hir::{hir, AstLoweringPhaseOutput};
-use crate::wacc_thir::optimizations::unreachable_code_elimination;
+use crate::wacc_thir::optimizations::{tail_recursion_optimization, unreachable_code_elimination};
 use crate::wacc_thir::thir::{
     ArrayElem, ArrayLiter, BinaryExpr, Expr, Func, Ident, LValue, Liter, NewPair, PairElem,
     Program, RValue, Stat, StatBlock, UnaryExpr,
@@ -11,6 +11,7 @@ use crate::wacc_thir::thir::{
 use crate::wacc_thir::types::{BaseType, PairType, Type};
 use crate::SemanticError;
 use ariadne::Span as _;
+use itertools::Itertools;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use util::ext::BoxedSliceExt as _;
@@ -203,15 +204,17 @@ struct HirLoweringCtx {
     func_symbol_table: HirFuncSymbolTable,
     current_func_hir_return_type: Option<hir::Type>,
     hir_ident_symbol_table: IdentSymbolTable,
+    ident_counter: usize,
 }
 
 impl HirLoweringCtx {
-    fn new(func_symbol_table: HirFuncSymbolTable) -> Self {
+    fn new(func_symbol_table: HirFuncSymbolTable, ident_counter: usize) -> Self {
         Self {
             errors: Vec::new(),
             func_symbol_table,
             current_func_hir_return_type: None,
             hir_ident_symbol_table: IdentSymbolTable(HashMap::new()),
+            ident_counter,
         }
     }
 
@@ -366,6 +369,11 @@ impl HirLoweringCtx {
         }
     }
 
+    #[inline]
+    pub fn make_new_loop_label(&mut self, ident: ast::Ident) -> hir::LoopLabel {
+        hir::LoopLabel::new(&mut self.ident_counter, ident)
+    }
+
     // ----
 
     pub fn lower_program(&mut self, program: hir::Program) -> Program {
@@ -378,43 +386,25 @@ impl HirLoweringCtx {
         }
     }
 
-    fn simple_tail_recursion_optimization(&mut self, func: Func) {
-        // look for any call-statements that are self-recursive, if none found
-        // then no tail-recursive optimization is applicable
-        if !func.body.any(|s| s.has_call_to_func(&func.name)) {
-            return;
-        }
-
-        // // If all calls to this function are tailcalls, then continue.
-        // // A tailcall is defined as either:
-        // // 1) define new variable as function-call return value, and immediately return that variable
-        // // 2) assign the function-call return value to some LHS, and immediately return that same LHS
-        // func.body.for_each_call(|stat_block, (i, call)| {
-        //     // make sure we are only checking for the self-recursive tailcalls
-        //     if call.call_rvalue().1 != &func.name {
-        //         return;
-        //     }
-        //
-        //     //
-        //     let num_stats = stat_block.0.len();
-        //     let last_stat_index = num_stats - 1;
-        //     let expected_tailcall_index = last_stat_index - 1;
-        // });
-
-        let tailrec_ident = &func.name;
-    }
-
+    #[allow(clippy::let_and_return)]
     #[inline]
     pub fn lower_func(&mut self, func: hir::Func) -> Func {
+        // lower function to unoptimized
         self.current_func_hir_return_type = Some(func.return_type.inner().clone());
-        let func = Func {
+        let unoptimized = Func {
             return_type: Self::lower_type(&func.return_type), // Type remains unchanged
             name: func.name.into_inner(),
             params: func.params.map(|param| self.lower_func_param(param)),
             body: self.lower_stat_block(func.body),
         };
         self.current_func_hir_return_type = None;
-        func
+
+        // apply optimizations
+        let optimized = tail_recursion_optimization(
+            |label| self.make_new_loop_label(ast::Ident::from_str(label)),
+            unoptimized,
+        );
+        optimized
     }
 
     #[allow(clippy::indexing_slicing)]
@@ -1199,7 +1189,7 @@ impl HirLoweringCtx {
 #[must_use]
 pub fn lower_hir(ast_lowering: AstLoweringPhaseOutput) -> HirLoweringResult {
     // map program
-    let mut ctx = HirLoweringCtx::new(ast_lowering.func_symbol_table);
+    let mut ctx = HirLoweringCtx::new(ast_lowering.func_symbol_table, ast_lowering.ident_counter);
     let thir_program = ctx.lower_program(ast_lowering.hir_program);
 
     // map function symbol table
@@ -1223,6 +1213,6 @@ pub fn lower_hir(ast_lowering: AstLoweringPhaseOutput) -> HirLoweringResult {
             functions: func_symbol_table,
         },
         hir_ident_symbol_table: ctx.hir_ident_symbol_table,
-        ident_counter: ast_lowering.ident_counter,
+        ident_counter: ctx.ident_counter,
     }
 }
