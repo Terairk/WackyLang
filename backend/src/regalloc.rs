@@ -448,7 +448,58 @@ mod build_interference_graph {
             }
         }
 
-        (used, updated)
+        // Convert operands to the registers they use/update
+
+        // Process registers used to read
+        let mut final_used = Vec::new();
+        for operand in &used {
+            match operand {
+                Operand::Pseudo(_) | Operand::Reg(_) => {
+                    final_used.push(operand.clone());
+                }
+                Operand::Memory(reg, _) => {
+                    final_used.push(Operand::Reg(*reg));
+                }
+                Operand::Indexed { base, index, .. } => {
+                    final_used.push(Operand::Reg(*base));
+                    final_used.push(Operand::Reg(*index));
+                }
+                Operand::Imm(_) | Operand::Data(_, _) => {
+                    // These don't use registers
+                }
+            }
+        }
+
+        // Process registers used to update
+        let mut additional_used = Vec::new();
+        let mut final_updated = Vec::new();
+
+        for operand in &updated {
+            match operand {
+                Operand::Pseudo(_) | Operand::Reg(_) => {
+                    final_updated.push(operand.clone());
+                }
+                Operand::Memory(reg, _) => {
+                    // Reading from the register to get the memory address
+                    additional_used.push(Operand::Reg(*reg));
+                    // Not adding anything to updated since we're updating memory, not a register
+                }
+                Operand::Indexed { base, index, .. } => {
+                    // Reading from both registers to get the memory address
+                    additional_used.push(Operand::Reg(*base));
+                    additional_used.push(Operand::Reg(*index));
+                    // Not adding anything to updated since we're updating memory, not a register
+                }
+                Operand::Imm(_) | Operand::Data(_, _) => {
+                    // These can't be updated
+                }
+            }
+        }
+
+        // Add the additional used registers to the final used list
+        final_used.extend(additional_used);
+
+        (final_used, final_updated)
     }
 }
 
