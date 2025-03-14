@@ -432,8 +432,11 @@ impl<T: Instruction + Clone + Display, V: Clone + Default + Debug> CFG<T, V> {
     // TODO: check if this works later on
     #[must_use]
     #[inline]
-    pub fn print_graphviz(&self) -> Result<String, std::io::Error> {
-        let filename = format!("{}.dot", self.debug_label.replace(" ", "_"));
+    #[allow(static_mut_refs)]
+    pub fn print_graphviz(&self, counter: &mut usize) -> Result<String, std::io::Error> {
+        println!("{}", *counter);
+        let filename = format!("{}_{counter}.dot", self.debug_label.replace(" ", "_"));
+        *counter += 1;
         let mut file = File::create(&filename)?;
 
         writeln!(file, "digraph {{")?;

@@ -2,6 +2,7 @@
 // TODO: honestly this should be in a submodule
 
 use std::collections::HashMap;
+use std::fmt;
 
 use build_interference_graph::build_graph;
 
@@ -60,7 +61,7 @@ type PseudoReg = String;
 type RegisterMap = HashMap<PseudoReg, Register>;
 
 /// Represents a node in the interference graph
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Node {
     id: Operand,
     neighbors: Vec<usize>, // Indices into graph's nodes vector
@@ -70,7 +71,7 @@ pub struct Node {
 }
 
 /// Represents the interference graph
-#[derive(Debug)]
+#[derive(Clone)]
 struct InterferenceGraph {
     nodes: Vec<Node>,
 
@@ -257,6 +258,13 @@ mod build_interference_graph {
         add_pseudoregisters(&mut interference_graph, instructions);
         let mut cfg = make_control_flow_graph(instructions, func_name);
         analyze_lifeness(&mut cfg, &func_reg);
+
+        // Print CFG visualization
+        let mut counter = 80;
+        if let Ok(png_path) = cfg.print_graphviz(&mut counter) {
+            println!("Generated CFG visualization: {png_path}");
+        }
+
         add_edges(&cfg, &mut interference_graph, &func_reg);
         interference_graph
     }
@@ -301,8 +309,6 @@ mod build_interference_graph {
     }
 
     fn analyze_lifeness(cfg: &mut AsmCFG, func_regs: &FunctionRegisters) {
-        let default_live_regs = LiveRegisters::default();
-
         // Perform backwards dataflow analysis to compute live registers at each instruction
         // Use closures to capture the function's register set
         let transfer_meet = |block: LiveBasicBlock, end_live_registers: LiveRegisters| {
@@ -870,5 +876,66 @@ fn replace_ops(instruction: AsmInstruction, f: impl Fn(Operand) -> Operand) -> A
         }
         // Instructions where we don't need to replace operands
         _ => instruction.clone(),
+    }
+}
+
+// Custom Debug implementation for InterferenceGraph
+impl fmt::Debug for InterferenceGraph {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Opening line
+        writeln!(f, "InterferenceGraph {{")?;
+
+        // Format nodes
+        writeln!(f, "    nodes: [")?;
+        for (i, node) in self.nodes.iter().enumerate() {
+            write!(f, "        ")?;
+            fmt::Debug::fmt(node, f)?;
+            if i < self.nodes.len() - 1 {
+                writeln!(f, ",")?;
+            } else {
+                writeln!(f)?;
+            }
+        }
+        writeln!(f, "    ],")?;
+
+        // Format id_to_index map
+        writeln!(f, "    id_to_index: {{")?;
+        let mut entries: Vec<_> = self.id_to_index.iter().collect();
+        entries.sort_by_key(|(k, _)| k.to_string());
+
+        for (i, (key, value)) in entries.iter().enumerate() {
+            write!(f, "        {key:?}: {value}")?;
+            if i < entries.len() - 1 {
+                writeln!(f, ",")?;
+            } else {
+                writeln!(f)?;
+            }
+        }
+        writeln!(f, "    }}")?;
+
+        // Closing brace
+        write!(f, "}}")
+    }
+}
+
+// Custom Debug implementation for Node
+impl fmt::Debug for Node {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Node {{")?;
+        write!(f, " id: {:?},", self.id)?;
+
+        write!(f, " neighbors: [")?;
+        for (i, &neighbor) in self.neighbors.iter().enumerate() {
+            write!(f, "{}", neighbor)?;
+            if i < self.neighbors.len() - 1 {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, "],")?;
+
+        write!(f, " spill_cost: {:.2},", self.spill_cost)?;
+        write!(f, " color: {:?},", self.color)?;
+        write!(f, " pruned: {}", self.pruned)?;
+        write!(f, " }}")
     }
 }

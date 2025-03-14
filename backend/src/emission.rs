@@ -449,3 +449,23 @@ fn escape_string(s: &str) -> String {
     // replace " with \"
     s.replace("\"", "\\\"").replace("\n", "\\n")
 }
+
+use std::fmt;
+
+impl fmt::Display for AsmInstruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Reuse the existing format_instruction method
+        write!(f, "{}", AssemblyFormatter::format_instruction(self))
+    }
+}
+
+impl fmt::Display for Operand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Reuse the existing format_operand method
+        write!(
+            f,
+            "{}",
+            AssemblyFormatter::format_operand(self, &AssemblyType::Quadword)
+        )
+    }
+}

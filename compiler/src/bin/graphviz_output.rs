@@ -25,7 +25,8 @@ fn main() {
     // let cfg = eliminate_unreachable_code(cfg);
 
     // Print CFG visualization
-    if let Ok(png_path) = cfg.print_graphviz() {
+    let mut counter = 0;
+    if let Ok(png_path) = cfg.print_graphviz(&mut counter) {
         println!("Generated CFG visualization: {png_path}");
     }
 }
