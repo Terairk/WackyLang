@@ -1,5 +1,5 @@
 // File for helper functions related to registers
-use crate::assembly_ast::{AssemblyType, Register};
+use crate::assembly_ast::{AssemblyType, Operand, Register};
 use Register::{AX, BP, BX, CX, DI, DX, R8, R9, R10, R11, R12, R13, R14, R15, SI, SP};
 use bitflags::bitflags;
 
@@ -10,8 +10,10 @@ pub const ALL_HARDREGS: [Register; 16] = [
 // These are the registers which we're gonna colour. Don't include BP and SP cus stack management
 // Don't include R10, R11 cus we use them in instruction-fix up
 pub const ALL_BASEREGS: [Register; 12] = [AX, BX, CX, DX, DI, SI, R8, R9, R12, R13, R14, R15];
+pub const LEN_ALL_BASEREGS: usize = 12;
 // Don't use R10 and R11 as we use them for our fixing instructions pass
 pub const CALLER_SAVED: [Register; 7] = [AX, CX, DX, SI, DI, R8, R9];
+pub const CALLEE_SAVED: [Register; 6] = [BX, R12, R13, R14, R15, BP];
 pub const PARAM_REGS: [Register; 6] = [DI, SI, DX, CX, R8, R9];
 
 bitflags! {
@@ -33,6 +35,15 @@ bitflags! {
         const BP = 1 << 13;
         const R10 = 1 << 14;
         const R11 = 1 << 15;
+    }
+}
+
+#[must_use]
+#[inline]
+pub fn is_callee_saved(operand: &Operand) -> bool {
+    match operand {
+        Operand::Reg(reg) => CALLEE_SAVED.contains(reg),
+        _ => false,
     }
 }
 

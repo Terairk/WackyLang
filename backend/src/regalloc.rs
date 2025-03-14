@@ -8,6 +8,7 @@ use build_interference_graph::build_graph;
 use crate::{
     assembly_ast::{AsmInstruction, Operand, Register},
     assembly_trans::FunctionRegisters,
+    registers::{LEN_ALL_BASEREGS, is_callee_saved},
 };
 
 fn allocate_registers(
@@ -16,7 +17,7 @@ fn allocate_registers(
     func_regs: &FunctionRegisters,
 ) -> Vec<AsmInstruction> {
     let mut interference_graph = build_graph(&instructions, func_name, func_regs);
-    add_spill_costs(&interference_graph, &instructions);
+    add_spill_costs(&mut interference_graph, &instructions);
     color_graph(&mut interference_graph);
     let register_map = create_register_map(&interference_graph);
     let transformed_instructions = replace_pseudoregs(instructions, register_map);
@@ -533,12 +534,132 @@ mod build_interference_graph {
     }
 }
 
-fn add_spill_costs(graph: &InterferenceGraph, instructions: &[AsmInstruction]) {
-    todo!()
+fn add_spill_costs(graph: &mut InterferenceGraph, instructions: &[AsmInstruction]) {
+    // Create a HashMap to track the number of appearances for each operand
+    let mut appearance_counts: HashMap<Operand, f64> = HashMap::new();
+
+    // Count the number of times each operand appears in the instructions
+    for instruction in instructions {
+        // Extract all operands from the instruction
+        let operands = get_operands(instruction);
+
+        // Increment the count for each operand
+        for operand in operands {
+            // Only track registers and pseudoregisters
+            if let Operand::Pseudo(_) = &operand {
+                *appearance_counts.entry(operand).or_insert(0.0) += 1.0;
+            }
+        }
+    }
+
+    // Assign calculated costs to pseudoregisters
+    for (operand, count) in appearance_counts {
+        match &operand {
+            Operand::Pseudo(_) => {
+                // Pseudoregisters get a spill cost equal to their number of appearances
+                if let Some(&index) = graph.id_to_index.get(&operand) {
+                    graph.nodes[index].update_spill_cost(count);
+                } else {
+                    // Add the node if it doesn't exist yet
+                    graph.add_node(&operand, count);
+                }
+            }
+            _ => {} // Ignore other types of operands
+        }
+    }
 }
 
 fn color_graph(graph: &mut InterferenceGraph) {
-    todo!()
+    // Get the list of unpruned nodes
+    let unpruned_nodes: Vec<usize> = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| !node.is_pruned())
+        .map(|(idx, _)| idx)
+        .collect();
+
+    // Base case: if there are no unpruned nodes left, we're done
+    if unpruned_nodes.is_empty() {
+        return;
+    }
+
+    // Choose the next node to prune
+    let mut chosen_node = None;
+    let k = LEN_ALL_BASEREGS;
+
+    // First try to find a node with degree < k
+    for &node_idx in &unpruned_nodes {
+        let unpruned_neighbors_count = graph.nodes[node_idx]
+            .neighbors
+            .iter()
+            .filter(|&&neighbor_idx| !graph.nodes[neighbor_idx].is_pruned())
+            .count();
+
+        if unpruned_neighbors_count < k {
+            chosen_node = Some(node_idx);
+            break;
+        }
+    }
+
+    // If no node with degree < k was found, choose a spill candidate
+    if chosen_node.is_none() {
+        let mut best_spill_metric = f64::INFINITY;
+
+        for &node_idx in &unpruned_nodes {
+            let unpruned_neighbors_count = graph.nodes[node_idx]
+                .neighbors
+                .iter()
+                .filter(|&&neighbor_idx| !graph.nodes[neighbor_idx].is_pruned())
+                .count();
+
+            // Avoid division by zero
+            if unpruned_neighbors_count > 0 {
+                let spill_metric =
+                    graph.nodes[node_idx].spill_cost() / unpruned_neighbors_count as f64;
+
+                if spill_metric < best_spill_metric {
+                    chosen_node = Some(node_idx);
+                    best_spill_metric = spill_metric;
+                }
+            }
+        }
+    }
+
+    // Prune the chosen node
+    if let Some(node_idx) = chosen_node {
+        graph.nodes[node_idx].prune();
+
+        // Color the rest of the graph recursively
+        color_graph(graph);
+
+        // Now try to color the chosen node
+        let mut available_colors: Vec<i32> = (1..=k).map(|x| x as i32).collect();
+
+        // Remove colors that are already used by neighbors
+        for &neighbor_idx in &graph.nodes[node_idx].neighbors {
+            if let Some(color) = graph.nodes[neighbor_idx].color() {
+                available_colors.retain(|&c| c != color);
+            }
+        }
+
+        // If there are colors available, assign one to the node
+        if !available_colors.is_empty() {
+            let is_callee_saved = is_callee_saved(&graph.nodes[node_idx].id);
+
+            let color = if is_callee_saved {
+                // Assign highest-numbered color for callee-saved registers
+                *available_colors.iter().max().unwrap()
+            } else {
+                // Assign lowest-numbered color for others
+                *available_colors.iter().min().unwrap()
+            };
+
+            graph.nodes[node_idx].set_color(color);
+            graph.nodes[node_idx].unprune(); // Mark as unpruned (back in the graph)
+        }
+        // If no colors available, the node stays pruned (spilled)
+    }
 }
 
 fn create_register_map(graph: &InterferenceGraph) -> RegisterMap {
