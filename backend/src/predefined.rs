@@ -632,7 +632,7 @@ fn create_arr_load_function(name: String, scale: i32) -> AsmFunction {
                 condition: L,
                 typ: Quadword,
                 src: Reg(ARR_INDEX_REG),
-                dst: Reg(SI),
+                dst: Reg(R10),
             },
             JmpCC {
                 condition: L,
@@ -652,8 +652,8 @@ fn create_arr_load_function(name: String, scale: i32) -> AsmFunction {
             Cmov {
                 condition: GE,
                 typ: Quadword,
-                src: Reg(R10),
-                dst: Reg(SI),
+                src: Reg(ARR_INDEX_REG),
+                dst: Reg(R10),
             },
             JmpCC {
                 condition: GE,

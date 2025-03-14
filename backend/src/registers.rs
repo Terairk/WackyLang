@@ -103,10 +103,11 @@ pub const RS6: RegisterSet = RegisterSet::from_bits_truncate(
 
 // Use R8 and R9 since we don't use them for our fixing instructions pass
 // Also reduces chances of conflict with function
-pub const ARR_PTR_REG: Register = R8;
-pub const ARR_INDEX_REG: Register = R9;
+pub const ARR_PTR_REG: Register = DI;
+pub const ARR_INDEX_REG: Register = SI;
 pub const ARR_LOAD_RETURN: Register = AX;
-pub const ARR_STORE_RETURN: Register = AX;
 
 // Unfortunately these do not change automatically with the above
-pub const RS_ARR: RegisterSet = RegisterSet::from_bits_truncate(RS::R9.bits() | RS::R10.bits());
+// pub const RS_ARR: RegisterSet = RegisterSet::from_bits_truncate(RS::R8.bits() | RS::R9.bits());
+
+pub const RS_ARR: RegisterSet = RegisterSet::from_bits_truncate(RS::DI.bits() | RS::SI.bits());

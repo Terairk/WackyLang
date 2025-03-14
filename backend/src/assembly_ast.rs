@@ -194,7 +194,7 @@ pub enum CondCode {
 // Other registers are callee saved
 // which will be added later
 // when optimisations are done
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Register {
     AX,
     BX,

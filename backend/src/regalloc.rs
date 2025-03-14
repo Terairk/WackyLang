@@ -1,7 +1,7 @@
 // This pass is supposed to be done first after lowering to assembly
 // TODO: honestly this should be in a submodule
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 
 use build_interference_graph::build_graph;
@@ -11,7 +11,7 @@ use crate::{
     assembly_trans::FunctionRegisters,
     registers::{LEN_ALL_BASEREGS, RegisterSet, is_callee_saved, is_callee_saved_reg},
 };
-pub type FunctionCallee = HashMap<String, Vec<Register>>;
+pub type FunctionCallee = HashMap<String, BTreeSet<Register>>;
 
 // This is messy code but I can fix this later
 #[must_use]
@@ -743,7 +743,7 @@ fn create_register_map(
 
     // build map from pseudo registers to hard reisters
     let mut register_map: RegisterMap = RegisterMap::new();
-    let mut callee_saved_regs: Vec<Register> = Vec::new();
+    let mut callee_saved_regs: BTreeSet<Register> = BTreeSet::new();
 
     for node in graph.nodes() {
         match node.get_id() {
@@ -752,7 +752,7 @@ fn create_register_map(
                     let hardreg = colour_map.get(&colour).unwrap();
                     register_map.insert(p.clone(), hardreg.clone());
                     if is_callee_saved_reg(hardreg) {
-                        callee_saved_regs.push(*hardreg)
+                        callee_saved_regs.insert(*hardreg);
                     }
                 }
                 None => {}

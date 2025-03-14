@@ -110,7 +110,7 @@ fn optimize_fun(
             if config.should_print_cfg() {
                 let new_name = format!("{}_optimized", func_name);
                 let cfg = make_cfg(function_body.clone(), new_name.as_str());
-                println!("cfg: {:?}", cfg);
+                // println!("cfg: {:?}", cfg);
                 if let Ok(png_path) = cfg.print_graphviz(&mut counter) {
                     println!("Generated CFG visualization: {}", png_path);
                 }

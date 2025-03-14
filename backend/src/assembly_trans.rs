@@ -25,7 +25,7 @@ use middle::wackir::{
     BinaryOp, UnaryOp, WackFunction, WackInstr, WackLiteral, WackPrintType, WackProgram,
     WackReadType, WackTempIdent, WackValue,
 };
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::Hash;
 use util::gen_flags::{GenFlags, insert_flag_gbl};
 use util::gen_flags::{
@@ -58,7 +58,7 @@ pub fn wacky_to_assembly(
     }
 
     for function in &asm_functions {
-        function_callee_regs.insert(function.name.clone(), Vec::new());
+        function_callee_regs.insert(function.name.clone(), BTreeSet::new());
     }
 
     // Add the function to registers mapping to the register set

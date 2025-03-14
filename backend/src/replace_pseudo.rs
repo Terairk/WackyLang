@@ -71,13 +71,6 @@ pub fn replace_pseudo_in_program(
             new_instructions.push(Comment(
                 "This allocate ensures stack is 16-byte aligned".to_owned(),
             ));
-
-            // Push callee saved registers onto the stack
-            // func.instructions.insert(2, AllocateStack(-last_offset));
-            // func.instructions.insert(
-            //     2,
-            //     Comment("This allocate ensures stack is 16-byte aligned".to_owned()),
-            // );
         }
 
         for reg in callee_regs {
@@ -116,6 +109,7 @@ fn replace_pseudo_operand(
             *last_offset = offset;
             // may have unexpected side effects if it underflows
             // *op = Operand::Stack(offset);
+            println!("Replaced pseudo {} with stack offset {}", ident, offset);
             *op = Memory(BP, offset);
         }
     }

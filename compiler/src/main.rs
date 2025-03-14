@@ -250,7 +250,7 @@ fn main() -> ExitCode {
 
     if args.wacky {
         println!("{wacky_ir:#?}");
-        println!("{symbol_table:#?}");
+        // println!("{symbol_table:#?}");
         return ExitCode::SUCCESS;
     }
 
@@ -261,6 +261,7 @@ fn main() -> ExitCode {
     // TODO: find how to use asm_gen for future passes
     let (mut assembly_ast, asm_gen, mut function_callee_regs) =
         wacky_to_assembly(wacky_ir, counter, symbol_table);
+
     if args.assembly {
         println!("{assembly_ast:#?}");
         return ExitCode::SUCCESS;
@@ -276,6 +277,9 @@ fn main() -> ExitCode {
             &asm_gen.function_regs,
             &mut function_callee_regs,
         );
+        for (name, regs) in function_callee_regs.iter() {
+            println!("{name}: {regs:#?}");
+        }
         if args.print_reg_alloc {
             println!("{assembly_ast:#?}");
             return ExitCode::SUCCESS;
