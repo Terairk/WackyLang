@@ -18,6 +18,7 @@ pub struct Program {
 
 #[derive(Clone, Debug)]
 pub struct Func {
+    pub is_tailrec: bool,
     pub return_type: SN<Type>,
     pub name: SN<Ident>,
     pub params: Box<[FuncParam]>,
@@ -278,12 +279,14 @@ mod impls {
         #[must_use]
         #[inline]
         pub const fn new(
+            is_tailrec: bool,
             return_type: SN<Type>,
             name: SN<Ident>,
             params: Box<[FuncParam]>,
             body: StatBlock,
         ) -> Self {
             Self {
+                is_tailrec,
                 return_type,
                 name,
                 params,

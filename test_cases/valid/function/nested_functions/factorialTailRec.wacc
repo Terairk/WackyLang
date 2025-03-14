@@ -11,7 +11,7 @@
 # Program:
 
 begin
-  int fac_go(int n, int a) is
+  tailrec int fac_go(int n, int a) is
     if n <= 1
     then
       return a

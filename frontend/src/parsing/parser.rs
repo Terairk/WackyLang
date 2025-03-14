@@ -619,6 +619,7 @@ where
 
     // function parser
     let func = group((
+        just(Token::Tailrec).or_not().map(|o| o.is_some()),
         r#type,
         ident,
         func_params

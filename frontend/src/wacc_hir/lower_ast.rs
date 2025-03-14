@@ -291,6 +291,7 @@ impl LoweringCtx {
     #[inline]
     pub fn lower_func(&mut self, func: ast::Func) -> Func {
         let ast::Func {
+            is_tailrec,
             return_type,
             name,
             params,
@@ -310,6 +311,7 @@ impl LoweringCtx {
 
         // construct output function
         Func {
+            is_tailrec,
             return_type,
             name,
             params,

@@ -55,6 +55,7 @@ pub enum HirLoweringError {
         max_possible_indices: usize,
         actual_indices: usize,
     },
+    FuncNotTailrec(SN<ast::Ident>),
 }
 
 impl HirLoweringError {
@@ -129,6 +130,10 @@ impl HirLoweringError {
                     max_possible_indices, actual_indices
                 )
             }
+            Self::FuncNotTailrec(ref func_name) => format!(
+                "Function `{}` was marked as tail-recursive but isn't",
+                func_name
+            ),
         }
     }
 
@@ -136,6 +141,7 @@ impl HirLoweringError {
     pub fn into_span(self) -> SourcedSpan {
         match self {
             Self::UntypedIdentEncountered(ident) => ident.span(),
+            Self::FuncNotTailrec(ident) => ident.span(),
             Self::TypeMismatch { span, .. }
             | Self::ExpectedArrayType { span, .. }
             | Self::ExpectedPairType { span, .. }
@@ -393,17 +399,28 @@ impl HirLoweringCtx {
         self.current_func_hir_return_type = Some(func.return_type.inner().clone());
         let unoptimized = Func {
             return_type: Self::lower_type(&func.return_type), // Type remains unchanged
-            name: func.name.into_inner(),
+            name: func.name.clone().into_inner(),
             params: func.params.map(|param| self.lower_func_param(param)),
             body: self.lower_stat_block(func.body),
         };
         self.current_func_hir_return_type = None;
 
-        // apply optimizations
-        let optimized = tail_recursion_optimization(
-            |label| self.make_new_loop_label(ast::Ident::from_str(label)),
-            unoptimized,
-        );
+        // perform tail-call optimization. if function is `tailrec` and the optimization failed,
+        // raise an error about it
+        let optimized = match (
+            tail_recursion_optimization(
+                |label| self.make_new_loop_label(ast::Ident::from_str(label)),
+                unoptimized,
+            ),
+            func.is_tailrec,
+        ) {
+            (Ok(o) | Err(o), false) => o,
+            (Ok(o), true) => o,
+            (Err(o), true) => {
+                self.add_error(HirLoweringError::FuncNotTailrec(func.name));
+                o
+            }
+        };
         optimized
     }
 

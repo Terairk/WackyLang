@@ -269,6 +269,7 @@ where
     let keywords = choice([
         text::keyword("begin").to(Token::Begin),
         text::keyword("end").to(Token::End),
+        text::keyword("tailrec").to(Token::Tailrec),
         text::keyword("is").to(Token::Is),
         text::keyword("skip").to(Token::Skip),
         text::keyword("read").to(Token::Read),

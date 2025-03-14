@@ -106,6 +106,7 @@ pub enum Token {
     // keywords
     Begin,
     End,
+    Tailrec,
     Is,
     Skip,
     Read,
@@ -182,6 +183,7 @@ impl fmt::Display for Token {
             Self::Comma => write!(f, ","),
             Self::Begin => write!(f, "begin"),
             Self::End => write!(f, "end"),
+            Self::Tailrec => write!(f, "tailrec"),
             Self::Is => write!(f, "is"),
             Self::Skip => write!(f, "skip"),
             Self::Read => write!(f, "read"),

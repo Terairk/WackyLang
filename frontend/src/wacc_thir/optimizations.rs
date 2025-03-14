@@ -52,19 +52,19 @@ pub fn unreachable_code_elimination(stat_block: StatBlock) -> StatBlock {
     }))
 }
 
-pub fn tail_recursion_optimization<L>(mk_loop_label: L, func: Func) -> Func
+pub fn tail_recursion_optimization<L>(mk_loop_label: L, func: Func) -> Result<Func, Func>
 where
     L: FnOnce(&'static str) -> hir::LoopLabel,
 {
     // look for any call-statements that are self-recursive, if none found
     // then no tail-recursive optimization is applicable
     if !func.body.any(|s| s.has_call_to_func(&func.name)) {
-        return func;
+        return Err(func);
     }
 
     // check that all recursive calls are tail-calls (i.e. the function is tail-recursive)
     if !func.body.all_calls_are_tail_calls(&func.name) {
-        return func;
+        return Err(func);
     }
 
     // we now put the entire function body into a giant outer-loop label,
@@ -158,12 +158,12 @@ where
         label: loop_label,
         body: transformed,
     });
-    Func {
+    Ok(Func {
         return_type: func.return_type,
         name: func.name,
         params: func.params,
         body,
-    }
+    })
 }
 
 #[cfg(test)]
