@@ -39,5 +39,7 @@
 
 # Tail-Recursion Optimisation
 - directly self-recursive functions are optimized into loops
+- added an optional `tailrec` modifier:
+- + it has the following syntax: `tailrec <func>`
+- + if present, the function being tail-recursive is enforced by the compiler
 - TODO: write tests, and measure performance
-- TODO: maybe add enforcement annotation?? e.g. `tailrec <type> <ident>(...) is <stmt> done` ??
