@@ -655,8 +655,8 @@ impl AsmGen {
         };
 
         // used to align the stack to 16 bytes for function calls
-        asm.push(Comment("This aligns stack to 16 bytes".to_owned()));
         if stack_padding != 0 {
+            asm.push(Comment("This aligns stack to 16 bytes".to_owned()));
             asm.push(AllocateStack(stack_padding));
         }
 

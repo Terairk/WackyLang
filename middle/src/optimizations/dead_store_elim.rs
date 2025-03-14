@@ -24,7 +24,7 @@ pub(crate) fn eliminate_dead_stores(cfg: &EmptyCFG) -> EmptyCFG {
     //     }
     // }
     // println!("{:?}", annotated_cfg);
-    println!("===================================================");
+    // println!("===================================================");
 
     // Create new CFG with dead stores removed
     for block in annotated_cfg.basic_blocks.values_mut() {

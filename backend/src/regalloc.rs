@@ -531,7 +531,7 @@ mod build_interference_graph {
                 updated.push(Operand::Reg(Register::CX));
                 updated.push(Operand::Reg(Register::R8));
                 updated.push(Operand::Reg(Register::R9));
-                updated.push(Operand::Reg(Register::AX)); // Return value
+                updated.push(Operand::Reg(Register::AX));
             }
             AsmInstruction::Ret => {
                 // This is handled by our Exit node in the meet function
@@ -788,6 +788,10 @@ fn replace_pseudoregs(
         _ => op,
     };
 
+    // It actually isn't safe to remove instructions where
+    // the source and dst for a mov is the same because
+    // movl with clear the upper 32 bits of the register
+    // so removing it will cause the program to behave differently
     instructions
         .into_iter()
         .map(|instr| replace_ops(instr, map_pseudo))

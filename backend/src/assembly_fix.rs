@@ -104,7 +104,7 @@ fn fix_zero_extend(
         let new_instrs = match (src.clone(), dst.clone()) {
             // Zero extend can't have Immediate as source
             // so we move it into a register first
-            (Imm(_), Memory(_, _)) => vec![
+            (Imm(_), _) => vec![
                 Mov {
                     typ: src_type,
                     src,

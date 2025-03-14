@@ -62,28 +62,28 @@ pub fn replace_pseudo_in_program(
         // Prepend an AllocateStack instruction to reserve the required stack space.
         // Note this doesn't take into account parameters just yet
 
-        // rounds up to nearest multiple of 16 (negative version)
-        last_offset = round_down_16(last_offset);
+        let mut new_instructions = Vec::new();
         // index 2 here since we have push rbp and mov rbp, rsp
+        let callee_regs = func_callee_regs.get(&func.name).unwrap();
         if last_offset != 0 {
-            let mut new_instructions = vec![
-                AllocateStack(-last_offset),
-                Comment("This allocate ensures stack is 16-byte aligned".to_owned()),
-            ];
+            let new_offset = calculate_stack_adjustment(-last_offset, callee_regs.len() as i32);
+            new_instructions.push(AllocateStack(-new_offset));
+            new_instructions.push(Comment(
+                "This allocate ensures stack is 16-byte aligned".to_owned(),
+            ));
 
             // Push callee saved registers onto the stack
-            let callee_regs = func_callee_regs.get(&func.name).unwrap();
-            for reg in callee_regs {
-                new_instructions.push(Push(Reg(*reg)));
-            }
-            func.instructions.splice(2..2, new_instructions);
-
             // func.instructions.insert(2, AllocateStack(-last_offset));
             // func.instructions.insert(
             //     2,
             //     Comment("This allocate ensures stack is 16-byte aligned".to_owned()),
             // );
         }
+
+        for reg in callee_regs {
+            new_instructions.push(Push(Reg(*reg)));
+        }
+        func.instructions.splice(2..2, new_instructions);
     }
 }
 
@@ -159,11 +159,18 @@ fn replace_pseudo_in_instruction(
 // rounds down to neartest multiple of 16
 // meant for negative numbers
 const fn round_down_16(x: i32) -> i32 {
+    assert!(x < 0);
     x & !15
 }
 
 const fn round_down(x: i32, multiple: i32) -> i32 {
+    assert!(x < 0);
     x & !(multiple - 1)
+}
+
+const fn round_up(x: i32, multiple: i32) -> i32 {
+    assert!(x > 0);
+    round_down(-x, multiple)
 }
 
 const fn get_alignment(typ: AssemblyType) -> i32 {
@@ -173,4 +180,12 @@ const fn get_alignment(typ: AssemblyType) -> i32 {
         Longword => 4,
         Quadword => 8,
     }
+}
+
+fn calculate_stack_adjustment(bytes_for_locals: i32, callee_saved_count: i32) -> i32 {
+    let callee_saved_bytes = callee_saved_count * 8;
+    let total_bytes = bytes_for_locals + callee_saved_bytes;
+    let adjust_stack_bytes = round_up(total_bytes, 16);
+    let stack_adjustment = adjust_stack_bytes - callee_saved_bytes;
+    stack_adjustment
 }
