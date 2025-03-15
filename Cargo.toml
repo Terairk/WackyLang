@@ -1,13 +1,13 @@
 [workspace]
 resolver = "3"
 members = [
-    "backend",
-    "compiler",
-    "frontend",
-    "middle",
-    "util",
-    "util/fn_pipe",
-    "util/fn_pipe/proc",
+  "backend",
+  "compiler",
+  "frontend",
+  "middle",
+  "util",
+  "util/fn_pipe",
+  "util/fn_pipe/proc",
 ]
 
 [profile.dev]
@@ -61,6 +61,9 @@ ariadne = "0.5"
 parse_int = "0.6"
 chumsky = { git = "https://github.com/zesterer/chumsky", rev = "d12869a" } # currently latest chumsky commit
 derive_more = { version = "2.0.1", features = ["display"] }
+
+[workspace.lints.rust]
+static_mut_refs = "warn" # Or use "warn" instead of deny
 
 # Clippy's lint category level configurations;
 # every member crate needs to inherit these by adding
@@ -142,3 +145,4 @@ unused_result_ok = "warn"
 unused_trait_names = "warn"
 unwrap_used = "warn"
 verbose_file_reads = "warn"
+static_mut_refs = "warn"
