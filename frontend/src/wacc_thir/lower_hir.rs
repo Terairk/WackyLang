@@ -422,7 +422,7 @@ impl HirLoweringCtx {
             tail_recursion_optimization(
                 self.make_new_loop_label(ast::Ident::from_str(Self::TAILREC_LOOP)),
                 &mut |ident, r#type| self.make_new_ident(ast::Ident::from_str(ident), r#type),
-                unoptimized,
+                unoptimized.clone(),
             ),
             func.is_tailrec,
         ) {
@@ -432,7 +432,8 @@ impl HirLoweringCtx {
                 o
             }
         };
-        optimized
+        // optimized
+        unoptimized
     }
 
     #[allow(clippy::indexing_slicing)]

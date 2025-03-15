@@ -12,7 +12,7 @@
 
 begin
   tailrec int fibonacci(int n, int a, int b) is
-    if n <= 1 then
+    if n <= 0 then
       return a
     fi;
     int next = call fibonacci(n - 1, a + b, a);
