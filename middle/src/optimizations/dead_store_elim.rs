@@ -169,8 +169,8 @@ fn transfer(mut block: LiveBasicBlock, end_live_variables: LiveVariables) -> Liv
                 add_var(src_array_ptr, &mut current_live_vars);
                 add_var(index, &mut current_live_vars);
             }
-            Read { ref dst, .. } => {
-                remove_var(dst, &mut current_live_vars);
+            Read { .. } => {
+                // The destination remains live because the read might fail
             }
             Alloc { ref dst_ptr, .. } => {
                 remove_var(dst_ptr, &mut current_live_vars);
