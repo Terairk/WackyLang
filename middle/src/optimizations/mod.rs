@@ -44,6 +44,7 @@ fn optimize_fun(
     }
 
     // Used for debugging purposes, mutable so we only print the CFG once before any optimizations
+    // We leave the commented print statements in the code for future debugging purposes
     let mut is_first = config.should_print_cfg();
     let mut counter = 0;
 

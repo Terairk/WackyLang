@@ -107,8 +107,8 @@ fn replace_pseudo_operand(
             let offset = *next_stack_offset;
             mapping.insert(ident.clone(), offset);
             *last_offset = offset;
-            // may have unexpected side effects if it underflows
-            // *op = Operand::Stack(offset);
+            // Useful for debugging and seeing the difference between using registers
+            // and using the stack
             // println!(
             //     "Replaced pseudo {} with stack offset {} and type: {:?}",
             //     ident, offset, asm_type

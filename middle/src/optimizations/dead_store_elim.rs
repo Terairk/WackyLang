@@ -12,12 +12,13 @@ use WackInstr::{
     Println, Read, Return, Unary,
 };
 
-static mut CFG_COUNT: usize = 0;
+// static mut CFG_COUNT: usize = 0;
 
 pub(crate) fn eliminate_dead_stores(cfg: &EmptyCFG) -> EmptyCFG {
     // Get annotated CFG with live variables
     let mut annotated_cfg = find_live_variables(cfg);
 
+    // Useful for deugging purposes and visualizing the CFG with annotations
     // unsafe {
     //     if let Ok(png_path) = annotated_cfg.print_graphviz(&mut CFG_COUNT) {
     //         println!("Generated CFG deadstore visualization: {}", png_path);

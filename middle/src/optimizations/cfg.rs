@@ -1,9 +1,4 @@
-use std::collections::HashSet;
-
-use util::{
-    CFG, Instruction, SimpleInstr,
-    cfg::{Location, NodeId},
-};
+use util::{CFG, Instruction, SimpleInstr, cfg::Location};
 // temporary bCFG cus I want to leave everything the same
 
 use crate::alias::InternStr;
@@ -13,8 +8,6 @@ use WackInstr::{
     FunCall, Jump, JumpIfNotZero, JumpIfZero, JumpToHandler, Label, Load, NullPtrGuard, Print,
     Println, Read, Return, Unary,
 };
-// TODO: Change the CFG to the proper CFG type
-// I'll figure this out as I go along
 
 pub type EmptyCFG = CFG<WackInstr, ()>;
 
@@ -59,7 +52,7 @@ impl From<WackTempIdent> for Location {
     }
 }
 
-pub fn get_dst(instr: &WackInstr) -> Option<&WackTempIdent> {
+pub const fn get_dst(instr: &WackInstr) -> Option<&WackTempIdent> {
     match *instr {
         Return(_) => None,
         Unary { ref dst, .. }

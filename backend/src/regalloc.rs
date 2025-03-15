@@ -1,7 +1,7 @@
 // This pass is supposed to be done first after lowering to assembly
 // TODO: honestly this should be in a submodule
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 
 use build_interference_graph::build_graph;
@@ -9,7 +9,7 @@ use build_interference_graph::build_graph;
 use crate::{
     assembly_ast::{AsmFunction, AsmInstruction, AsmProgram, Operand, Register},
     assembly_trans::FunctionRegisters,
-    registers::{LEN_ALL_BASEREGS, RegisterSet, is_callee_saved, is_callee_saved_reg},
+    registers::{LEN_ALL_BASEREGS, is_callee_saved, is_callee_saved_reg},
 };
 pub type FunctionCallee = HashMap<String, BTreeSet<Register>>;
 
@@ -228,10 +228,6 @@ mod build_interference_graph {
         CFG,
         cfg::{BasicBlock, NodeId, backwards_dataflow_analysis},
     };
-    // TODO: replace LiveRegisters with the actual type
-
-    // #[derive(Debug, Clone, Default)]
-    // struct LiveRegisters;
 
     // This is supposed to use Operands apparently -- maybe for easy conversion
     // And because we'll add PseudoRegisters here
@@ -257,15 +253,15 @@ mod build_interference_graph {
         let mut interference_graph = create_base_graph();
         add_pseudoregisters(&mut interference_graph, instructions);
         let cfg = make_control_flow_graph(instructions, func_name);
-        let new_cfg = analyze_lifeness(&cfg, &func_reg);
+        let new_cfg = analyze_lifeness(&cfg, func_reg);
 
-        // Print CFG visualization, useful for debugging
+        // Print CFG visualization, useful for debugging so leave it in
         // let mut counter = 80;
         // if let Ok(png_path) = new_cfg.print_graphviz(&mut counter) {
         //     println!("Generated CFG visualization: {png_path}");
         // }
 
-        add_edges(&new_cfg, &mut interference_graph, &func_reg);
+        add_edges(&new_cfg, &mut interference_graph, func_reg);
         interference_graph
     }
 
@@ -331,7 +327,6 @@ mod build_interference_graph {
                     live_regs.insert(Operand::Reg(Register::AX));
                 }
                 NodeId::Block(id) => {
-                    // println!("{:?}", id);
                     let succ_live_regs = cfg
                         .get_block_value(id)
                         .expect("CFG is malformed or corrupted")
@@ -355,10 +350,6 @@ mod build_interference_graph {
             // Annotate the instructions with the current live registers
             instr.0 = current_live_registers.clone();
             let (used, updated) = find_used_and_updated(instr.1.clone(), func_regs);
-            // println!("instr: {:?},", instr.1);
-            // println!("used: {:?}, updated: {:?}", used, updated);
-            // println!("========================================");
-            //
             for v in updated {
                 match v {
                     Operand::Pseudo(_) => {
@@ -770,11 +761,6 @@ fn replace_pseudoregs(
     instructions: Vec<AsmInstruction>,
     register_map: &RegisterMap,
 ) -> Vec<AsmInstruction> {
-    // fn map_pseudo(reg: Operand) -> Operand {
-    //     match reg {
-    //         Pseudo(p) => register_map.ge
-    //     }
-    // }
     let map_pseudo = |op: Operand| match op {
         Operand::Pseudo(p) => {
             let hardreg = register_map.get(&p);
@@ -834,8 +820,8 @@ fn replace_ops(instruction: AsmInstruction, f: impl Fn(Operand) -> Operand) -> A
     match instruction {
         AsmInstruction::Mov { typ, src, dst } => AsmInstruction::Mov {
             typ,
-            src: f(src.clone()),
-            dst: f(dst.clone()),
+            src: f(src),
+            dst: f(dst),
         },
         AsmInstruction::Cmov {
             condition,
@@ -845,8 +831,8 @@ fn replace_ops(instruction: AsmInstruction, f: impl Fn(Operand) -> Operand) -> A
         } => AsmInstruction::Cmov {
             condition,
             typ,
-            src: f(src.clone()),
-            dst: f(dst.clone()),
+            src: f(src),
+            dst: f(dst),
         },
         AsmInstruction::MovZeroExtend {
             src_type,
@@ -856,12 +842,12 @@ fn replace_ops(instruction: AsmInstruction, f: impl Fn(Operand) -> Operand) -> A
         } => AsmInstruction::MovZeroExtend {
             src_type,
             dst_type,
-            src: f(src.clone()),
-            dst: f(dst.clone()),
+            src: f(src),
+            dst: f(dst),
         },
         AsmInstruction::Lea { src, dst } => AsmInstruction::Lea {
-            src: f(src.clone()),
-            dst: f(dst.clone()),
+            src: f(src),
+            dst: f(dst),
         },
         AsmInstruction::Unary {
             operator,
@@ -870,7 +856,7 @@ fn replace_ops(instruction: AsmInstruction, f: impl Fn(Operand) -> Operand) -> A
         } => AsmInstruction::Unary {
             operator,
             typ,
-            operand: f(operand.clone()),
+            operand: f(operand),
         },
         AsmInstruction::Binary {
             operator,
@@ -880,25 +866,25 @@ fn replace_ops(instruction: AsmInstruction, f: impl Fn(Operand) -> Operand) -> A
         } => AsmInstruction::Binary {
             operator,
             typ,
-            op1: f(op1.clone()),
-            op2: f(op2.clone()),
+            op1: f(op1),
+            op2: f(op2),
         },
         AsmInstruction::Cmp { typ, op1, op2 } => AsmInstruction::Cmp {
             typ,
-            op1: f(op1.clone()),
-            op2: f(op2.clone()),
+            op1: f(op1),
+            op2: f(op2),
         },
         AsmInstruction::Test { typ, op1, op2 } => AsmInstruction::Test {
             typ,
-            op1: f(op1.clone()),
-            op2: f(op2.clone()),
+            op1: f(op1),
+            op2: f(op2),
         },
-        AsmInstruction::Idiv(op) => AsmInstruction::Idiv(f(op.clone())),
+        AsmInstruction::Idiv(op) => AsmInstruction::Idiv(f(op)),
         AsmInstruction::SetCC { condition, operand } => AsmInstruction::SetCC {
             condition,
-            operand: f(operand.clone()),
+            operand: f(operand),
         },
-        AsmInstruction::Push(op) => AsmInstruction::Push(f(op.clone())),
+        AsmInstruction::Push(op) => AsmInstruction::Push(f(op)),
         AsmInstruction::Pop(_) => {
             panic!("Shouldn't use this as Pop doesn't have any operands to replace")
         }

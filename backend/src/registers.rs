@@ -101,8 +101,10 @@ pub const RS6: RegisterSet = RegisterSet::from_bits_truncate(
     RS::DI.bits() | RS::SI.bits() | RS::DX.bits() | RS::CX.bits() | RS::R8.bits() | RS::R9.bits(),
 );
 
-// Use R8 and R9 since we don't use them for our fixing instructions pass
+// Use DI, SI for my sanity since we don't use them for our fixing instructions pass
 // Also reduces chances of conflict with function
+// ie treat arrays as function calls. ALso please see the predefined functions for ARR_LOAD
+// as they use registers which you do not want to conflict with
 pub const ARR_PTR_REG: Register = DI;
 pub const ARR_INDEX_REG: Register = SI;
 pub const ARR_LOAD_RETURN: Register = AX;
