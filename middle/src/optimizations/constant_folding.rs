@@ -1,14 +1,15 @@
 use crate::wackir::{
-    WackInstr::{self, Binary, Jump, JumpIfNotZero, JumpIfZero, Unary},
+    WackInstr::{
+        self, Binary, FreeChecked, Jump, JumpIfNotZero, JumpIfZero, JumpToHandler, NullPtrGuard,
+        Unary,
+    },
     WackLiteral::{self},
     WackValue::Literal,
 };
 
 use binary_op::eval_binary_op;
 use unary_op::eval_unary_op;
-use util::gen_flags::insert_flag_gbl;
-
-// TODO: add some checks for ARRAY_ACCESS and NULL checks in various places
+use util::gen_flags::{GenFlags, INBUILT_FREE_PAIR, INBUILT_NULL_ACCESS, insert_flag_gbl};
 
 /// Constant folds a function. Turns unary and binary operations with constant operands into a
 /// single copy instruction
@@ -41,6 +42,23 @@ pub fn constant_fold_function(function_body: Vec<WackInstr>) -> Vec<WackInstr> {
                     vec![JumpIfNotZero { condition, target }]
                 }
             }
+            FreeChecked(ptr) => {
+                if let Literal(WackLiteral::NullPair) = ptr {
+                    insert_flag_gbl(GenFlags::NULL_DEREF);
+                    vec![JumpToHandler(INBUILT_NULL_ACCESS.to_owned())]
+                } else {
+                    vec![FreeChecked(ptr)]
+                }
+            }
+            NullPtrGuard(ptr) => {
+                if let Literal(WackLiteral::NullPair) = ptr {
+                    insert_flag_gbl(GenFlags::NULL_DEREF);
+                    vec![JumpToHandler(INBUILT_NULL_ACCESS.to_owned())]
+                } else {
+                    vec![NullPtrGuard(ptr)]
+                }
+            }
+
             _ => vec![instr.clone()],
         };
 
