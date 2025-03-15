@@ -39,8 +39,24 @@ path = "src/bin/graphviz_output.rs"
 
 # Used for testing the compiler with different optimization flags
 [features]
-const-fold = []
+fold = []
 copy-prop = []
 rm-unreachable = []
-rm-deadstores = []
+rm-dead-stores = []
 reg-alloc = []
+reg-coalesce = []
+optimize-all = [
+  "fold",
+  "copy-prop",
+  "rm-unreachable",
+  "rm-dead-stores",
+  "reg-alloc",
+  "reg-coalesce",
+]
+optimize-one = [
+  "fold",
+  "copy-prop",
+  "rm-unreachable",
+  "rm-dead-stores",
+  "reg-alloc",
+]

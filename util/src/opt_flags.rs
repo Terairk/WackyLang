@@ -17,6 +17,9 @@ pub struct OptimizationConfig {
     /// Perform register allocation
     reg_alloc: bool,
 
+    /// Coalesce registers
+    reg_coalesce: bool,
+
     /// Print the CFG
     print_cfg: bool,
 }
@@ -55,5 +58,10 @@ impl OptimizationConfig {
     #[inline]
     pub const fn should_print_cfg(&self) -> bool {
         self.print_cfg
+    }
+
+    #[inline]
+    pub const fn has_reg_coalesce(&self) -> bool {
+        self.reg_coalesce
     }
 }

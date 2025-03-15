@@ -57,6 +57,12 @@ const REG_ALLOC: bool = true;
 #[cfg(not(feature = "reg-alloc"))]
 const REG_ALLOC: bool = false;
 
+#[cfg(feature = "reg-coalesce")]
+const REG_COALESCE: bool = true;
+
+#[cfg(not(feature = "reg-coalesce"))]
+const REG_COALESCE: bool = false;
+
 /// Recursively collects all `.wacc` files from the given directory.
 pub fn get_test_files(dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
     let mut test_files = Vec::new();
@@ -86,6 +92,7 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
         .eliminate_dead_stores(RM_DEAD_STORES)
         .print_cfg(false)
         .reg_alloc(REG_ALLOC)
+        .reg_coalesce(REG_COALESCE)
         .build();
 
     // println!("Compiling: {}", path.display());
@@ -205,6 +212,7 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
             assembly_ast,
             &asm_gen.function_regs,
             &mut function_callee_regs,
+            REG_COALESCE,
         );
     }
 
