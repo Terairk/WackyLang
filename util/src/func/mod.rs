@@ -5,7 +5,7 @@
 
 use crate::func::curry2::Applied1;
 use crate::func::f1::F1Once;
-use crate::func::f2::{F2Once, F2OnceExt};
+use crate::func::f2::F2OnceExt as _;
 use std::ops::Deref;
 
 pub mod compose;
@@ -96,7 +96,6 @@ pub(super) mod arg {
 pub mod f1 {
     use crate::func::compose::Compose;
     use crate::func::curry2::Applied1;
-    use crate::func::f2::F2OnceExt;
     use crate::func::{call_deref_uncurried_t, call_ref_uncurried_t};
     use std::ops::Deref;
 
@@ -150,7 +149,7 @@ pub mod f1 {
     mod impls {
         use crate::func::compose::Compose;
         use crate::func::curry2::Applied1;
-        use crate::func::f1::{F1Mut, F1Once, F1OnceExt, F1};
+        use crate::func::f1::{F1, F1Mut, F1Once, F1OnceExt};
         use crate::func::{call_deref, call_deref_uncurried_t, call_ref, call_ref_uncurried_t};
         use std::ops::Deref;
 
@@ -237,7 +236,7 @@ pub mod f1 {
 }
 
 pub mod f2 {
-    use crate::func::f1::{F1Once, F1};
+    use crate::func::f1::F1Once;
 
     pub trait F2<A, B>: F2Mut<A, B> {
         fn call2(&self, a: A, b: B) -> Self::Output;
@@ -262,7 +261,7 @@ pub mod f2 {
 
     mod impls {
         use crate::func::curry2::{Applied0, Applied1};
-        use crate::func::f2::{F2Mut, F2Once, F2OnceExt, F2};
+        use crate::func::f2::{F2, F2Mut, F2Once, F2OnceExt};
 
         impl<F, A, B, C> F2<A, B> for F
         where

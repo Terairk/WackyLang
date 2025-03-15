@@ -66,7 +66,7 @@ impl Collapsible for &'_ Even {
     fn into_frame(self) -> <Self::FrameToken as MappableFrame>::Frame<Self> {
         match *self {
             Even::Zero => RawEvenFrame::ZeroFrame,
-            Even::Odd(ref n, ref odd) => todo!(), // RawEvenFrame::OddFrame(*n, s)
+            Even::Odd(ref _n, ref _odd) => todo!(), // RawEvenFrame::OddFrame(*n, s)
         }
     }
 }
@@ -77,7 +77,7 @@ impl Expandable for Even {
     fn from_frame(val: <Self::FrameToken as MappableFrame>::Frame<Self>) -> Self {
         match val {
             RawEvenFrame::ZeroFrame => Even::Zero,
-            RawEvenFrame::OddFrame(n, odd) => todo!(),
+            RawEvenFrame::OddFrame(_n, _odd) => todo!(),
         }
     }
 }
@@ -89,7 +89,7 @@ impl Collapsible for &'_ Odd {
     fn into_frame(self) -> <Self::FrameToken as MappableFrame>::Frame<Self> {
         match *self {
             Odd::One(ref n) => RawOddFrame::OneFrame(*n),
-            Odd::Even(ref n, ref even) => todo!(), // need RawEvenFrame<&Odd> found RawEvenFrame<RawOddFrame<&Even>>
+            Odd::Even(ref _n, ref _even) => todo!(), // need RawEvenFrame<&Odd> found RawEvenFrame<RawOddFrame<&Even>>
         }
     }
 }
@@ -100,7 +100,7 @@ impl Expandable for Odd {
     fn from_frame(val: <Self::FrameToken as MappableFrame>::Frame<Self>) -> Self {
         match val {
             RawOddFrame::OneFrame(n) => Odd::One(n),
-            RawOddFrame::EvenFrame(n, even) => todo!(),
+            RawOddFrame::EvenFrame(_n, _even) => todo!(),
         }
     }
 }

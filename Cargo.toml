@@ -63,7 +63,8 @@ chumsky = { git = "https://github.com/zesterer/chumsky", rev = "d12869a" } # cur
 derive_more = { version = "2.0.1", features = ["display"] }
 
 [workspace.lints.rust]
-static_mut_refs = "warn" # Or use "warn" instead of deny
+static_mut_refs = "warn"      # Or use "warn" instead of deny
+incomplete_features = "allow"
 
 # Clippy's lint category level configurations;
 # every member crate needs to inherit these by adding

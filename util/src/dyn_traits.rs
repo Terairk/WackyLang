@@ -1,7 +1,7 @@
 use crate::rust_gadt_playground::{TyEqInstance, TyEqWitness};
 
-pub trait MyTrait {}
-pub type MyTraitDyn = dyn MyTrait;
+// pub trait MyTrait {}
+// pub type MyTraitDyn = dyn MyTrait;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 pub struct I32Ptr {
@@ -31,7 +31,7 @@ pub fn test_pattern_match<R>(op: &Op<R>, other: R) -> bool {
             // and use operations specific to the type
             ptr.ptr <= other
         }
-        Op::Write(ptr, i32_val, eq_unit_wit) => {
+        Op::Write(ptr, i32_val, _eq_unit_wit) => {
             // the type is `R=()`, uninteresting...
             ptr.ptr == *i32_val
         }

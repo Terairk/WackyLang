@@ -358,7 +358,7 @@ impl<L: TyEq<Rhs = R> + ?Sized, R: ?Sized> TyEqInstance<R> for L {
 pub fn do_thing<T>(a: &MyGADT<T>, b: T) -> bool {
     match *a {
         MyGADT::SomeFoo(ref wit, ref a) => a.foo_with(wit),
-        MyGADT::SomeInt(ref wit, ref a) => {
+        MyGADT::SomeInt(ref wit, ref _a) => {
             // at this point, I _know_ what type `T` is `bool`, hence:
             let b = <T as TyEqInstance<bool>>::into_ty_eq_with(b, wit);
 
@@ -371,7 +371,7 @@ pub fn do_thing<T>(a: &MyGADT<T>, b: T) -> bool {
 
 // #[cfg(test)]
 mod tests {
-    use crate::rust_gadt_playground::{do_thing, is_foo, ty_bool, FooInstance, MyGADT};
+    use crate::rust_gadt_playground::{FooInstance, MyGADT, do_thing, is_foo, ty_bool};
 
     // #[test]
     fn test_foo() {
@@ -379,7 +379,7 @@ mod tests {
         let usize_witness = is_foo::<usize>();
         // let double_witness = is_foo::<f64>(); // compile error
 
-        let usize_implemented: <usize as FooInstance>::Implemented = ty_bool::True;
+        let _usize_implemented: <usize as FooInstance>::Implemented = ty_bool::True;
         // let double_not_implemented: <u32 as FooInstance>::Implemented = ty_bool::False; // doesn't compile
 
         // GADT construction

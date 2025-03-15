@@ -1,4 +1,4 @@
-use recursion::{Collapsible, Expandable, MappableFrame};
+use recursion::MappableFrame;
 
 /// Heap allocated fix point of some frame [`F`]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
