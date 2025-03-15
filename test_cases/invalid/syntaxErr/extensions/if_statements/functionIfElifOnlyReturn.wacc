@@ -1,0 +1,24 @@
+# function body terminated with if-elif-only returning statement
+# Output:
+# #syntax_error#
+
+# Exit:
+# 100
+
+# Program:
+
+begin
+  int f() is
+    if true
+    then
+      return 0
+    elif true
+    then
+      return 0
+    fi
+    # oh no, there is no "else" branch !!!
+  end
+
+  int x = call f();
+  println x
+end
