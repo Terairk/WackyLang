@@ -53,6 +53,21 @@ pub fn is_callee_saved_reg(reg: &Register) -> bool {
     CALLEE_SAVED.contains(reg)
 }
 
+#[must_use]
+#[inline]
+pub fn is_hard_reg(reg: &Register) -> bool {
+    ALL_HARDREGS.contains(reg)
+}
+
+#[must_use]
+#[inline]
+pub fn is_hard_reg_op(operand: &Operand) -> bool {
+    match operand {
+        Operand::Reg(reg) => ALL_HARDREGS.contains(reg),
+        _ => false,
+    }
+}
+
 /// Converts a `RegisterSet` bitflag into a Vec of the corresponding Register values
 #[must_use]
 #[inline]

@@ -29,10 +29,10 @@ const SYNTAX_ERR_STR: &str = "Syntax error(s) found!";
 const SEMANTIC_ERR_STR: &str = "Semantic error(s) found!";
 const NO_OUTPUT_STR: &str = "No output/exit to compare if provided in a file";
 
-#[cfg(feature = "const-fold")]
+#[cfg(feature = "fold")]
 const CONST_FOLD: bool = true;
 
-#[cfg(not(feature = "const-fold"))]
+#[cfg(not(feature = "fold"))]
 const CONST_FOLD: bool = false;
 
 #[cfg(feature = "copy-prop")]
@@ -47,10 +47,10 @@ const RM_UNREACHABLE: bool = true;
 #[cfg(not(feature = "rm-unreachable"))]
 const RM_UNREACHABLE: bool = false;
 
-#[cfg(feature = "rm-deadstores")]
+#[cfg(feature = "rm-dead-stores")]
 const RM_DEAD_STORES: bool = true;
 
-#[cfg(not(feature = "rm-deadstores"))]
+#[cfg(not(feature = "rm-dead-stores"))]
 const RM_DEAD_STORES: bool = false;
 
 #[cfg(feature = "reg-alloc")]
@@ -58,6 +58,12 @@ const REG_ALLOC: bool = true;
 
 #[cfg(not(feature = "reg-alloc"))]
 const REG_ALLOC: bool = false;
+
+#[cfg(feature = "reg-coalesce")]
+const REG_COALESCE: bool = true;
+
+#[cfg(not(feature = "reg-coalesce"))]
+const REG_COALESCE: bool = false;
 
 /// Recursively collects all `.wacc` files from the given directory.
 pub fn get_test_files(dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
@@ -95,6 +101,7 @@ pub fn compile_single_test(path: &Path) -> Result<CompileSingleTestOutput, Strin
         .eliminate_dead_stores(RM_DEAD_STORES)
         .print_cfg(false)
         .reg_alloc(REG_ALLOC)
+        .reg_coalesce(REG_COALESCE)
         .build();
 
     // println!("Compiling: {}", path.display());
@@ -215,6 +222,7 @@ pub fn compile_single_test(path: &Path) -> Result<CompileSingleTestOutput, Strin
             assembly_ast,
             &asm_gen.function_regs,
             &mut function_callee_regs,
+            REG_COALESCE,
         );
     }
 

@@ -86,8 +86,8 @@ pub(crate) mod thir_lowering_ctx {
     use crate::thir_transform::{LoopRegion, ThirLoweringCtx, WackIdentSymbolTable};
     use crate::types::{WackFuncType, WackPointerType, WackType};
     use crate::wackir::{
-        BinaryOp, WackFunction, WackGlobIdent, WackInstr, WackLiteral, WackPrintType, WackReadType, WackTempIdent,
-        WackValue, FALSE, TRUE,
+        BinaryOp, FALSE, TRUE, WackFunction, WackGlobIdent, WackInstr, WackLiteral, WackPrintType,
+        WackReadType, WackTempIdent, WackValue,
     };
     use extend::ext;
     use frontend::parsing::ast;

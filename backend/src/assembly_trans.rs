@@ -62,7 +62,6 @@ pub fn wacky_to_assembly(
 
     // Add the function to registers mapping to the register set
     add_regsets(&mut asm_gen);
-    // println!("{:?}", asm_gen.function_regs);
 
     (AsmProgram { asm_functions }, asm_gen, function_callee_regs)
 }
@@ -466,7 +465,6 @@ impl AsmGen {
                 asm.push(Call(INBUILT_FREE_PAIR.to_owned(), false));
             }
             Alloc { size, dst_ptr } => {
-                // println!("alloc size {}", size);
                 let dst_ptr = WackValue::Var(dst_ptr);
                 let operand = self.lower_value(dst_ptr, asm);
                 // Moving size to RDI for malloc function
@@ -493,8 +491,7 @@ impl AsmGen {
                 let operand = self.lower_value(src, asm);
                 let dst = WackValue::Var(dst_ptr);
                 let operand2 = self.lower_value(dst, asm);
-                // println!("operand1: {operand:?}");
-                // println!("operand2: {operand2:?}");
+
                 let get_base_dst_instr = Mov {
                     typ: Quadword,
                     src: operand2,
@@ -516,17 +513,41 @@ impl AsmGen {
                 }
             }
             Load { src_ptr, dst } => {
+                // let dst = WackValue::Var(dst);
+                // let dst_typ = self.get_asm_type(&dst);
+                // let operand_src_ptr = self.lower_value(src_ptr, asm);
+                // let operand_dst = self.lower_value(dst, asm);
+                // asm.push(Mov {
+                //     typ: Quadword,
+                //     src: operand_src_ptr,
+                //     dst: Reg(Register::R10),
+                // });
+                // asm.push(Mov {
+                //     typ: Quadword,
+                //     src: Memory(Register::R10, 0),
+                //     dst: Reg(Register::R11),
+                // });
+                // asm.push(Mov {
+                //     typ: dst_typ,
+                //     src: Reg(Register::R11),
+                //     dst: operand_dst,
+                // });
                 let dst = WackValue::Var(dst);
+                let dst_typ = self.get_asm_type(&dst);
                 let operand_src_ptr = self.lower_value(src_ptr, asm);
                 let operand_dst = self.lower_value(dst, asm);
+
+                // Move the pointer value into a register
                 asm.push(Mov {
-                    typ: Quadword,
+                    typ: Quadword, // Pointers are always 64-bit (8 bytes)
                     src: operand_src_ptr,
-                    dst: Reg(AX),
+                    dst: Reg(Register::R11),
                 });
+
+                // Dereference the pointer with the appropriate size
                 asm.push(Mov {
-                    typ: Quadword,
-                    src: Memory(AX, 0),
+                    typ: dst_typ, // Use the destination's type for the load
+                    src: Memory(Register::R11, 0),
                     dst: operand_dst,
                 });
             }

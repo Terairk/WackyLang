@@ -6,6 +6,9 @@ use std::fmt;
 
 use build_interference_graph::build_graph;
 
+use crate::regalloc::coalesce::coalesce;
+use crate::regalloc::coalesce::rewrite_coalesced;
+
 use crate::{
     assembly_ast::{AsmFunction, AsmInstruction, AsmProgram, Operand, Register},
     assembly_trans::FunctionRegisters,
@@ -20,11 +23,13 @@ pub fn allocate_registers_program(
     program: AsmProgram,
     func_regs: &FunctionRegisters,
     func_callee_regs: &mut FunctionCallee,
+    should_coalesce: bool,
 ) -> AsmProgram {
     let mut new_functions = Vec::new();
 
     for function in program.asm_functions {
-        let new_function = allocate_registers(function, func_regs, func_callee_regs);
+        let new_function =
+            allocate_registers(function, func_regs, func_callee_regs, should_coalesce);
         new_functions.push(new_function);
     }
 
@@ -35,16 +40,32 @@ pub fn allocate_registers_program(
     updated_program
 }
 
+/// Allocates registers for a single function
 fn allocate_registers(
     mut function: AsmFunction,
     func_regs: &FunctionRegisters,
     func_callee_regs: &mut FunctionCallee,
+    should_coalesce: bool,
 ) -> AsmFunction {
     let func_name = function.name.as_str();
-    let instructions = function.instructions;
+    let mut instructions = function.instructions;
+    let mut interference_graph: InterferenceGraph;
+    loop {
+        interference_graph = build_graph(&instructions, func_name, func_regs);
+        if !should_coalesce {
+            break;
+        }
+        let mut coalesced_regs = coalesce(&mut interference_graph, &instructions);
+
+        if coalesced_regs.nothing_was_coalesced() {
+            break;
+        }
+        // Maybe this can be &mut instuctions but we'll see
+        instructions = rewrite_coalesced(instructions, &mut coalesced_regs);
+    }
 
     // Main register allocation logic
-    let mut interference_graph = build_graph(&instructions, func_name, func_regs);
+    // let mut interference_graph = build_graph(&instructions, func_name, func_regs);
     add_spill_costs(&mut interference_graph, &instructions);
     color_graph(&mut interference_graph);
     let register_map = create_register_map(&interference_graph, func_callee_regs, func_name);
@@ -160,6 +181,32 @@ impl InterferenceGraph {
         index
     }
 
+    /// Removes a node from the graph
+    pub fn remove_node(&mut self, id: &Operand) -> Result<(), String> {
+        if let Some(&index) = self.id_to_index.get(id) {
+            // Remove this node from all its neighbors' neighbor lists
+            let neighbors = self.nodes[index].neighbors.clone();
+            for &neighbor_idx in &neighbors {
+                self.nodes[neighbor_idx]
+                    .neighbors
+                    .retain(|&idx| idx != index);
+            }
+
+            // Clear this node's own neighbor list
+            self.nodes[index].neighbors.clear();
+
+            // Remove from the id_to_index map to make it unreachable
+            self.id_to_index.remove(id);
+
+            // // Mark as pruned (optional, for clarity)
+            // self.nodes[index].pruned = true;
+
+            Ok(())
+        } else {
+            Err(format!("Node with ID {:?} not found", id))
+        }
+    }
+
     /// Adds an interference edge between two nodes
     pub fn add_edge(&mut self, id1: &Operand, id2: &Operand) -> Result<(), String> {
         let index1 = self.get_node_index(id1)?;
@@ -173,6 +220,20 @@ impl InterferenceGraph {
             if !self.nodes[index2].neighbors.contains(&index1) {
                 self.nodes[index2].neighbors.push(index1);
             }
+        }
+
+        Ok(())
+    }
+
+    /// Removes an interference edge between two nodes
+    pub fn remove_edge(&mut self, id: &Operand, id2: &Operand) -> Result<(), String> {
+        let index1 = self.get_node_index(id)?;
+        let index2 = self.get_node_index(id2)?;
+
+        if index1 != index2 {
+            // Remove each node as a neighbor of the other
+            self.nodes[index1].neighbors.retain(|&idx| idx != index2);
+            self.nodes[index2].neighbors.retain(|&idx| idx != index1);
         }
 
         Ok(())
@@ -219,6 +280,16 @@ impl InterferenceGraph {
 
     pub fn nodes(&self) -> &Vec<Node> {
         &self.nodes
+    }
+
+    pub fn in_graph(&self, id: &Operand) -> bool {
+        self.id_to_index.contains_key(id)
+    }
+
+    pub fn are_neighbours(&self, id1: &Operand, id2: &Operand) -> bool {
+        let index1 = self.get_node_index(id1).unwrap();
+        let index2 = self.get_node_index(id2).unwrap();
+        self.nodes[index1].neighbors.contains(&index2)
     }
 }
 
@@ -322,7 +393,6 @@ mod build_interference_graph {
     // But we do something during the instruction fix-up pass
     fn meet(block: &LiveBasicBlock, cfg: &AsmCFG) -> LiveRegisters {
         let mut live_regs = LiveRegisters::new();
-        // println!("{:?}", cfg);
         for succ_id in &block.succs {
             match *succ_id {
                 NodeId::Entry => panic!("Entry node should not be a successor"),
@@ -499,7 +569,7 @@ mod build_interference_graph {
                 used.push(operand);
             }
             AsmInstruction::Pop(_register) => {
-                panic!("Pop should not be used in this context");
+                // No registers used or updated
             }
             AsmInstruction::Call(fun_name, _) => {
                 // let new_regs = Vec::new();
@@ -508,10 +578,7 @@ mod build_interference_graph {
                 // param-passing registers
                 let reg_set = match func_set.get(&fun_name) {
                     Some(set) => set,
-                    None => {
-                        println!("Warning: Function {} not found in function set", fun_name);
-                        &RS6
-                    }
+                    None => &RS6,
                 };
 
                 let regs = register_set_to_vec(*reg_set);
@@ -768,7 +835,6 @@ fn replace_pseudoregs(
     let map_pseudo = |op: Operand| match op {
         Operand::Pseudo(p) => {
             let hardreg = register_map.get(&p);
-            // println!("operator p in replace_pseudoregs: {:?}", p);
             if let Some(hardreg) = hardreg {
                 Operand::Reg(*hardreg)
             } else {
@@ -785,6 +851,10 @@ fn replace_pseudoregs(
     instructions
         .into_iter()
         .map(|instr| replace_ops(instr, map_pseudo))
+        .filter(|instr| match instr {
+            AsmInstruction::Mov { src, dst, .. } => src != dst,
+            _ => true,
+        })
         .collect()
 }
 
@@ -804,7 +874,7 @@ fn get_operands(instruction: &AsmInstruction) -> Vec<Operand> {
         AsmInstruction::Idiv(op) => vec![op.clone()],
         AsmInstruction::SetCC { operand, .. } => vec![operand.clone()],
         AsmInstruction::Push(op) => vec![op.clone()],
-        AsmInstruction::Pop(_) => panic!("Shouldn't use this yet"),
+        AsmInstruction::Pop(_) => vec![],
         // Instructions with no operands to extract
         AsmInstruction::Label(_)
         | AsmInstruction::Call(_, _)
@@ -819,8 +889,10 @@ fn get_operands(instruction: &AsmInstruction) -> Vec<Operand> {
 }
 
 /// Map function f over all the operands in an instruction
-fn replace_ops(instruction: AsmInstruction, f: impl Fn(Operand) -> Operand) -> AsmInstruction {
-    // println!("instruction in get_operands: {:?}", instruction);
+fn replace_ops(
+    instruction: AsmInstruction,
+    mut f: impl FnMut(Operand) -> Operand,
+) -> AsmInstruction {
     match instruction {
         AsmInstruction::Mov { typ, src, dst } => AsmInstruction::Mov {
             typ,
@@ -889,11 +961,199 @@ fn replace_ops(instruction: AsmInstruction, f: impl Fn(Operand) -> Operand) -> A
             operand: f(operand),
         },
         AsmInstruction::Push(op) => AsmInstruction::Push(f(op)),
-        AsmInstruction::Pop(_) => {
-            panic!("Shouldn't use this as Pop doesn't have any operands to replace")
-        }
         // Instructions where we don't need to replace operands
         _ => instruction.clone(),
+    }
+}
+
+mod coalesce {
+    use crate::registers::is_hard_reg_op;
+
+    use super::*;
+    // We can choose to use any union-find implementation but I wanna try use the ena-crate
+    // for efficient union-find operations
+    use AsmInstruction::Mov;
+
+    #[derive(Debug, Clone)]
+    pub struct RegisterCoalescer {
+        // Maps operand to its parent
+        parent: HashMap<Operand, Operand>,
+        has_coalesced: bool,
+    }
+
+    impl RegisterCoalescer {
+        pub fn new() -> Self {
+            RegisterCoalescer {
+                parent: HashMap::new(),
+                has_coalesced: false,
+            }
+        }
+
+        // Find with path compression
+        pub fn find(&mut self, x: &Operand) -> Operand {
+            if !self.parent.contains_key(x) {
+                self.parent.insert(x.clone(), x.clone());
+                return x.clone();
+            }
+
+            let parent = self.parent.get(x).unwrap().clone();
+            if parent == *x {
+                return x.clone();
+            }
+
+            let root = self.find(&parent);
+            self.parent.insert(x.clone(), root.clone());
+            root
+        }
+
+        // Union with preference for hard registers
+        pub fn union(&mut self, x: &Operand, y: &Operand) {
+            let x_root = self.find(x);
+            let y_root = self.find(y);
+
+            if x_root == y_root {
+                return;
+            }
+
+            self.has_coalesced = true;
+
+            // Choose hard register as representative
+            if is_hard_reg_op(&x_root) {
+                self.parent.insert(y_root, x_root);
+            } else if is_hard_reg_op(&y_root) {
+                self.parent.insert(x_root, y_root);
+            } else {
+                // Both are pseudoregisters, arbitrary choice (can be refined)
+                self.parent.insert(y_root, x_root);
+            }
+        }
+
+        pub fn nothing_was_coalesced(&self) -> bool {
+            !self.has_coalesced
+        }
+    }
+
+    pub fn coalesce(
+        graph: &mut InterferenceGraph,
+        instructions: &[AsmInstruction],
+    ) -> RegisterCoalescer {
+        let mut coalescer = RegisterCoalescer::new();
+
+        for instr in instructions {
+            match instr {
+                Mov { src, dst, .. } => {
+                    let src = coalescer.find(src);
+                    let dst = coalescer.find(dst);
+
+                    if graph.in_graph(&src)
+                        && graph.in_graph(&dst)
+                        && src != dst
+                        && !graph.are_neighbours(&src, &dst)
+                        && conservative_coalescable(&graph, &src, &dst)
+                    {
+                        let (to_keep, to_merge) = if is_hard_reg_op(&src) {
+                            (src, dst)
+                        } else {
+                            (dst, src)
+                        };
+
+                        coalescer.union(&to_keep, &to_merge);
+                        update_graph(graph, &to_merge, &to_keep);
+                    }
+                }
+                _ => {}
+            }
+        }
+        coalescer
+    }
+
+    fn update_graph(graph: &mut InterferenceGraph, to_merge: &Operand, to_keep: &Operand) {
+        let node_to_remove = graph.get_node_index(to_merge).unwrap();
+
+        // Clone the neighbors to avoid the borrowing conflict
+        let neighbors_to_process: Vec<_> = graph.nodes[node_to_remove].neighbors.clone();
+
+        for &neighbor in &neighbors_to_process {
+            let neighbour_op = &graph.nodes[neighbor].id.clone();
+            graph.add_edge(to_keep, neighbour_op).unwrap();
+            graph.remove_edge(to_merge, neighbour_op).unwrap();
+        }
+
+        // Remove the node from the graph
+        graph.remove_node(to_merge).unwrap();
+    }
+
+    fn conservative_coalescable(graph: &InterferenceGraph, src: &Operand, dst: &Operand) -> bool {
+        if briggs_test(graph, src, dst) {
+            return true;
+        }
+        if is_hard_reg_op(src) {
+            return george_test(graph, src, dst);
+        }
+        if is_hard_reg_op(dst) {
+            return george_test(graph, dst, src);
+        }
+        false
+    }
+
+    /// Brigg's test guarantees that we don't spill the merged node
+    fn briggs_test(graph: &InterferenceGraph, x: &Operand, y: &Operand) -> bool {
+        // significant_neighbours are those whose degree is >= k
+        let mut significant_neighbours = 0;
+
+        let x_node = graph.get_node_index(x).unwrap();
+        let y_node = graph.get_node_index(y).unwrap();
+
+        let mut combined_neighbours = graph.nodes[x_node].neighbors.clone();
+        combined_neighbours.extend(graph.nodes[y_node].neighbors.clone());
+        for &neighbour in &combined_neighbours {
+            let neighbour_node = &graph.nodes[neighbour];
+            let mut degree = neighbour_node.neighbors.len();
+            if graph.are_neighbours(&neighbour_node.id, x)
+                && graph.are_neighbours(&neighbour_node.id, y)
+            {
+                degree -= 1;
+            }
+            if degree >= LEN_ALL_BASEREGS {
+                significant_neighbours += 1;
+            }
+        }
+
+        significant_neighbours < LEN_ALL_BASEREGS
+    }
+
+    /// George's test guarantees that we don't introduce new interferences from the previous
+    /// iteration
+    fn george_test(graph: &InterferenceGraph, hard_reg: &Operand, pseudo_reg: &Operand) -> bool {
+        let pseudo_node = graph.get_node_index(pseudo_reg).unwrap();
+        for &neighbour in &graph.nodes[pseudo_node].neighbors {
+            if graph.are_neighbours(&graph.nodes[neighbour].id, hard_reg) {
+                continue;
+            }
+
+            let neighbour_node = &graph.nodes[neighbour];
+            if neighbour_node.neighbors.len() < LEN_ALL_BASEREGS {
+                continue;
+            }
+
+            return false;
+        }
+
+        true
+    }
+
+    pub fn rewrite_coalesced(
+        instructions: Vec<AsmInstruction>,
+        coalescer: &mut RegisterCoalescer,
+    ) -> Vec<AsmInstruction> {
+        instructions
+            .into_iter()
+            .map(|instr| replace_ops(instr, |op| coalescer.find(&op)))
+            .filter(|instr| match instr {
+                Mov { src, dst, .. } => src != dst,
+                _ => true,
+            })
+            .collect()
     }
 }
 

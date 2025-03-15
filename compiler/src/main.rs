@@ -86,26 +86,45 @@ struct Args {
     #[arg(long = "reg-alloc")]
     reg_alloc: bool,
 
+    /// Whether to coalesce registers
+    #[arg(long = "reg-coalesce")]
+    reg_coalesce: bool,
+
     /// Whether to print the CFG
     #[arg(long = "print-cfg")]
     print_cfg: bool,
 
     /// Enable all optimizations
-    #[arg(long = "O")]
+    #[arg(long = "O2")]
     optimize: bool,
+
+    /// Enable all optimizations except coalescing
+    #[arg(long = "O1")]
+    optimize_no_coalesce: bool,
 }
 
 impl Args {
     ///
     /// Reconstruct an OptimizationConfig from the command line arguments
-    /// that we can pass to the optimization passes
+    /// that we can pass to the optimization passes. Dead stores require constant folding or else
+    /// it'll miss runtime errors
     fn get_optimization_config(&self) -> OptimizationConfig {
         OptimizationConfig::builder()
-            .fold_constants(self.optimize || self.fold_constants)
-            .copy_propagation(self.optimize || self.copy_propagation)
-            .eliminate_unreachable_code(self.optimize || self.eliminate_unreachable_code)
-            .eliminate_dead_stores(self.optimize || self.eliminate_dead_stores)
-            .reg_alloc(self.optimize || self.reg_alloc)
+            .fold_constants(
+                self.optimize
+                    || self.fold_constants
+                    || self.optimize_no_coalesce
+                    || self.eliminate_dead_stores,
+            )
+            .copy_propagation(self.optimize || self.copy_propagation || self.optimize_no_coalesce)
+            .eliminate_unreachable_code(
+                self.optimize || self.eliminate_unreachable_code || self.optimize_no_coalesce,
+            )
+            .eliminate_dead_stores(
+                self.optimize || self.eliminate_dead_stores || self.optimize_no_coalesce,
+            )
+            .reg_alloc(self.optimize || self.reg_alloc || self.optimize_no_coalesce)
+            .reg_coalesce(self.optimize || self.reg_coalesce)
             .print_cfg(self.print_cfg)
             .build()
     }
@@ -277,10 +296,8 @@ fn main() -> ExitCode {
             assembly_ast,
             &asm_gen.function_regs,
             &mut function_callee_regs,
+            optimization_config.has_reg_coalesce(),
         );
-        // for (name, regs) in function_callee_regs.iter() {
-        //     println!("{name}: {regs:#?}");
-        // }
         if args.print_reg_alloc {
             println!("{assembly_ast:#?}");
             return ExitCode::SUCCESS;
