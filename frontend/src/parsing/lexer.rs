@@ -311,7 +311,7 @@ where
     // if integer literals are separated by plus/minus with no whitespace
     // then this should be parsed as a separate disambiguation token
     let spanned_int_liter = int_liter.clone().span_tuple();
-    let plus_or_minus = plus.clone().or(minus.clone()).span_tuple();
+    let plus_or_minus = plus.or(minus).span_tuple();
     let no_whitespace_plus_minus_int_liter = group((
         spanned_int_liter.clone(),
         comments.ignored(), // any amount of whitespace/comments should be ignored at this position

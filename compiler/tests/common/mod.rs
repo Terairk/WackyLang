@@ -4,12 +4,13 @@ use backend::emission::AssemblyFormatter;
 use backend::predefined::generate_predefined;
 use backend::regalloc::allocate_registers_program;
 use backend::replace_pseudo::replace_pseudo_in_program;
-use frontend::StreamType;
+use chumsky::container::Seq;
 use frontend::parsing::lexer::lexing_phase;
 use frontend::parsing::parser::parsing_phase;
 use frontend::source::StrSourceId;
 use frontend::wacc_hir::ast_lowering_phase;
 use frontend::wacc_thir::hir_lowering_phase;
+use frontend::StreamType;
 use middle::optimizations::optimize;
 use middle::thir_transform::lower_program;
 use regex::Regex;
@@ -18,7 +19,6 @@ use std::fs::create_dir_all;
 use std::io::{stdout, Write};
 use std::ops::Add;
 use std::path::{Path, PathBuf};
-use chumsky::container::Seq;
 use util::gen_flags::reset_flags_gbl;
 use util::opt_flags::OptimizationConfig;
 
@@ -304,7 +304,7 @@ fn is_interactive(source: &str) -> bool {
     let in_str = "# Input:";
     let read_str = "read";
     if source.contains(read_str) && !source.contains(in_str) {
-        true;
+        return true;
     }
     false
 }
@@ -313,7 +313,13 @@ fn extract_input(source: &str) -> Option<String> {
     for line in source.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("# Input: ") {
-            return Some(trimmed.to_owned().trim_start_matches("# Input: ").to_owned().add("\n"))
+            return Some(
+                trimmed
+                    .to_owned()
+                    .trim_start_matches("# Input: ")
+                    .to_owned()
+                    .add("\n"),
+            );
         }
     }
     None
@@ -353,7 +359,7 @@ pub fn compare_test_result(path: &Path) -> Result<String, String> {
     println!("expected_output: {:?}", expected_output);
     println!("input: {:?}", input);
     println!("{:?}", path);
-    if is_interactive(&source) || expected_output.is_empty() {
+    if is_interactive(&source) {
         return Ok(NO_OUTPUT_STR.to_owned());
     }
 
