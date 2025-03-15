@@ -1,0 +1,29 @@
+# loops with explicit labels
+
+# Output:
+# 1
+# -1
+# -2
+# 2
+#
+
+# Program:
+
+begin
+  int x = 0;
+  outer: while x <= 5 do
+    x = x + 1;
+    println x;
+    int y = 0;
+    inner: while y >= -3 do
+      if y == -2 then
+        nextloop outer
+      fi;
+      if x == 2 then
+        break outer
+      fi;
+      y = y - 1;
+      println y
+    done
+  done
+end

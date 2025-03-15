@@ -1,0 +1,19 @@
+# break in while
+
+# Output:
+# 10
+# 9
+#
+
+# Program:
+
+begin
+  int x = 10;
+  while x > 0 do
+    println x;
+    x = x - 1;
+    if x == 8 then
+      break
+    fi
+  done
+end

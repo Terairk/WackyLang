@@ -1,0 +1,23 @@
+# basic loop-do expression
+
+# Output:
+# 0
+# 1
+# 2
+# 3
+# 4
+# 5
+#
+
+# Program:
+
+begin
+  int x = 0;
+  loop do
+    println x;
+    x = x + 1;
+    if (x > 5) then
+      exit 0
+    fi
+  done
+end

@@ -7,8 +7,6 @@
 # Program:
 
 begin
-  int x = 0;
-  read x;
   do
     println "hello"
   while false done
