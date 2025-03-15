@@ -433,7 +433,7 @@ mod impls {
             body: StatBlock,
             while_cond: SN<Expr>,
         ) -> Self {
-            Self::WhileDo {
+            Self::DoWhile {
                 label,
                 body,
                 while_cond,
