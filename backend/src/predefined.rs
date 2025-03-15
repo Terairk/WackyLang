@@ -2,28 +2,30 @@
 // that our code will then call.
 
 use crate::assembly_ast::{
-    AsmFunction, AsmInstruction, AsmProgram, AssemblyType, CondCode, Directive, Operand, Register,
-    LABEL,
+    AsmFunction, AsmInstruction, AsmLabel, AsmProgram, AssemblyType, CondCode, Directive, LABEL,
+    Operand, Register,
 };
 
 use crate::assembly_ast::AsmBinaryOperator::{Add, And, Sub};
 use crate::assembly_ast::AsmInstruction::{
     Binary, Call, Cmov, Cmp, Jmp, JmpCC, Label, Lea, Mov, Pop, Push, Ret, Test,
 };
-use once_cell::sync::Lazy;
-use std::collections::HashMap;
-use util::gen_flags::{get_flags_gbl, rewrite_global_flag, GenFlags, INBUILT_ARR_STORE8};
-use util::gen_flags::{
-    INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_ARR_STORE1,
-    INBUILT_ARR_STORE4, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO, INBUILT_EXIT, INBUILT_FREE,
-    INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS, INBUILT_OOM, INBUILT_OUT_OF_BOUNDS,
-    INBUILT_OVERFLOW, INBUILT_PRINTLN, INBUILT_PRINT_BOOL, INBUILT_PRINT_CHAR, INBUILT_PRINT_INT,
-    INBUILT_PRINT_PTR, INBUILT_PRINT_STRING, INBUILT_READ_CHAR, INBUILT_READ_INT,
-};
+use crate::assembly_trans::AsmGen;
+use crate::registers::{ARR_INDEX_REG, ARR_LOAD_RETURN, ARR_PTR_REG, RS_ARR, RS1, RegisterSet};
 use AssemblyType::{Byte, Longword, Quadword};
 use CondCode::{E, GE, L, NE};
 use Operand::{Data, Imm, Indexed, Memory, Reg};
-use Register::{AX, BP, BX, DI, DX, R10, R9, SI, SP};
+use Register::{AX, BP, BX, DI, DX, R10, SI, SP};
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
+use util::gen_flags::{GenFlags, get_flags_gbl, rewrite_global_flag};
+use util::gen_flags::{
+    INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO,
+    INBUILT_EXIT, INBUILT_FREE, INBUILT_FREE_PAIR, INBUILT_MALLOC, INBUILT_NULL_ACCESS,
+    INBUILT_OOM, INBUILT_OUT_OF_BOUNDS, INBUILT_OVERFLOW, INBUILT_PRINT_BOOL, INBUILT_PRINT_CHAR,
+    INBUILT_PRINT_INT, INBUILT_PRINT_PTR, INBUILT_PRINT_STRING, INBUILT_PRINTLN, INBUILT_READ_CHAR,
+    INBUILT_READ_INT,
+};
 
 #[inline]
 pub fn generate_predefined(program: &mut AsmProgram) {
@@ -37,6 +39,23 @@ pub fn generate_predefined(program: &mut AsmProgram) {
         .collect();
 
     program.asm_functions.extend(new_funcs);
+}
+
+#[inline]
+pub fn add_regsets(asm_gen: &mut AsmGen) {
+    let function_regs = &mut asm_gen.function_regs;
+    rewrite_global_flag();
+    let flags = get_flags_gbl();
+    let new_funcs: Vec<AsmFunction> = PREDEFINED_FUNCTIONS2
+        .iter()
+        .filter(|&(flag, _)| flags.contains(*flag))
+        .map(|(_, func)| func)
+        .cloned()
+        .collect();
+
+    for func in new_funcs {
+        function_regs.insert(func.name.clone(), func.regs);
+    }
 }
 
 // TODO change these to be Ident's eventually
@@ -63,9 +82,6 @@ pub static PREDEFINED_FUNCTIONS2: Lazy<HashMap<GenFlags, AsmFunction>> = Lazy::n
     m.insert(GenFlags::READ_CHR, READC.clone());
     m.insert(GenFlags::EXIT, EXIT.clone());
     m.insert(GenFlags::NULL_DEREF, ERR_NULL.clone());
-    m.insert(GenFlags::ARRAY_STORE1, ARR_STORE1.clone());
-    m.insert(GenFlags::ARRAY_STORE4, ARR_STORE4.clone());
-    m.insert(GenFlags::ARRAY_STORE8, ARR_STORE8.clone());
     m
 });
 
@@ -107,7 +123,7 @@ fn function_epilogue() -> Vec<AsmInstruction> {
             src: Reg(BP),
             dst: Reg(SP),
         },
-        Pop(Reg(BP)),
+        Pop(BP),
         Ret,
     ]
 }
@@ -117,6 +133,7 @@ fn create_function(
     name: String,
     body_instructions: Vec<AsmInstruction>,
     directives: Vec<Directive>,
+    registers: RegisterSet,
 ) -> AsmFunction {
     let mut instructions = function_prologue();
     instructions.extend(body_instructions);
@@ -127,6 +144,7 @@ fn create_function(
         global: false,
         instructions,
         directives,
+        regs: registers,
     }
 }
 
@@ -136,6 +154,16 @@ static ALIGN_STACK: AsmInstruction = Binary {
     op1: Imm(-16),
     op2: Reg(SP),
 };
+
+// TODO: If conflicts ever arise, change this to a lazy function which generates
+// a usize. For now, we don't do optimizations on these so it should be fine
+// For now set to a random number like 13
+pub const GEN_USIZE: usize = 13;
+
+/* ================== LABELS ====================== */
+static INBUILT_OOM_LABEL: Lazy<AsmLabel> = Lazy::new(|| AsmLabel::new(INBUILT_OOM, GEN_USIZE));
+static INBUILT_OOB_LABEL: Lazy<AsmLabel> =
+    Lazy::new(|| AsmLabel::new(INBUILT_OUT_OF_BOUNDS, GEN_USIZE));
 
 /* ================== FUNC_DEFINITIONS ============  */
 // TODO: Use the above helper functions to redefine the functions below
@@ -160,6 +188,7 @@ static ERR_DIV_ZERO: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Call(C_EXIT.to_owned(), true),
     ],
     directives: vec![Directive(ERR_DIV_ZERO_STR0, "Error: Division by zero\\n")],
+    regs: RegisterSet::DI,
 });
 
 // Example usage
@@ -175,11 +204,12 @@ static MALLOC: Lazy<AsmFunction> = Lazy::new(|| {
             },
             JmpCC {
                 condition: E,
-                label: INBUILT_OOM.to_owned(),
+                label: INBUILT_OOM_LABEL.clone(),
                 is_func: true,
             },
         ],
         vec![],
+        RS1,
     )
 });
 
@@ -188,6 +218,7 @@ static FREE: Lazy<AsmFunction> = Lazy::new(|| {
         INBUILT_FREE.to_owned(),
         vec![Call(C_FREE.to_owned(), true)],
         vec![],
+        RS1,
     )
 });
 
@@ -214,7 +245,7 @@ static FREEPAIR: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         },
         JmpCC {
             condition: E,
-            label: INBUILT_NULL_ACCESS.to_owned(),
+            label: AsmLabel::new(INBUILT_NULL_ACCESS, GEN_USIZE),
             is_func: true,
         },
         Call(C_FREE.to_owned(), true), // true indicates external PLT call
@@ -223,10 +254,11 @@ static FREEPAIR: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Reg(BP),
             dst: Reg(SP),
         },
-        Pop(Reg(BP)),
+        Pop(BP),
         Ret,
     ],
     directives: vec![],
+    regs: RS1,
 });
 
 static ERR_OUT_OF_MEMORY_STR0: &str = "ERR_OUT_OF_MEMORY_STR0";
@@ -256,6 +288,7 @@ static ERR_OUT_OF_MEMORY: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         ERR_OUT_OF_MEMORY_STR0,
         "fatal error: out of memory\\n",
     )],
+    regs: RS1,
 });
 
 static PRINTP_STR0: &str = "PRINTP_STR0";
@@ -301,10 +334,11 @@ static PRINTP: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Reg(BP),
             dst: Reg(SP),
         },
-        Pop(Reg(BP)),
+        Pop(BP),
         Ret,
     ],
     directives: vec![Directive(PRINTP_STR0, "%p")],
+    regs: RS1,
 });
 
 static PRINTS_STR0: &str = "PRINTS_STR0";
@@ -355,10 +389,11 @@ static PRINTS: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Reg(BP),
             dst: Reg(SP),
         },
-        Pop(Reg(BP)),
+        Pop(BP),
         Ret,
     ],
     directives: vec![Directive(PRINTS_STR0, "%.*s")],
+    regs: RS1,
 });
 
 static PRINTC_STR0: &str = "PRINTC_STR0";
@@ -404,15 +439,19 @@ static PRINTC: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Reg(BP),
             dst: Reg(SP),
         },
-        Pop(Reg(BP)),
+        Pop(BP),
         Ret,
     ],
     directives: vec![Directive(PRINTC_STR0, "%c")],
+    regs: RS1,
 });
 
 static PRINTB_STR0: &str = "PRINTB_STR0";
 static PRINTB_STR1: &str = "PRINTB_STR1";
 static PRINTB_STR2: &str = "PRINTB_STR2";
+static PRINTB_0_LABEL: Lazy<AsmLabel> = Lazy::new(|| AsmLabel::new("printb0", GEN_USIZE));
+static PRINTB_1_LABEL: Lazy<AsmLabel> = Lazy::new(|| AsmLabel::new("printb1", GEN_USIZE));
+
 static PRINTB: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
     name: INBUILT_PRINT_BOOL.to_owned(),
     global: false,
@@ -436,20 +475,20 @@ static PRINTB: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         },
         JmpCC {
             condition: NE,
-            label: "printb0".to_owned(),
+            label: PRINTB_0_LABEL.clone(),
             is_func: false,
         },
         Lea {
             src: Data(PRINTB_STR0.to_owned(), 0),
             dst: Reg(DX),
         },
-        Jmp("printb1".to_owned(), LABEL),
-        Label("printb0".to_owned()),
+        Jmp(PRINTB_1_LABEL.to_owned(), LABEL),
+        Label(PRINTB_0_LABEL.to_owned()),
         Lea {
             src: Data(PRINTB_STR1.to_owned(), 0),
             dst: Reg(DX),
         },
-        Label("printb1".to_owned()),
+        Label(PRINTB_1_LABEL.to_owned()),
         Mov {
             typ: Longword,
             src: Memory(DX, -4),
@@ -476,7 +515,7 @@ static PRINTB: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Reg(BP),
             dst: Reg(SP),
         },
-        Pop(Reg(BP)),
+        Pop(BP),
         Ret,
     ],
     directives: vec![
@@ -484,6 +523,7 @@ static PRINTB: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         Directive(PRINTB_STR1, "true"),
         Directive(PRINTB_STR2, "%.*s"),
     ],
+    regs: RS1,
 });
 
 static PRINTI_STR0: &str = "PRINTI_STR0";
@@ -529,10 +569,11 @@ static PRINTI: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Reg(BP),
             dst: Reg(SP),
         },
-        Pop(Reg(BP)),
+        Pop(BP),
         Ret,
     ],
     directives: vec![Directive(PRINTI_STR0, "%d")],
+    regs: RS1,
 });
 
 static PRINTLN_STR0: &str = "PRINTLN_STR0";
@@ -568,12 +609,14 @@ static PRINTLN: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Reg(BP),
             dst: Reg(SP),
         },
-        Pop(Reg(BP)),
+        Pop(BP),
         Ret,
     ],
     directives: vec![Directive(PRINTLN_STR0, "")],
+    regs: RegisterSet::empty(),
 });
 
+// TODO: change these to not use R10, R11, what if they stuck with default registers?
 fn create_arr_load_function(name: String, scale: i32) -> AsmFunction {
     AsmFunction {
         name,
@@ -582,54 +625,55 @@ fn create_arr_load_function(name: String, scale: i32) -> AsmFunction {
             Push(Reg(BX)),
             Test {
                 typ: Longword,
-                op1: Reg(R10),
-                op2: Reg(R10),
+                op1: Reg(ARR_INDEX_REG),
+                op2: Reg(ARR_INDEX_REG),
             },
             Cmov {
                 condition: L,
                 typ: Quadword,
-                src: Reg(R10),
-                dst: Reg(SI),
+                src: Reg(ARR_INDEX_REG),
+                dst: Reg(R10),
             },
             JmpCC {
                 condition: L,
-                label: INBUILT_OUT_OF_BOUNDS.to_owned(),
+                label: INBUILT_OOB_LABEL.to_owned(),
                 is_func: true,
             },
             Mov {
                 typ: Longword,
-                src: Memory(R9, -4),
+                src: Memory(ARR_PTR_REG, -4),
                 dst: Reg(BX),
             },
             Cmp {
                 typ: Longword,
                 op1: Reg(BX),
-                op2: Reg(R10),
+                op2: Reg(ARR_INDEX_REG),
             },
             Cmov {
                 condition: GE,
                 typ: Quadword,
-                src: Reg(R10),
-                dst: Reg(SI),
+                src: Reg(ARR_INDEX_REG),
+                dst: Reg(R10),
             },
             JmpCC {
                 condition: GE,
-                label: INBUILT_OUT_OF_BOUNDS.to_owned(),
+                label: INBUILT_OOB_LABEL.to_owned(),
                 is_func: true,
             },
             Lea {
                 src: Indexed {
                     offset: 0,
-                    base: R9,
-                    index: R10,
+                    base: ARR_PTR_REG,
+                    index: ARR_INDEX_REG,
                     scale,
                 },
-                dst: Reg(R9),
+                dst: Reg(ARR_LOAD_RETURN),
             },
-            Pop(Reg(BX)),
+            Pop(BX),
             Ret,
         ],
         directives: vec![],
+        regs: RS_ARR,
     }
 }
 
@@ -681,6 +725,7 @@ static ERR_OUT_OF_BOUNDS: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         ERR_OUT_OF_BOUNDS_STR0,
         "fatal error: array index %d out of bounds",
     )],
+    regs: RegisterSet::empty(),
 });
 
 static ERR_BAD_CHAR_STR0: &str = "ERR_BAD_CHAR_STR0";
@@ -721,6 +766,7 @@ static ERR_BAD_CHAR: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         ERR_BAD_CHAR_STR0,
         "fatal error: int %d is not ascii character 0-127 \\n",
     )],
+    regs: RegisterSet::empty(),
 });
 
 static ERR_OVERFLOW_STR0: &str = "ERR_OVERFLOW_STR0";
@@ -750,6 +796,7 @@ static ERR_OVERFLOW: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         ERR_OVERFLOW_STR0,
         "fatal error: integer overflow or underflow occurred\\n",
     )],
+    regs: RegisterSet::empty(),
 });
 
 fn create_read_function(
@@ -815,10 +862,11 @@ fn create_read_function(
                 src: Reg(BP),
                 dst: Reg(SP),
             },
-            Pop(Reg(BP)),
+            Pop(BP),
             Ret,
         ],
         directives: vec![Directive(str_const_name, format_str)],
+        regs: RS1,
     }
 }
 
@@ -857,6 +905,7 @@ static ERR_NULL: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
         ERR_NULL_STR0,
         "fatal error: null pair dereferenced or freed\\n",
     )],
+    regs: RegisterSet::empty(),
 });
 
 static EXIT: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
@@ -881,78 +930,9 @@ static EXIT: Lazy<AsmFunction> = Lazy::new(|| AsmFunction {
             src: Reg(BP),
             dst: Reg(SP),
         },
-        Pop(Reg(BP)),
+        Pop(BP),
         Ret,
     ],
     directives: vec![],
+    regs: RS1,
 });
-
-fn create_arr_store_function(name: String, data_type: AssemblyType, scale: i32) -> AsmFunction {
-    AsmFunction {
-        name,
-        global: false,
-        instructions: vec![
-            Push(Reg(BX)),
-            Test {
-                typ: Longword,
-                op1: Reg(R10),
-                op2: Reg(R10),
-            },
-            Cmov {
-                condition: L,
-                typ: Quadword,
-                src: Reg(R10),
-                dst: Reg(SI),
-            },
-            JmpCC {
-                condition: L,
-                label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-                is_func: true,
-            },
-            Mov {
-                typ: Longword,
-                src: Memory(R9, -4),
-                dst: Reg(BX),
-            },
-            Cmp {
-                typ: Longword,
-                op1: Reg(BX),
-                op2: Reg(R10),
-            },
-            Cmov {
-                condition: GE,
-                typ: Quadword,
-                src: Reg(R10),
-                dst: Reg(SI),
-            },
-            JmpCC {
-                condition: GE,
-                label: INBUILT_OUT_OF_BOUNDS.to_owned(),
-                is_func: true,
-            },
-            Mov {
-                typ: data_type,
-                src: Reg(AX),
-                dst: Indexed {
-                    offset: 0,
-                    base: R9,
-                    index: R10,
-                    scale,
-                },
-            },
-            Pop(Reg(BX)),
-            Ret,
-        ],
-        directives: vec![],
-    }
-}
-
-// Then use the helper function to define your store functions
-static ARR_STORE1: Lazy<AsmFunction> =
-    Lazy::new(|| create_arr_store_function(INBUILT_ARR_STORE1.to_owned(), Byte, 1));
-
-static ARR_STORE4: Lazy<AsmFunction> =
-    Lazy::new(|| create_arr_store_function(INBUILT_ARR_STORE4.to_owned(), Longword, 4));
-
-static ARR_STORE8: Lazy<AsmFunction> =
-    Lazy::new(|| create_arr_store_function(INBUILT_ARR_STORE8.to_owned(), Quadword, 8));

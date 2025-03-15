@@ -17,12 +17,12 @@ util = { workspace = true }
 internment = { workspace = true }
 
 chumsky = { workspace = true, features = [
-    "std",
-    "stacker",
-    "memoization",
-    "pratt",
-    "regex",
-    "nightly",
+  "std",
+  "stacker",
+  "memoization",
+  "pratt",
+  "regex",
+  "nightly",
 ] }
 clap = { workspace = true, features = ["derive"] }
 regex = { workspace = true }
@@ -43,3 +43,4 @@ const-fold = []
 copy-prop = []
 rm-unreachable = []
 rm-deadstores = []
+reg-alloc = []

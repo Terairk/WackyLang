@@ -44,6 +44,7 @@ fn optimize_fun(
     }
 
     // Used for debugging purposes, mutable so we only print the CFG once before any optimizations
+    // We leave the commented print statements in the code for future debugging purposes
     let mut is_first = config.should_print_cfg();
     let mut counter = 0;
 
@@ -54,8 +55,8 @@ fn optimize_fun(
 
         if is_first {
             let cfg = make_cfg(current_body.clone(), func_name);
-            if let Ok(png_path) = cfg.print_graphviz() {
-                println!("Generated CFG visualization: {}", png_path);
+            if let Ok(png_path) = cfg.print_graphviz(&mut counter) {
+                println!("Generated CFG visualization Wack: {}", png_path);
             }
         }
 
@@ -110,14 +111,15 @@ fn optimize_fun(
             if config.should_print_cfg() {
                 let new_name = format!("{}_optimized", func_name);
                 let cfg = make_cfg(function_body.clone(), new_name.as_str());
-                println!("cfg: {:?}", cfg);
-                if let Ok(png_path) = cfg.print_graphviz() {
+                // println!("cfg: {:?}", cfg);
+                if let Ok(png_path) = cfg.print_graphviz(&mut counter) {
                     println!("Generated CFG visualization: {}", png_path);
                 }
             }
             return optimized_fun_body;
         }
 
+        counter += 1;
         function_body = optimized_fun_body;
         is_first = false;
     }

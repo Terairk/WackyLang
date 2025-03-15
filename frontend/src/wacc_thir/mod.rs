@@ -6,10 +6,10 @@
 
 use crate::wacc_hir::AstLoweringPhaseOutput;
 use crate::wacc_thir::lower_hir::{
-    lower_hir, HirLoweringResult, IdentSymbolTable, ThirFuncSymbolTable,
+    HirLoweringResult, IdentSymbolTable, ThirFuncSymbolTable, lower_hir,
 };
 use crate::wacc_thir::thir::Program;
-use crate::{build_semantic_report, StreamType};
+use crate::{StreamType, build_semantic_report};
 use std::io;
 use std::io::Write;
 use thiserror::Error;

@@ -3,16 +3,21 @@
 // to handle other instructions but for now its mov
 
 /* ================== INVARIANTS =================== */
-// We'll use R10D as a scratch register because it usually doesn't serve
-// any special purpose
+// We'll use R10 and R11 as a scratch register because it usually doesn't serve
+// any special purpose. Consequently we don't use R10 and R11 in our interference graph
 
-use crate::assembly_ast::AsmInstruction::{Binary, Cmp, Idiv, JmpCC, Lea, Mov, MovZeroExtend};
-use crate::assembly_ast::CondCode;
+use crate::assembly_ast::AsmInstruction::{
+    Binary, Cmp, Idiv, JmpCC, Lea, Mov, MovZeroExtend, Pop, Ret,
+};
 use crate::assembly_ast::Operand::{Data, Memory, Reg};
-use crate::assembly_ast::Register::{R10, R11, R9};
+use crate::assembly_ast::Register::{BP, R10, R11, SP};
 use crate::assembly_ast::{
     AsmBinaryOperator, AsmFunction, AsmInstruction, AsmProgram, AssemblyType, Operand, Operand::Imm,
 };
+use crate::assembly_ast::{AsmLabel, CondCode};
+use crate::predefined::GEN_USIZE;
+use crate::regalloc::FunctionCallee;
+use AssemblyType::Quadword;
 use util::gen_flags::INBUILT_OVERFLOW;
 
 ///
@@ -20,7 +25,7 @@ use util::gen_flags::INBUILT_OVERFLOW;
 /// Some instructions have special requirements such as needing a register as 2nd operand
 #[must_use]
 #[inline]
-pub fn fix_program(program: AsmProgram) -> AsmProgram {
+pub fn fix_program(program: AsmProgram, func_callee_regs: &FunctionCallee) -> AsmProgram {
     use Imm;
     // Process each function separately
     let mut new_functions: Vec<AsmFunction> = Vec::new();
@@ -53,6 +58,24 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
                 Lea { src, dst } => {
                     fix_lea(&mut new_func_body, src, dst);
                 }
+                Ret => {
+                    // If we have a return instruction, we need to pop the callee saved registers
+                    // before returning, we don't do this earlier because its more efficient to
+                    // insert all at once versus at the end and simplifies the code, ie more
+                    // efficient to insert at the last index versus last index - 1
+
+                    for reg in func_callee_regs.get(&func.name).unwrap().iter().rev() {
+                        new_func_body.push(Pop(*reg));
+                    }
+                    new_func_body.push(Mov {
+                        typ: Quadword,
+                        src: Reg(BP),
+                        dst: Reg(SP),
+                    });
+                    new_func_body.push(Pop(BP));
+
+                    new_func_body.push(Ret);
+                }
                 // All other instructions are left unchanged as they dont have special requirements
                 _ => new_func_body.push(instr),
             }
@@ -63,6 +86,7 @@ pub fn fix_program(program: AsmProgram) -> AsmProgram {
             global: func.global,
             instructions: new_func_body,
             directives: vec![],
+            regs: func.regs,
         });
     }
 
@@ -82,7 +106,7 @@ fn fix_zero_extend(
         let new_instrs = match (src.clone(), dst.clone()) {
             // Zero extend can't have Immediate as source
             // so we move it into a register first
-            (Imm(_), Memory(_, _)) => vec![
+            (Imm(_), _) => vec![
                 Mov {
                     typ: src_type,
                     src,
@@ -128,6 +152,9 @@ fn fix_zero_extend(
 
 /* ================== INTERNALS ================== */
 
+// NOTE: we insert an overflow check here, with optimizations enabled, we never actually
+// make an add instruction so we don't need to worry about this and WackIR instructions
+// interfering
 fn fix_binary(
     asm: &mut Vec<AsmInstruction>,
     operator: AsmBinaryOperator,
@@ -148,7 +175,7 @@ fn fix_binary(
     }
     asm.push(JmpCC {
         condition: CondCode::OF,
-        label: INBUILT_OVERFLOW.to_owned(),
+        label: AsmLabel::new(INBUILT_OVERFLOW, GEN_USIZE),
         is_func: true,
     });
 }
@@ -282,10 +309,10 @@ fn fix_lea(asm: &mut Vec<AsmInstruction>, src: Operand, dst: Operand) {
     let new_instrs = match (src.clone(), dst.clone()) {
         // Lea can't have memory as destination, must be register
         (_, Memory(_, _)) => vec![
-            Lea { src, dst: Reg(R9) },
+            Lea { src, dst: Reg(R10) },
             Mov {
                 typ: AssemblyType::Quadword,
-                src: Reg(R9),
+                src: Reg(R10),
                 dst,
             },
         ],
@@ -297,7 +324,10 @@ fn fix_lea(asm: &mut Vec<AsmInstruction>, src: Operand, dst: Operand) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::assembly_ast::Register::{BP, R10};
+    use crate::{
+        assembly_ast::Register::{BP, R10},
+        registers::RegisterSet,
+    };
 
     #[test]
     fn test_fix_instructions_allocate_and_mov_fix() {
@@ -322,6 +352,7 @@ mod tests {
                 },
             ],
             directives: vec![],
+            regs: RegisterSet::empty(),
         };
 
         let program = AsmProgram {
@@ -329,7 +360,7 @@ mod tests {
         };
 
         // Run the fix instructions pass
-        let fixed_program = fix_program(program);
+        let fixed_program = fix_program(program, &FunctionCallee::new());
 
         // Now inspect the program
         // We expect 3 instructions total with the invalid mov split into 2 instructions

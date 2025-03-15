@@ -11,6 +11,9 @@ const TAILREC_TEMP: &str = "tailrec_temp_variable";
 
 /// Detects early "terminator" statements such as `return` or `exit` and
 /// eliminates any subsequent unreachable code in the same block.
+/// Performs basic unreachable code elimination that enliminates "unreachable blocks"
+/// Needed to perform tail recursion optimization.
+// More sophisticated unreachable code elimination is done in the WackyIR phase
 pub fn unreachable_code_elimination(stat_block: StatBlock) -> StatBlock {
     // by default, the last statement should be a "terminator" statement
     let mut term_stat_ix = stat_block.0.len() - 1;

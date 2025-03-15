@@ -1,47 +1,19 @@
-/* ================ Assembly AST Structure ======================
- *
- * *program = Program(top_level*)
-    assembly_type = Byte | Longword | Quadword | ByteArray(int size, int alignment)
-    top_level = Function(identifier name, bool global = true, instruction* instructions)
-    instruction =
-          Mov(assembly_type, operand src, operand dst)
-        | MovZeroExtend(assembly_type src_type, assembly_type dst_type,
-                        operand src, operand dst)
-        | Lea(operand src, operand dst)
-        | Unary(unary_operator, assembly_type, operand)
-        | Binary(binary_operator, assembly_type, operand, operand)
-        | Cmp(assembly_type, operand, operand)
-        | Idiv(operand)
-        | Cdq
-        | Jmp(identifier)
-        | JmpCC(cond_code, identifier)
-        | SetCC(cond_code, operand)
-        | Label(identifier)
-        | AllocateStack(int) -- temporary thing probs
-        | Push(operand)
-        | Call(identifier)
-        |
-        | Ret
-    unary_operator = Neg | Not | Shr
-    binary_operator = Add | Sub | Mult | And | Or | Xor (might need this) | Shl | ShrTwoOp
-    operand = Imm(int) | Reg(reg) | Pseudo(identifier) | Memory(reg, int) | Data(identifier, int)
-    | PseudoMem(identifier, int) | Indexed(reg base, reg index, int scale)
-    cond_code = E | NE | G | GE | L | LE | A | AE | B | BE
-    reg = AX | CX | DX | DI | SI | R8 | R9 | R10 | R11 | SP | BP
-    (missing regs are R12-R15, BX, these are all callee saved registers, will add later)
-*/
+/* ================ Assembly AST Structure ====================== */
 
-// Top-level structures
-// Use String here for now because i'm getting tired
-// and it'd be easier for me probably
-// Change later if you want
-
-use middle::wackir::UnaryOp;
+use middle::wackir::{UnaryOp, WackTempIdent};
 use std::fmt::Debug;
+use util::{Instruction, SimpleInstr};
+
+use crate::registers::RegisterSet;
 pub type IsFunction = bool;
 // This is a flag to guide code emission to know if it should add a .L_
 pub const FUNCTION: IsFunction = true;
 pub const LABEL: IsFunction = false;
+
+// If you don't like being reliant on an invariant on the implementation of
+// Display on WackTempIdent, make this its own type
+// and implement create_new for it
+pub type AsmLabel = WackTempIdent;
 
 // implement Debug below
 #[derive(Clone)]
@@ -55,6 +27,7 @@ pub struct AsmFunction {
     pub global: bool,
     pub instructions: Vec<AsmInstruction>,
     pub directives: Vec<Directive>,
+    pub regs: RegisterSet, // What registers are passed as parameters, used for liveness analysis
 }
 
 #[derive(Debug, Clone)]
@@ -103,17 +76,17 @@ pub enum AsmInstruction {
     },
     Idiv(Operand), // We convert from Binary(Div, _, _, _) -> IDiv
     Cdq,           // Need this for division
-    Jmp(String, IsFunction),
+    Jmp(AsmLabel, IsFunction),
     JmpCC {
         condition: CondCode,
-        label: String,
+        label: AsmLabel,
         is_func: IsFunction, // Field to guide code emission to know if its local or not
     },
     SetCC {
         condition: CondCode,
         operand: Operand,
     },
-    Label(String),
+    Label(AsmLabel),
     Comment(String),
     // These are high level instructions that serve a purpose
     // of not incurring runtime checks for overflows
@@ -121,19 +94,19 @@ pub enum AsmInstruction {
     AllocateStack(i32),
     DeallocateStack(i32),
     Push(Operand),
-    Pop(Operand),
+    Pop(Register), // You can only pop a register
     // True = external call, false
     Call(String, bool),
     Ret,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Operand {
     Imm(i32),
     Reg(Register),
     Pseudo(String),
-    Memory(Register, i32), // I think is used for array/pair access
-    Data(String, i32),     // i think used for RIP relative
+    Memory(Register, i32),
+    Data(String, i32), // Used for RIP relative addressing
     Indexed {
         base: Register,
         index: Register,
@@ -151,7 +124,7 @@ pub enum Operand {
 #[derive(Debug, Clone)]
 pub struct Directive(pub &'static str, pub &'static str);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmBinaryOperator {
     Add,
     Sub,
@@ -162,12 +135,12 @@ pub enum AsmBinaryOperator {
 
 // sadly we don't use any other AsmUnaryOperator's
 // -smth is translated as 0 - smth else so it turns into binary
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmUnaryOperator {
     Not,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CondCode {
     E,  // Equal
     NE, // Not equal
@@ -185,7 +158,7 @@ pub enum CondCode {
 // Other registers are callee saved
 // which will be added later
 // when optimisations are done
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Register {
     AX,
     BX,
@@ -197,6 +170,10 @@ pub enum Register {
     R9,
     R10,
     R11,
+    R12,
+    R13,
+    R14,
+    R15,
     SP,
     BP,
 }
@@ -210,6 +187,7 @@ pub enum AssemblyType {
 
 /* ================ PRETTY PRINTER ============== */
 impl Debug for AsmProgram {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "AsmProgram {{")?;
         for function in &self.asm_functions {
@@ -241,23 +219,17 @@ impl From<UnaryOp> for AsmUnaryOperator {
     }
 }
 
-// TODO: fix this for AsmInstruction's, need to change String to include an id
-// or change the String conversion to include the id
-// Idea 1) AsmString(String, usize) and ignore usize when emission
-// Idea 2) I store the usize in the String and then extract it back when constructing the cfg
-// I personally like idea 1 better
-
-// impl Instruction for AsmInstruction {
-//     #[inline]
-//     fn simplify(&self) -> SimpleInstr {
-//         use AsmInstruction::{Jmp, JmpCC, Label, Ret};
-//         match *self {
-//             Label(ref name) => SimpleInstr::Label(name.clone().into()),
-//             JmpCC { ref label, .. } => SimpleInstr::ConditionalJump(label.clone().into()),
-//             Jmp(ref name, LABEL) => SimpleInstr::UnconditionalJump(name.clone().into()),
-//             Jmp(_, FUNCTION) => SimpleInstr::ErrorJump,
-//             Ret => SimpleInstr::Return,
-//             _ => SimpleInstr::Other,
-//         }
-//     }
-// }
+impl Instruction for AsmInstruction {
+    #[inline]
+    fn simplify(&self) -> SimpleInstr {
+        use AsmInstruction::{Jmp, JmpCC, Label, Ret};
+        match *self {
+            Label(ref name) => SimpleInstr::Label(name.clone().into()),
+            JmpCC { ref label, .. } => SimpleInstr::ConditionalJump(label.clone().into()),
+            Jmp(ref name, LABEL) => SimpleInstr::UnconditionalJump(name.clone().into()),
+            Jmp(_, FUNCTION) => SimpleInstr::ErrorJump,
+            Ret => SimpleInstr::Return,
+            _ => SimpleInstr::Other,
+        }
+    }
+}

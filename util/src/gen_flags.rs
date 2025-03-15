@@ -30,9 +30,6 @@ bitflags! {
         const ARR_BOUNDS     = 0x0004_0000;
         const ARRAY_ACCESS4  = 0x0008_0000;
         const ARRAY_ACCESS8  = 0x0010_0000;
-        const ARRAY_STORE1   = 0x0020_0000;
-        const ARRAY_STORE4   = 0x0040_0000;
-        const ARRAY_STORE8   = 0x0080_0000;
     }
 }
 
@@ -62,9 +59,6 @@ pub static INBUILT_OVERFLOW: &str = "_errOverflow";
 pub static INBUILT_READ_INT: &str = "_readi";
 pub static INBUILT_READ_CHAR: &str = "_readc";
 pub static INBUILT_EXIT: &str = "_exit";
-pub static INBUILT_ARR_STORE1: &str = "_arrStore1";
-pub static INBUILT_ARR_STORE4: &str = "_arrStore4";
-pub static INBUILT_ARR_STORE8: &str = "_arrStore8";
 
 /// # Panics
 ///
@@ -125,11 +119,6 @@ pub fn rewrite_global_flag() {
     let array_access_flags =
         GenFlags::ARRAY_ACCESS1 | GenFlags::ARRAY_ACCESS4 | GenFlags::ARRAY_ACCESS8;
     if global_flags.intersects(array_access_flags) {
-        *global_flags |= GenFlags::ARR_BOUNDS;
-    }
-    let array_store_flags =
-        GenFlags::ARRAY_STORE1 | GenFlags::ARRAY_STORE4 | GenFlags::ARRAY_STORE8;
-    if global_flags.intersects(array_store_flags) {
         *global_flags |= GenFlags::ARR_BOUNDS;
     }
 }
