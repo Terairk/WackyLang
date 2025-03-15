@@ -1,0 +1,15 @@
+# basic do-while expression
+
+# Output:
+# hello
+#
+
+# Program:
+
+begin
+  int x = 0;
+  read x;
+  do
+    println "hello"
+  while false done
+end

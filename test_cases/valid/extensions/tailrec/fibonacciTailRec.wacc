@@ -11,7 +11,7 @@
 # Program:
 
 begin
-  int fibonacci(int n, int a, int b) is
+  tailrec int fibonacci(int n, int a, int b) is
     print a;
     print " ";
     println b;
