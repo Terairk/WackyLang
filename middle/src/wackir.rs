@@ -98,11 +98,28 @@ pub struct WackProgram {
     pub main_body: Vec<WackInstr>,
 }
 
+impl WackProgram {
+    #[inline]
+    #[must_use]
+    pub fn has_read_instr(&self) -> bool {
+        self.functions.iter().any(WackFunction::has_read_instr)
+            || WackInstr::has_read_instr(&self.main_body)
+    }
+}
+
 #[derive(Clone)]
 pub struct WackFunction {
     pub name: WackGlobIdent,
     pub params: Vec<WackTempIdent>,
     pub body: Vec<WackInstr>,
+}
+
+impl WackFunction {
+    #[inline]
+    #[must_use]
+    pub fn has_read_instr(&self) -> bool {
+        WackInstr::has_read_instr(&self.body)
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -388,6 +405,17 @@ impl WackInstr {
             offset: Self::DEFAULT_ADD_PTR_OFFSET,
             dst_ptr,
         }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn has_read_instr<I: AsRef<[Self]>>(instrs: I) -> bool {
+        for instr in instrs.as_ref() {
+            if let Self::Read { .. } = *instr {
+                return true;
+            }
+        }
+        false
     }
 }
 

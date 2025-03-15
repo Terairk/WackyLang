@@ -79,7 +79,14 @@ pub fn get_test_files(dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
 
     Ok(test_files)
 }
-pub fn compile_single_test(path: &Path) -> Result<String, String> {
+
+pub struct CompileSingleTestOutput {
+    pub message: String,
+    pub has_read_instructions: bool,
+}
+
+#[allow(clippy::too_many_lines)]
+pub fn compile_single_test(path: &Path) -> Result<CompileSingleTestOutput, String> {
     reset_flags_gbl();
     let opt_config = OptimizationConfig::builder()
         .fold_constants(CONST_FOLD)
@@ -189,6 +196,7 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
     // may need to modify my Wacky IR / Assembly Ast
     let (wacky_ir, counter, symbol_table) = lower_program(hir_lowering);
     let wacky_ir = optimize(wacky_ir, opt_config);
+    let has_read_instructions = wacky_ir.has_read_instr();
 
     // -------------------------------------------------------------------------
     //                          Assembly Pass
@@ -268,7 +276,10 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
     }
 
     // If both syntax and semantic analysis succeed, return success
-    Ok(format!("Test compiled: {}", path.display()))
+    Ok(CompileSingleTestOutput {
+        message: format!("Test compiled: {}", path.display()),
+        has_read_instructions,
+    })
 }
 
 /// Extract expected output from the test file.
@@ -300,10 +311,9 @@ fn extract_expected_output(source: &str) -> Vec<String> {
     expected_output
 }
 
-fn is_interactive(source: &str) -> bool {
+fn is_interactive(source: &str, has_read_instr: bool) -> bool {
     let in_str = "# Input:";
-    let read_str = "read";
-    if source.contains(read_str) && !source.contains(in_str) {
+    if has_read_instr && !source.contains(in_str) {
         return true;
     }
     false
@@ -344,7 +354,7 @@ pub fn transform_actual_output_to_expected_form(output: String) -> String {
 }
 
 /// If any output/exit is provided within a file, compare that with an actual test run
-pub fn compare_test_result(path: &Path) -> Result<String, String> {
+pub fn compare_test_result(path: &Path, has_read_instructions: bool) -> Result<String, String> {
     use std::process::{Command, Stdio};
     let source = match fs::read_to_string(path) {
         Ok(content) => content,
@@ -359,7 +369,7 @@ pub fn compare_test_result(path: &Path) -> Result<String, String> {
     println!("expected_output: {:?}", expected_output);
     println!("input: {:?}", input);
     println!("{:?}", path);
-    if is_interactive(&source) {
+    if is_interactive(&source, has_read_instructions) {
         return Ok(NO_OUTPUT_STR.to_owned());
     }
 

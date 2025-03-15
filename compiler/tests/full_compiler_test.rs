@@ -24,15 +24,18 @@ mod full_compiler_tests {
 
                     let result = panic::catch_unwind(|| compile_single_test(&test_file));
 
-                    if result.is_err() {
+                    let Ok(result) = result else {
                         println!("Compilation failed with a crash: {test_name}");
                         continue;
-                    }
+                    };
 
                     compiled_count += 1;
                     // Result is a Result<Result<>> so we need this unwrap
-                    match result.unwrap() {
-                        Ok(_) => match compare_test_result(&test_file) {
+                    match result {
+                        Ok(CompileSingleTestOutput {
+                            has_read_instructions,
+                            ..
+                        }) => match compare_test_result(&test_file, has_read_instructions) {
                             Ok(_) => {
                                 assemble_count += 1;
                                 passed_count += 1;
