@@ -133,10 +133,7 @@ where
             // save old param values to temporaries, in order to avoid overriding
             let mut temp_map = HashMap::with_capacity(func_params.len());
             for param in func_params {
-                temp_map.insert(
-                    param.ident.clone(),
-                    mk_ident(TAILREC_TEMP, param.r#type.clone()).ident,
-                );
+                temp_map.insert(param.clone(), mk_ident(TAILREC_TEMP, param.r#type.clone()));
             }
 
             // now, push one in-place parameter-update assignment statement, per parameter of function

@@ -151,16 +151,18 @@ pub struct Ident {
 
 pub trait RenameIdent {
     /// Renames all occurrences of an identifier within this item, based on a renaming function.
+    ///
+    /// # Panics
+    /// If the types of the old and new identifiers mismatch, the function will panic.
     fn rename_ident<R>(self, renamer: &mut R) -> Self
     where
         Self: Sized,
-        R: FnMut(hir::Ident) -> Option<hir::Ident>;
+        R: FnMut(Ident) -> Option<Ident>;
 }
 
 // all implementation blocks live here
 mod impls {
     use crate::parsing::ast;
-    use crate::wacc_hir::hir;
     use crate::wacc_thir::thir::{
         ArrayElem, ArrayLiter, BinaryExpr, EmptyStatVecError, Expr, Func, Ident, LValue, Liter,
         NewPair, PairElem, Program, RValue, RenameIdent, Stat, StatBlock, UnaryExpr,
@@ -251,7 +253,7 @@ mod impls {
         fn rename_ident<R>(self, renamer: &mut R) -> Self
         where
             Self: Sized,
-            R: FnMut(hir::Ident) -> Option<hir::Ident>,
+            R: FnMut(Ident) -> Option<Ident>,
         {
             match self {
                 Expr::Liter(_) => self,
@@ -279,7 +281,7 @@ mod impls {
         fn rename_ident<R>(self, renamer: &mut R) -> Self
         where
             Self: Sized,
-            R: FnMut(hir::Ident) -> Option<hir::Ident>,
+            R: FnMut(Ident) -> Option<Ident>,
         {
             let UnaryExpr {
                 expr: (op, expr),
@@ -297,7 +299,7 @@ mod impls {
         fn rename_ident<R>(self, renamer: &mut R) -> Self
         where
             Self: Sized,
-            R: FnMut(hir::Ident) -> Option<hir::Ident>,
+            R: FnMut(Ident) -> Option<Ident>,
         {
             let BinaryExpr {
                 expr: (l, op, r),
@@ -662,7 +664,7 @@ mod impls {
         fn rename_ident<R>(self, renamer: &mut R) -> Self
         where
             Self: Sized,
-            R: FnMut(hir::Ident) -> Option<hir::Ident>,
+            R: FnMut(Ident) -> Option<Ident>,
         {
             match self {
                 ArrayElem::FirstAccess {
@@ -692,12 +694,17 @@ mod impls {
         fn rename_ident<R>(self, renamer: &mut R) -> Self
         where
             Self: Sized,
-            R: FnMut(hir::Ident) -> Option<hir::Ident>,
+            R: FnMut(Ident) -> Option<Ident>,
         {
-            let Ident { ident, r#type } = self;
-            Self {
-                ident: renamer(ident.clone()).unwrap_or(ident),
-                r#type,
+            match renamer(self.clone()) {
+                None => self,
+                Some(new) => {
+                    assert_eq!(
+                        &self.r#type, &new.r#type,
+                        "replacement identifier types should never mismatch"
+                    );
+                    new
+                }
             }
         }
     }
