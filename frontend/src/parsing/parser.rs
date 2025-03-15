@@ -702,11 +702,11 @@ pub fn parsing_phase<S: AsRef<str>, W: Write + Clone>(
         for e in &parse_errs {
             build_syntactic_report(
                 e,
-                source.clone(),
+                source,
                 parsing_error_code,
                 stream_type,
                 output_stream.clone(),
-            )?
+            )?;
         }
         return Err(ParsingPhaseError::ParsingErrorWritten);
     }

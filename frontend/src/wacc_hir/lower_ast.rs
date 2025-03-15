@@ -33,7 +33,7 @@ pub enum AstLoweringError {
 
 impl AstLoweringError {
     #[inline]
-    pub const fn message_header(&self) -> &'static str {
+    const fn message_header(&self) -> &'static str {
         match *self {
             // Duplicate identifier errors get a special header
             Self::DuplicateIdent(_) => "Duplicate Identifier",
@@ -43,7 +43,7 @@ impl AstLoweringError {
     }
 
     #[inline]
-    pub fn message_body(&self) -> String {
+    fn message_body(&self) -> String {
         match *self {
             Self::DuplicateIdent(ref ident) => {
                 format!(
@@ -67,7 +67,7 @@ impl AstLoweringError {
     }
 
     #[inline]
-    pub fn into_span(self) -> SourcedSpan {
+    fn into_span(self) -> SourcedSpan {
         match self {
             Self::DuplicateIdent(s)
             | Self::UndefinedIdent(s)
@@ -78,7 +78,8 @@ impl AstLoweringError {
     }
 
     #[inline]
-    pub fn into_semantic_error(self) -> SemanticError<&'static str, String> {
+    #[must_use]
+    fn into_semantic_error(self) -> SemanticError<&'static str, String> {
         SemanticError {
             message_header: self.message_header(),
             message_body: self.message_body(),
@@ -203,16 +204,6 @@ impl LoweringCtx {
         self.errors.push(error);
     }
 
-    #[inline]
-    pub fn return_errors(&self) -> Vec<AstLoweringError> {
-        self.errors.clone()
-    }
-
-    #[inline]
-    pub const fn get_func_table(&self) -> &HirFuncSymbolTable {
-        &self.func_symbol_table
-    }
-
     // This function is used to create a copy of the current identifier map
     // with from_current_block set to false, this is so we can allow shadowing
     // of identifiers provided they're created in a new scope
@@ -222,11 +213,6 @@ impl LoweringCtx {
             .iter()
             .map(|(k, v)| (k.clone(), v.create_false()))
             .collect()
-    }
-
-    #[inline]
-    pub const fn counter(&self) -> usize {
-        self.counter
     }
 
     // Helper function to fold a statement with a new identifier map
@@ -1022,23 +1008,10 @@ impl LoweringCtx {
             Ident::new_rouge_zero_sn(ident)
         }
     }
-
-    #[inline]
-    fn lower_funcname_sn(&mut self, name: SN<ast::Ident>) -> SN<ast::Ident> {
-        // Use ident part of name and then check if it exists in the function table
-        // return name regardless but add an error if it doesn't exist
-        let ident = name.inner();
-        if self.func_symbol_table.functions.contains_key(ident) {
-        } else {
-            self.add_error(AstLoweringError::UndefinedIdent(name.clone()));
-            // Return a dummy value so we can maybe very hopefully
-            // allow multiple semantic errors
-        }
-        name
-    }
 }
 
 #[inline]
+#[must_use]
 pub fn lower_ast(program_ast: ast::Program) -> AstLoweringResult {
     // lower program AST and discard unnecessary transient information
     let mut ctx = LoweringCtx::new();

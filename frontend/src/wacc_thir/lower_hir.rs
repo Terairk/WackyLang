@@ -11,8 +11,6 @@ use crate::wacc_thir::thir::{
 use crate::wacc_thir::types::{BaseType, PairType, Type};
 use crate::SemanticError;
 use ariadne::Span as _;
-use chumsky::container::Container;
-use itertools::Itertools;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use util::ext::BoxedSliceExt as _;
@@ -65,8 +63,8 @@ impl HirLoweringError {
     pub const fn message_header(&self) -> &'static str {
         match *self {
             // These two get a special header
-            HirLoweringError::TypeMismatch { .. } => "Type Error",
-            HirLoweringError::InvalidNumberOfIndexes { .. } => "Wrong number of indexes",
+            Self::TypeMismatch { .. } => "Type Error",
+            Self::InvalidNumberOfIndexes { .. } => "Wrong number of indexes",
 
             // Handle other error variants the same way
             _ => "Semantic Error",
@@ -75,7 +73,7 @@ impl HirLoweringError {
 
     #[inline]
     #[must_use]
-    pub fn message_body(&self) -> String {
+    fn message_body(&self) -> String {
         match *self {
             Self::TypeMismatch {
                 ref expected,
@@ -139,7 +137,7 @@ impl HirLoweringError {
     }
 
     #[inline]
-    pub fn into_span(self) -> SourcedSpan {
+    fn into_span(self) -> SourcedSpan {
         match self {
             Self::UntypedIdentEncountered(ident) => ident.span(),
             Self::FuncNotTailrec(ident) => ident.span(),
@@ -155,7 +153,7 @@ impl HirLoweringError {
     }
 
     #[inline]
-    pub fn into_semantic_error(self) -> SemanticError<&'static str, String> {
+    fn into_semantic_error(self) -> SemanticError<&'static str, String> {
         SemanticError {
             message_header: self.message_header(),
             message_body: self.message_body(),
@@ -1120,8 +1118,8 @@ impl HirLoweringCtx {
         expected_type: Type,
         result_type: Type,
     ) -> Type {
-        let (lhs_type, (lhs, lhs_span)) = (lhs.0.r#type(), lhs);
-        let (rhs_type, (rhs, rhs_span)) = (rhs.0.r#type(), rhs);
+        let (lhs_type, (_lhs, lhs_span)) = (lhs.0.r#type(), lhs);
+        let (rhs_type, (_rhs, rhs_span)) = (rhs.0.r#type(), rhs);
         if !Self::can_coerce_into(&lhs_type, &expected_type) {
             self.add_error(HirLoweringError::TypeMismatch {
                 span: lhs_span,

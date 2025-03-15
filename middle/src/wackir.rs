@@ -521,19 +521,18 @@ mod wack_glob_ident {
 
         #[must_use]
         #[inline]
-        pub fn from_ref(r#str: &InternStr) -> Self {
-            Self(r#str.clone())
+        pub const fn from_ref(r#str: &InternStr) -> Self {
+            Self(*r#str)
         }
 
         #[must_use]
         #[inline]
-        pub fn into_inner(self) -> InternStr {
+        pub const fn into_inner(self) -> InternStr {
             self.0
         }
     }
 
     impl From<ast::Ident> for WackGlobIdent {
-        #[must_use]
         #[inline]
         fn from(value: ast::Ident) -> Self {
             Self::new(value.into_inner())
@@ -541,7 +540,6 @@ mod wack_glob_ident {
     }
 
     impl From<&ast::Ident> for WackGlobIdent {
-        #[must_use]
         #[inline]
         fn from(value: &ast::Ident) -> Self {
             Self::from_ref(value.inner())

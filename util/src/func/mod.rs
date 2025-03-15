@@ -76,6 +76,8 @@ where
 }
 
 pub(super) mod arg {
+    #![allow(dead_code)]
+
     use crate::typelevel::maybe::{Just, Nothing};
 
     #[const_trait]
@@ -149,7 +151,7 @@ pub mod f1 {
     mod impls {
         use crate::func::compose::Compose;
         use crate::func::curry2::Applied1;
-        use crate::func::f1::{F1, F1Mut, F1Once, F1OnceExt};
+        use crate::func::f1::{F1Mut, F1Once, F1OnceExt, F1};
         use crate::func::{call_deref, call_deref_uncurried_t, call_ref, call_ref_uncurried_t};
         use std::ops::Deref;
 
@@ -261,7 +263,7 @@ pub mod f2 {
 
     mod impls {
         use crate::func::curry2::{Applied0, Applied1};
-        use crate::func::f2::{F2, F2Mut, F2Once, F2OnceExt};
+        use crate::func::f2::{F2Mut, F2Once, F2OnceExt, F2};
 
         impl<F, A, B, C> F2<A, B> for F
         where

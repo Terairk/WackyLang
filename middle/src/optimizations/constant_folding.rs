@@ -9,7 +9,7 @@ use crate::wackir::{
 
 use binary_op::eval_binary_op;
 use unary_op::eval_unary_op;
-use util::gen_flags::{GenFlags, INBUILT_FREE_PAIR, INBUILT_NULL_ACCESS, insert_flag_gbl};
+use util::gen_flags::{insert_flag_gbl, GenFlags, INBUILT_NULL_ACCESS};
 
 /// Constant folds a function. Turns unary and binary operations with constant operands into a
 /// single copy instruction
@@ -71,11 +71,11 @@ pub fn constant_fold_function(function_body: Vec<WackInstr>) -> Vec<WackInstr> {
 pub mod unary_op {
     use crate::optimizations::constant_folding::insert_flag_gbl;
     use crate::wackir::{UnaryOp, WackBool, WackInstr, WackLiteral, WackTempIdent, WackValue};
+    use util::gen_flags::{GenFlags, INBUILT_BAD_CHAR, INBUILT_OVERFLOW};
     use UnaryOp::{BNot, Chr, LNot, Len, Negate, Ord};
     use WackInstr::{Copy, JumpToHandler, Unary};
     use WackLiteral::Char;
     use WackValue::Literal;
-    use util::gen_flags::{GenFlags, INBUILT_BAD_CHAR, INBUILT_OVERFLOW};
 
     // Constants for the bounds of the chr function
     const MAX_CHR: i32 = 127;
@@ -178,12 +178,12 @@ pub mod unary_op {
 pub mod binary_op {
     use crate::optimizations::constant_folding::insert_flag_gbl;
     use crate::wackir::{BinaryOp, WackBool, WackInstr, WackLiteral, WackTempIdent, WackValue};
+    use std::cmp::Ordering;
+    use util::gen_flags::{GenFlags, INBUILT_DIV_ZERO, INBUILT_OVERFLOW};
     use BinaryOp::{Add, Div, Eq, Gt, Gte, LAnd, LOr, Lt, Lte, Mod, Mul, Neq, Sub};
     use WackInstr::{Binary, Copy, JumpToHandler};
     use WackLiteral::{Bool, Char, Int};
     use WackValue::Literal;
-    use std::cmp::Ordering;
-    use util::gen_flags::{GenFlags, INBUILT_DIV_ZERO, INBUILT_OVERFLOW};
 
     // Trait for types that can be used in binary operations
     pub trait BinaryEvaluatable {

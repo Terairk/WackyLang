@@ -1,11 +1,10 @@
 use crate::parsing::ast;
 use crate::wacc_hir::hir;
 use crate::wacc_thir::thir::{
-    Expr, Func, Ident, LValue, RValue, RenameIdent, Stat, StatBlock, Type,
+    Expr, Func, Ident, LValue, RValue, RenameIdent as _, Stat, StatBlock, Type,
 };
-use chumsky::container::Container;
 use std::collections::HashMap;
-use util::ext::{BoxedSliceExt, VecExt};
+use util::ext::VecExt as _;
 
 const TAILREC_TEMP: &str = "tailrec_temp_variable";
 
