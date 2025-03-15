@@ -4,7 +4,7 @@ use backend::assembly_fix::fix_program;
 use backend::assembly_trans::wacky_to_assembly;
 use backend::emission::AssemblyFormatter;
 use backend::predefined::generate_predefined;
-use backend::regalloc::{FunctionCallee, allocate_registers_program};
+use backend::regalloc::allocate_registers_program;
 use backend::replace_pseudo::replace_pseudo_in_program;
 use clap::Parser as ClapParser;
 use frontend::StreamType;

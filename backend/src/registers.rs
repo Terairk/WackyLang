@@ -1,5 +1,5 @@
 // File for helper functions related to registers
-use crate::assembly_ast::{AssemblyType, Operand, Register};
+use crate::assembly_ast::{Operand, Register};
 use Register::{AX, BP, BX, CX, DI, DX, R8, R9, R10, R11, R12, R13, R14, R15, SI, SP};
 use bitflags::bitflags;
 

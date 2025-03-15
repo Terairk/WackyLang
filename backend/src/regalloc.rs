@@ -186,33 +186,36 @@ impl InterferenceGraph {
             .ok_or_else(|| format!("Node with ID '{:?}' not found", id))
     }
 
-    /// Returns a reference to a node by its ID
-    pub fn get_node(&self, id: &Operand) -> Result<&Node, String> {
-        let index = self.get_node_index(id)?;
-        Ok(&self.nodes[index])
-    }
+    // Keep these in in case we use them in the future
+
+    ///// Returns a reference to a node by its ID
+    //pub fn get_node(&self, id: &Operand) -> Result<&Node, String> {
+    //    let index = self.get_node_index(id)?;
+    //    Ok(&self.nodes[index])
+    //}
 
     /// Returns a mutable reference to a node by its ID
-    pub fn get_node_mut(&mut self, id: &Operand) -> Result<&mut Node, String> {
-        let index = self.get_node_index(id)?;
-        Ok(&mut self.nodes[index])
-    }
+    ///
+    // pub fn get_node_mut(&mut self, id: &Operand) -> Result<&mut Node, String> {
+    //     let index = self.get_node_index(id)?;
+    //     Ok(&mut self.nodes[index])
+    // }
 
     /// Returns the number of nodes in the graph
-    pub fn size(&self) -> usize {
-        self.nodes.len()
-    }
+    // pub fn size(&self) -> usize {
+    //     self.nodes.len()
+    // }
 
     /// Returns the neighbors of a node
-    pub fn neighbors(&self, id: &Operand) -> Result<Vec<&Node>, String> {
-        let node_index = self.get_node_index(id)?;
-        let neighbors = self.nodes[node_index]
-            .neighbors
-            .iter()
-            .map(|&idx| &self.nodes[idx])
-            .collect();
-        Ok(neighbors)
-    }
+    // pub fn neighbors(&self, id: &Operand) -> Result<Vec<&Node>, String> {
+    //     let node_index = self.get_node_index(id)?;
+    //     let neighbors = self.nodes[node_index]
+    //         .neighbors
+    //         .iter()
+    //         .map(|&idx| &self.nodes[idx])
+    //         .collect();
+    //     Ok(neighbors)
+    // }
 
     pub fn nodes(&self) -> &Vec<Node> {
         &self.nodes
@@ -300,8 +303,8 @@ mod build_interference_graph {
     }
 
     fn make_control_flow_graph(instructions: &[AsmInstruction], func_name: &str) -> AsmCFG {
-        let emptyCFG = AsmCFG::from_instructions(func_name.to_owned(), instructions.to_vec());
-        emptyCFG.initialize_annotation(&LiveRegisters::default())
+        let empty_cfg = AsmCFG::from_instructions(func_name.to_owned(), instructions.to_vec());
+        empty_cfg.initialize_annotation(&LiveRegisters::default())
     }
 
     fn analyze_lifeness(cfg: &AsmCFG, func_regs: &FunctionRegisters) -> AsmCFG {
@@ -382,14 +385,15 @@ mod build_interference_graph {
 
     fn add_edges(cfg: &AsmCFG, graph: &mut InterferenceGraph, func_regs: &FunctionRegisters) {
         // Iterate through all nodes in the CFG
-        for (block_id, block) in &cfg.basic_blocks {
+        for (_block_id, block) in &cfg.basic_blocks {
             if block.id == NodeId::Entry || block.id == NodeId::Exit {
                 continue;
             }
 
             // Process each instruction in the block
             for (live_regs, instr) in &block.instructions {
-                let (used, updated) = find_used_and_updated(instr.clone(), func_regs);
+                // We only care about updated in this context
+                let (_used, updated) = find_used_and_updated(instr.clone(), func_regs);
 
                 // Check each live register against updated registers
                 for l in live_regs {
@@ -494,7 +498,7 @@ mod build_interference_graph {
             AsmInstruction::Push(operand) => {
                 used.push(operand);
             }
-            AsmInstruction::Pop(register) => {
+            AsmInstruction::Pop(_register) => {
                 panic!("Pop should not be used in this context");
             }
             AsmInstruction::Call(fun_name, _) => {

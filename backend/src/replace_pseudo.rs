@@ -153,13 +153,6 @@ fn replace_pseudo_in_instruction(
     }
 }
 
-// rounds down to neartest multiple of 16
-// meant for negative numbers
-const fn round_down_16(x: i32) -> i32 {
-    assert!(x < 0);
-    x & !15
-}
-
 const fn round_down(x: i32, multiple: i32) -> i32 {
     assert!(x < 0);
     x & !(multiple - 1)

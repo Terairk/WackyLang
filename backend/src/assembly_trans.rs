@@ -26,7 +26,6 @@ use middle::wackir::{
     WackReadType, WackTempIdent, WackValue,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::hash::Hash;
 use util::gen_flags::{GenFlags, insert_flag_gbl};
 use util::gen_flags::{
     INBUILT_ARR_LOAD1, INBUILT_ARR_LOAD4, INBUILT_ARR_LOAD8, INBUILT_BAD_CHAR, INBUILT_DIV_ZERO,

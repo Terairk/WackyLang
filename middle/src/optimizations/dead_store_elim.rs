@@ -1,8 +1,8 @@
 use super::cfg::{EmptyCFG, get_dst};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use util::cfg::{backwards_dataflow_analysis, reverse_postorder_block_ids};
+use util::cfg::backwards_dataflow_analysis;
 use util::{CFG, cfg::BasicBlock, cfg::NodeId};
 
 use crate::wackir::{WackInstr, WackTempIdent, WackValue};
