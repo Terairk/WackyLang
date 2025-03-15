@@ -277,9 +277,9 @@ fn main() -> ExitCode {
             &asm_gen.function_regs,
             &mut function_callee_regs,
         );
-        for (name, regs) in function_callee_regs.iter() {
-            println!("{name}: {regs:#?}");
-        }
+        // for (name, regs) in function_callee_regs.iter() {
+        //     println!("{name}: {regs:#?}");
+        // }
         if args.print_reg_alloc {
             println!("{assembly_ast:#?}");
             return ExitCode::SUCCESS;

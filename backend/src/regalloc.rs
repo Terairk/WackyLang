@@ -226,9 +226,7 @@ mod build_interference_graph {
 
     use util::{
         CFG,
-        cfg::{
-            BasicBlock, NodeId, backwards_dataflow_analysis, backwards_dataflow_analysis_complex,
-        },
+        cfg::{BasicBlock, NodeId, backwards_dataflow_analysis},
     };
     // TODO: replace LiveRegisters with the actual type
 
@@ -313,8 +311,10 @@ mod build_interference_graph {
     fn analyze_lifeness(cfg: &AsmCFG, func_regs: &FunctionRegisters) -> AsmCFG {
         // Perform backwards dataflow analysis to compute live registers at each instruction
         // Use closures to capture the function's register set
-        let new_cfg = backwards_dataflow_analysis_complex(cfg, meet, transfer, func_regs);
-        new_cfg
+        let transfer_meet = |block: LiveBasicBlock, end_live_registers: LiveRegisters| {
+            transfer(block, end_live_registers, func_regs)
+        };
+        backwards_dataflow_analysis(cfg, meet, transfer_meet)
     }
 
     /// The meet operator calculates which registers are live at the end of a basic block.

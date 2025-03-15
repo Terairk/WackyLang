@@ -1,40 +1,4 @@
-/* ================ Assembly AST Structure ======================
- *
- * *program = Program(top_level*)
-    assembly_type = Byte | Longword | Quadword | ByteArray(int size, int alignment)
-    top_level = Function(identifier name, bool global = true, instruction* instructions)
-    instruction =
-          Mov(assembly_type, operand src, operand dst)
-        | MovZeroExtend(assembly_type src_type, assembly_type dst_type,
-                        operand src, operand dst)
-        | Lea(operand src, operand dst)
-        | Unary(unary_operator, assembly_type, operand)
-        | Binary(binary_operator, assembly_type, operand, operand)
-        | Cmp(assembly_type, operand, operand)
-        | Idiv(operand)
-        | Cdq
-        | Jmp(identifier)
-        | JmpCC(cond_code, identifier)
-        | SetCC(cond_code, operand)
-        | Label(identifier)
-        | AllocateStack(int) -- temporary thing probs
-        | Push(operand)
-        | Call(identifier)
-        |
-        | Ret
-    unary_operator = Neg | Not | Shr
-    binary_operator = Add | Sub | Mult | And | Or | Xor (might need this) | Shl | ShrTwoOp
-    operand = Imm(int) | Reg(reg) | Pseudo(identifier) | Memory(reg, int) | Data(identifier, int)
-    | PseudoMem(identifier, int) | Indexed(reg base, reg index, int scale)
-    cond_code = E | NE | G | GE | L | LE | A | AE | B | BE
-    reg = AX | CX | DX | DI | SI | R8 | R9 | R10 | R11 | SP | BP
-    (missing regs are R12-R15, BX, these are all callee saved registers, will add later)
-*/
-
-// Top-level structures
-// Use String here for now because i'm getting tired
-// and it'd be easier for me probably
-// Change later if you want
+/* ================ Assembly AST Structure ====================== */
 
 use middle::wackir::{UnaryOp, WackTempIdent};
 use std::fmt::Debug;
@@ -63,7 +27,7 @@ pub struct AsmFunction {
     pub global: bool,
     pub instructions: Vec<AsmInstruction>,
     pub directives: Vec<Directive>,
-    pub regs: RegisterSet, // What registers are passed as parameters
+    pub regs: RegisterSet, // What registers are passed as parameters, used for liveness analysis
 }
 
 #[derive(Debug, Clone)]
@@ -141,8 +105,8 @@ pub enum Operand {
     Imm(i32),
     Reg(Register),
     Pseudo(String),
-    Memory(Register, i32), // I think is used for array/pair access
-    Data(String, i32),     // i think used for RIP relative
+    Memory(Register, i32),
+    Data(String, i32), // Used for RIP relative addressing
     Indexed {
         base: Register,
         index: Register,
@@ -223,6 +187,7 @@ pub enum AssemblyType {
 
 /* ================ PRETTY PRINTER ============== */
 impl Debug for AsmProgram {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "AsmProgram {{")?;
         for function in &self.asm_functions {
@@ -253,12 +218,6 @@ impl From<UnaryOp> for AsmUnaryOperator {
         }
     }
 }
-
-// TODO: fix this for AsmInstruction's, need to change String to include an id
-// or change the String conversion to include the id
-// Idea 1) AsmString(String, usize) and ignore usize when emission
-// Idea 2) I store the usize in the String and then extract it back when constructing the cfg
-// I personally like idea 1 better
 
 impl Instruction for AsmInstruction {
     #[inline]

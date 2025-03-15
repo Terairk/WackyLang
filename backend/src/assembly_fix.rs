@@ -3,8 +3,8 @@
 // to handle other instructions but for now its mov
 
 /* ================== INVARIANTS =================== */
-// We'll use R10D as a scratch register because it usually doesn't serve
-// any special purpose
+// We'll use R10 and R11 as a scratch register because it usually doesn't serve
+// any special purpose. Consequently we don't use R10 and R11 in our interference graph
 
 use crate::assembly_ast::AsmInstruction::{
     Binary, Cmp, Idiv, JmpCC, Lea, Mov, MovZeroExtend, Pop, Ret,
@@ -60,7 +60,9 @@ pub fn fix_program(program: AsmProgram, func_callee_regs: &FunctionCallee) -> As
                 }
                 Ret => {
                     // If we have a return instruction, we need to pop the callee saved registers
-                    // before returning
+                    // before returning, we don't do this earlier because its more efficient to
+                    // insert all at once versus at the end and simplifies the code, ie more
+                    // efficient to insert at the last index versus last index - 1
 
                     for reg in func_callee_regs.get(&func.name).unwrap().iter().rev() {
                         new_func_body.push(Pop(*reg));
@@ -150,6 +152,9 @@ fn fix_zero_extend(
 
 /* ================== INTERNALS ================== */
 
+// NOTE: we insert an overflow check here, with optimizations enabled, we never actually
+// make an add instruction so we don't need to worry about this and WackIR instructions
+// interfering
 fn fix_binary(
     asm: &mut Vec<AsmInstruction>,
     operator: AsmBinaryOperator,
