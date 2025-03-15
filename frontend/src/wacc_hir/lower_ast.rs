@@ -887,7 +887,6 @@ impl LoweringCtx {
     #[inline]
     pub const fn lower_unary_oper(unary_oper: &ast::UnaryOper) -> UnaryOper {
         match *unary_oper {
-            ast::UnaryOper::BNot => UnaryOper::BNot,
             ast::UnaryOper::LNot => UnaryOper::LNot,
             ast::UnaryOper::Minus => UnaryOper::Minus,
             ast::UnaryOper::Len => UnaryOper::Len,
@@ -917,9 +916,6 @@ impl LoweringCtx {
             ast::BinaryOper::Gt => BinaryOper::Gt,
             ast::BinaryOper::Eq => BinaryOper::Eq,
             ast::BinaryOper::Neq => BinaryOper::Neq,
-            ast::BinaryOper::BAnd => BinaryOper::BAnd,
-            ast::BinaryOper::BXor => BinaryOper::BXor,
-            ast::BinaryOper::BOr => BinaryOper::BOr,
             ast::BinaryOper::LAnd => BinaryOper::LAnd,
             ast::BinaryOper::LOr => BinaryOper::LOr,
         }

@@ -884,15 +884,9 @@ impl HirLoweringCtx {
                 let resolved_expr = self.lower_expr_sbn(e.clone());
                 let mut unary_expect = |a, b| self.unary_expect(e.span(), &resolved_expr, a, b);
                 let resolved_type = match *op.inner() {
-                    hir::UnaryOper::LNot => {
-                        unary_expect(Type::BOOL, Type::BOOL)
-                    }
-                    hir::UnaryOper::Minus
-                    // for now, bitwise operations only work on integers
-                    | hir::UnaryOper::BNot => {
-                        unary_expect(Type::INT, Type::INT)
-                    }
-                    hir::UnaryOper::Len =>
+                    hir::UnaryOper::LNot => unary_expect(Type::BOOL, Type::BOOL),
+                    hir::UnaryOper::Minus => unary_expect(Type::INT, Type::INT),
+                    hir::UnaryOper::Len => {
                         if let Type::ArrayType(_) = resolved_expr.r#type() {
                             Type::INT
                         } else {
@@ -902,13 +896,10 @@ impl HirLoweringCtx {
                                 expected: Type::BOOL,
                             });
                             Type::Any
-                        },
-                    hir::UnaryOper::Ord => {
-                        unary_expect(Type::CHAR, Type::INT)
+                        }
                     }
-                    hir::UnaryOper::Chr => {
-                        unary_expect(Type::INT, Type::CHAR)
-                    }
+                    hir::UnaryOper::Ord => unary_expect(Type::CHAR, Type::INT),
+                    hir::UnaryOper::Chr => unary_expect(Type::INT, Type::CHAR),
                 };
 
                 // build final unary-expression
@@ -935,20 +926,19 @@ impl HirLoweringCtx {
                     | hir::BinaryOper::Div
                     | hir::BinaryOper::Mod
                     | hir::BinaryOper::Add
-                    | hir::BinaryOper::Sub
-                    // for now, bitwise operations only work on integers
-                    | hir::BinaryOper::BAnd
-                    | hir::BinaryOper::BXor
-                    | hir::BinaryOper::BOr
-                    => binary_expect(Type::INT, Type::INT),
+                    | hir::BinaryOper::Sub => binary_expect(Type::INT, Type::INT),
 
                     // Comparison ops (Int, Int) -> Bool or (char, char) -> Bool
-                    hir::BinaryOper::Lte | hir::BinaryOper::Lt | hir::BinaryOper::Gte | hir::BinaryOper::Gt => {
+                    hir::BinaryOper::Lte
+                    | hir::BinaryOper::Lt
+                    | hir::BinaryOper::Gte
+                    | hir::BinaryOper::Gt => {
                         let resolved_lhs_type = resolved_lhs.r#type();
                         match resolved_lhs_type {
                             // if integer or character type, use it
-                            Type::BaseType(BaseType::Int | BaseType::Char) =>
-                                binary_expect(resolved_lhs_type, Type::BOOL),
+                            Type::BaseType(BaseType::Int | BaseType::Char) => {
+                                binary_expect(resolved_lhs_type, Type::BOOL)
+                            }
 
                             // otherwise use integer as fallback for typechecking
                             _ => binary_expect(Type::INT, Type::BOOL),
@@ -958,7 +948,8 @@ impl HirLoweringCtx {
                     hir::BinaryOper::Eq | hir::BinaryOper::Neq => {
                         let lhs_type = resolved_lhs.r#type();
                         let rhs_type = resolved_rhs.r#type();
-                        if Self::can_coerce_into(&lhs_type, &rhs_type) || Self::can_coerce_into(&rhs_type, &lhs_type)
+                        if Self::can_coerce_into(&lhs_type, &rhs_type)
+                            || Self::can_coerce_into(&rhs_type, &lhs_type)
                         {
                             Type::BOOL
                         } else {
@@ -971,8 +962,9 @@ impl HirLoweringCtx {
                         }
                     }
                     // Logical ops (Bool, Bool) -> Bool
-                    hir::BinaryOper::LAnd | hir::BinaryOper::LOr =>
-                        binary_expect(Type::BOOL, Type::BOOL),
+                    hir::BinaryOper::LAnd | hir::BinaryOper::LOr => {
+                        binary_expect(Type::BOOL, Type::BOOL)
+                    }
                 };
 
                 // construct binary expression

@@ -4,7 +4,6 @@ use backend::emission::AssemblyFormatter;
 use backend::predefined::generate_predefined;
 use backend::regalloc::allocate_registers_program;
 use backend::replace_pseudo::replace_pseudo_in_program;
-use chumsky::container::Seq;
 use frontend::parsing::lexer::lexing_phase;
 use frontend::parsing::parser::parsing_phase;
 use frontend::source::StrSourceId;
@@ -86,6 +85,8 @@ pub fn get_test_files(dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
     Ok(test_files)
 }
 
+/// Output of compiling single test
+#[allow(dead_code)]
 pub struct CompileSingleTestOutput {
     pub message: String,
     pub has_read_instructions: bool,

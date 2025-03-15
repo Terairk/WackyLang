@@ -72,7 +72,7 @@ pub mod unary_op {
     use crate::optimizations::constant_folding::insert_flag_gbl;
     use crate::wackir::{UnaryOp, WackBool, WackInstr, WackLiteral, WackTempIdent, WackValue};
     use util::gen_flags::{GenFlags, INBUILT_BAD_CHAR, INBUILT_OVERFLOW};
-    use UnaryOp::{BNot, Chr, LNot, Len, Negate, Ord};
+    use UnaryOp::{Chr, LNot, Len, Negate, Ord};
     use WackInstr::{Copy, JumpToHandler, Unary};
     use WackLiteral::Char;
     use WackValue::Literal;
@@ -108,7 +108,6 @@ pub mod unary_op {
                     }
                 }
                 Negate => eval_negate(&value, dst),
-                BNot => todo!("Implement bitwise not"),
                 LNot => {
                     let new_instr = match value {
                         WackLiteral::Bool(value) => {

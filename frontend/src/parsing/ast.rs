@@ -161,7 +161,6 @@ pub enum Liter {
 
 #[derive(Clone, Debug)]
 pub enum UnaryOper {
-    BNot,
     LNot,
     Minus,
     Len,
@@ -182,9 +181,6 @@ pub enum BinaryOper {
     Gt,
     Eq,
     Neq,
-    BAnd,
-    BXor,
-    BOr,
     LAnd,
     LOr,
 }

@@ -315,8 +315,6 @@ pub enum WackLiteral {
 #[derive(Clone, Debug, PartialEq, Eq, Copy, Display)]
 pub enum UnaryOp {
     #[display("!")]
-    BNot,
-    #[display("!")]
     LNot,
     #[display("-")]
     Negate,
@@ -353,12 +351,6 @@ pub enum BinaryOp {
     Eq,
     #[display("!=")]
     Neq,
-    #[display("&")]
-    BAnd,
-    #[display("^")]
-    BXor,
-    #[display("|")]
-    BOr,
     #[display("&&")]
     LAnd,
     #[display("||")]
@@ -462,9 +454,6 @@ impl From<hir::BinaryOper> for BinaryOp {
             hir::BinaryOper::Gt => Self::Gt,
             hir::BinaryOper::Eq => Self::Eq,
             hir::BinaryOper::Neq => Self::Neq,
-            hir::BinaryOper::BAnd => Self::BAnd,
-            hir::BinaryOper::BXor => Self::BXor,
-            hir::BinaryOper::BOr => Self::BOr,
             hir::BinaryOper::LAnd => Self::LAnd,
             hir::BinaryOper::LOr => Self::LOr,
         }
@@ -475,7 +464,6 @@ impl From<hir::UnaryOper> for UnaryOp {
     #[inline]
     fn from(unop: hir::UnaryOper) -> Self {
         match unop {
-            hir::UnaryOper::BNot => Self::BNot,
             hir::UnaryOper::LNot => Self::LNot,
             hir::UnaryOper::Minus => Self::Negate,
             hir::UnaryOper::Len => Self::Len,

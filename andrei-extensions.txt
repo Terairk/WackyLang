@@ -3,19 +3,6 @@
 - written 3 basic tests in /valid/expressions
 - TODO: write more tests around all the edge cases of that
 
-# Bitwise ops: NOT (~), AND (&), XOR (^), OR (|)
-- added support to frontend for them
-- precedence is:
-- + ...all the rest of higher precedence unmodified
-- + equality (==, !=)
-- + b-and (&)
-- + b-xor (^)
-- + b-or (|)
-- + l-and (&&)
-- + l-or (||)
-- TODO: implement support for middle/backend for them
-- TODO: write more tests around all the edge cases of that
-
 # Expression if-conditional
 - added if-elif-else expressions with syntax: `if <expr> then <expr> (elif <expr> then <expr>)* else <expr> fi`
 - TODO: write more tests around all the edge cases of that
