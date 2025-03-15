@@ -106,10 +106,16 @@ struct Args {
 impl Args {
     ///
     /// Reconstruct an OptimizationConfig from the command line arguments
-    /// that we can pass to the optimization passes
+    /// that we can pass to the optimization passes. Dead stores require constant folding or else
+    /// it'll miss runtime errors
     fn get_optimization_config(&self) -> OptimizationConfig {
         OptimizationConfig::builder()
-            .fold_constants(self.optimize || self.fold_constants || self.optimize_no_coalesce)
+            .fold_constants(
+                self.optimize
+                    || self.fold_constants
+                    || self.optimize_no_coalesce
+                    || self.eliminate_dead_stores,
+            )
             .copy_propagation(self.optimize || self.copy_propagation || self.optimize_no_coalesce)
             .eliminate_unreachable_code(
                 self.optimize || self.eliminate_unreachable_code || self.optimize_no_coalesce,

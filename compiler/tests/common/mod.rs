@@ -27,10 +27,10 @@ const SYNTAX_ERR_STR: &str = "Syntax error(s) found!";
 const SEMANTIC_ERR_STR: &str = "Semantic error(s) found!";
 const NO_OUTPUT_STR: &str = "No output/exit to compare if provided in a file";
 
-#[cfg(feature = "const-fold")]
+#[cfg(feature = "fold")]
 const CONST_FOLD: bool = true;
 
-#[cfg(not(feature = "const-fold"))]
+#[cfg(not(feature = "fold"))]
 const CONST_FOLD: bool = false;
 
 #[cfg(feature = "copy-prop")]
@@ -45,10 +45,10 @@ const RM_UNREACHABLE: bool = true;
 #[cfg(not(feature = "rm-unreachable"))]
 const RM_UNREACHABLE: bool = false;
 
-#[cfg(feature = "rm-deadstores")]
+#[cfg(feature = "rm-dead-stores")]
 const RM_DEAD_STORES: bool = true;
 
-#[cfg(not(feature = "rm-deadstores"))]
+#[cfg(not(feature = "rm-dead-stores"))]
 const RM_DEAD_STORES: bool = false;
 
 #[cfg(feature = "reg-alloc")]

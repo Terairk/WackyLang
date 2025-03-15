@@ -173,13 +173,11 @@ impl InterferenceGraph {
             return index;
         }
 
-        // println!("Adding node {:?}", id);
         let index = self.nodes.len();
         let mut node = Node::new(id.clone());
         node.update_spill_cost(spill_cost);
         self.nodes.push(node);
         self.id_to_index.insert(id.clone(), index);
-        // println!("graph is {:?}", self);
         index
     }
 
@@ -289,8 +287,6 @@ impl InterferenceGraph {
     }
 
     pub fn are_neighbours(&self, id1: &Operand, id2: &Operand) -> bool {
-        // println!("graph is {:?}", self);
-        // println!("id1 is {:?}, id2 is {:?}", id1, id2);
         let index1 = self.get_node_index(id1).unwrap();
         let index2 = self.get_node_index(id2).unwrap();
         self.nodes[index1].neighbors.contains(&index2)
@@ -397,7 +393,6 @@ mod build_interference_graph {
     // But we do something during the instruction fix-up pass
     fn meet(block: &LiveBasicBlock, cfg: &AsmCFG) -> LiveRegisters {
         let mut live_regs = LiveRegisters::new();
-        // println!("{:?}", cfg);
         for succ_id in &block.succs {
             match *succ_id {
                 NodeId::Entry => panic!("Entry node should not be a successor"),
@@ -574,7 +569,7 @@ mod build_interference_graph {
                 used.push(operand);
             }
             AsmInstruction::Pop(_register) => {
-                panic!("Pop should not be used in this context");
+                // No registers used or updated
             }
             AsmInstruction::Call(fun_name, _) => {
                 // let new_regs = Vec::new();
@@ -583,10 +578,7 @@ mod build_interference_graph {
                 // param-passing registers
                 let reg_set = match func_set.get(&fun_name) {
                     Some(set) => set,
-                    None => {
-                        println!("Warning: Function {} not found in function set", fun_name);
-                        &RS6
-                    }
+                    None => &RS6,
                 };
 
                 let regs = register_set_to_vec(*reg_set);
@@ -843,7 +835,6 @@ fn replace_pseudoregs(
     let map_pseudo = |op: Operand| match op {
         Operand::Pseudo(p) => {
             let hardreg = register_map.get(&p);
-            // println!("operator p in replace_pseudoregs: {:?}", p);
             if let Some(hardreg) = hardreg {
                 Operand::Reg(*hardreg)
             } else {
@@ -860,6 +851,10 @@ fn replace_pseudoregs(
     instructions
         .into_iter()
         .map(|instr| replace_ops(instr, map_pseudo))
+        .filter(|instr| match instr {
+            AsmInstruction::Mov { src, dst, .. } => src != dst,
+            _ => true,
+        })
         .collect()
 }
 
@@ -879,7 +874,7 @@ fn get_operands(instruction: &AsmInstruction) -> Vec<Operand> {
         AsmInstruction::Idiv(op) => vec![op.clone()],
         AsmInstruction::SetCC { operand, .. } => vec![operand.clone()],
         AsmInstruction::Push(op) => vec![op.clone()],
-        AsmInstruction::Pop(_) => panic!("Shouldn't use this yet"),
+        AsmInstruction::Pop(_) => vec![],
         // Instructions with no operands to extract
         AsmInstruction::Label(_)
         | AsmInstruction::Call(_, _)
@@ -966,9 +961,6 @@ fn replace_ops(
             operand: f(operand),
         },
         AsmInstruction::Push(op) => AsmInstruction::Push(f(op)),
-        AsmInstruction::Pop(_) => {
-            panic!("Shouldn't use this as Pop doesn't have any operands to replace")
-        }
         // Instructions where we don't need to replace operands
         _ => instruction.clone(),
     }
@@ -1108,8 +1100,6 @@ mod coalesce {
     fn briggs_test(graph: &InterferenceGraph, x: &Operand, y: &Operand) -> bool {
         // significant_neighbours are those whose degree is >= k
         let mut significant_neighbours = 0;
-        // println!("x is {:?}, y is {:?}", x, y);
-        // println!("graph is {:?}", graph);
 
         let x_node = graph.get_node_index(x).unwrap();
         let y_node = graph.get_node_index(y).unwrap();
@@ -1158,13 +1148,7 @@ mod coalesce {
     ) -> Vec<AsmInstruction> {
         instructions
             .into_iter()
-            .map(|instr| {
-                replace_ops(instr, |op| {
-                    let new_op = coalescer.find(&op);
-                    // println!("replacing {:?} with {:?}", op, new_op);
-                    coalescer.find(&op)
-                })
-            })
+            .map(|instr| replace_ops(instr, |op| coalescer.find(&op)))
             .filter(|instr| match instr {
                 Mov { src, dst, .. } => src != dst,
                 _ => true,

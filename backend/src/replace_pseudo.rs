@@ -42,7 +42,6 @@ pub fn replace_pseudo_in_program(
         .into_iter()
         .map(|(k, v)| (k.into(), v))
         .collect();
-    // println!("{:?}", symbol_table);
     for func in &mut program.asm_functions {
         // Start fresh for each function.
         let mut mapping: HashMap<String, i32> = HashMap::new();
