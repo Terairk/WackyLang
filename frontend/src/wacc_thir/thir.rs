@@ -154,6 +154,7 @@ pub trait RenameIdent {
     ///
     /// # Panics
     /// If the types of the old and new identifiers mismatch, the function will panic.
+    #[must_use]
     fn rename_ident<R>(self, renamer: &mut R) -> Self
     where
         Self: Sized,
