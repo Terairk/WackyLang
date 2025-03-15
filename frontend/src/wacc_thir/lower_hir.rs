@@ -11,6 +11,7 @@ use crate::wacc_thir::thir::{
 use crate::wacc_thir::types::{BaseType, PairType, Type};
 use crate::SemanticError;
 use ariadne::Span as _;
+use chumsky::container::Container;
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
@@ -214,6 +215,8 @@ struct HirLoweringCtx {
 }
 
 impl HirLoweringCtx {
+    const TAILREC_LOOP: &'static str = "outermost_tailrec_loop";
+
     fn new(func_symbol_table: HirFuncSymbolTable, ident_counter: usize) -> Self {
         Self {
             errors: Vec::new(),
@@ -376,6 +379,14 @@ impl HirLoweringCtx {
     }
 
     #[inline]
+    pub fn make_new_ident(&mut self, ident: ast::Ident, r#type: Type) -> Ident {
+        let ident = hir::Ident::new(&mut self.ident_counter, ident);
+        self.hir_ident_symbol_table
+            .insert(ident.clone(), r#type.clone());
+        Ident { ident, r#type }
+    }
+
+    #[inline]
     pub const fn make_new_loop_label(&mut self, ident: ast::Ident) -> hir::LoopLabel {
         hir::LoopLabel::new(&mut self.ident_counter, ident)
     }
@@ -409,13 +420,13 @@ impl HirLoweringCtx {
         // raise an error about it
         let optimized = match (
             tail_recursion_optimization(
-                |label| self.make_new_loop_label(ast::Ident::from_str(label)),
+                self.make_new_loop_label(ast::Ident::from_str(Self::TAILREC_LOOP)),
+                &mut |ident, r#type| self.make_new_ident(ast::Ident::from_str(ident), r#type),
                 unoptimized,
             ),
             func.is_tailrec,
         ) {
-            (Ok(o) | Err(o), false) => o,
-            (Ok(o), true) => o,
+            (Ok(o) | Err(o), false) | (Ok(o), true) => o,
             (Err(o), true) => {
                 self.add_error(HirLoweringError::FuncNotTailrec(func.name));
                 o

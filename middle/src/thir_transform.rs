@@ -1027,7 +1027,7 @@ pub(crate) mod thir_lowering_ctx {
             let wack_ty = self
                 .symbol_table
                 .get(&ident)
-                .expect("identifier missing from symbol table")
+                .expect(format!("identifier '{}' missing from symbol table", ident).as_str())
                 .clone();
 
             // assert types match and return

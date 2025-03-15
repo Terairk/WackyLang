@@ -149,12 +149,21 @@ pub struct Ident {
     pub r#type: Type,
 }
 
+pub trait RenameIdent {
+    /// Renames all occurrences of an identifier within this item, based on a renaming function.
+    fn rename_ident<R>(self, renamer: &mut R) -> Self
+    where
+        Self: Sized,
+        R: FnMut(hir::Ident) -> Option<hir::Ident>;
+}
+
 // all implementation blocks live here
 mod impls {
     use crate::parsing::ast;
+    use crate::wacc_hir::hir;
     use crate::wacc_thir::thir::{
         ArrayElem, ArrayLiter, BinaryExpr, EmptyStatVecError, Expr, Func, Ident, LValue, Liter,
-        NewPair, PairElem, Program, RValue, Stat, StatBlock, UnaryExpr,
+        NewPair, PairElem, Program, RValue, RenameIdent, Stat, StatBlock, UnaryExpr,
     };
     use crate::wacc_thir::types::Type;
     use delegate::delegate;
@@ -233,6 +242,70 @@ mod impls {
                     else_val,
                     r#type: new_type,
                 },
+            }
+        }
+    }
+
+    impl RenameIdent for Expr {
+        #[inline]
+        fn rename_ident<R>(self, renamer: &mut R) -> Self
+        where
+            Self: Sized,
+            R: FnMut(hir::Ident) -> Option<hir::Ident>,
+        {
+            match self {
+                Expr::Liter(_) => self,
+                Expr::Ident(i) => Expr::Ident(i.rename_ident(renamer)),
+                Expr::ArrayElem(a) => Expr::ArrayElem(Box::new((*a).rename_ident(renamer))),
+                Expr::Unary(e) => Expr::Unary(Box::new((*e).rename_ident(renamer))),
+                Expr::Binary(e) => Expr::Binary(Box::new((*e).rename_ident(renamer))),
+                Expr::IfThenElse {
+                    if_cond,
+                    then_val,
+                    else_val,
+                    r#type,
+                } => Expr::IfThenElse {
+                    if_cond: Box::new((*if_cond).rename_ident(renamer)),
+                    then_val: Box::new((*then_val).rename_ident(renamer)),
+                    else_val: Box::new((*else_val).rename_ident(renamer)),
+                    r#type,
+                },
+            }
+        }
+    }
+
+    impl RenameIdent for UnaryExpr {
+        #[inline]
+        fn rename_ident<R>(self, renamer: &mut R) -> Self
+        where
+            Self: Sized,
+            R: FnMut(hir::Ident) -> Option<hir::Ident>,
+        {
+            let UnaryExpr {
+                expr: (op, expr),
+                r#type,
+            } = self;
+            UnaryExpr {
+                expr: (op, expr.rename_ident(renamer)),
+                r#type,
+            }
+        }
+    }
+
+    impl RenameIdent for BinaryExpr {
+        #[inline]
+        fn rename_ident<R>(self, renamer: &mut R) -> Self
+        where
+            Self: Sized,
+            R: FnMut(hir::Ident) -> Option<hir::Ident>,
+        {
+            let BinaryExpr {
+                expr: (l, op, r),
+                r#type,
+            } = self;
+            BinaryExpr {
+                expr: (l.rename_ident(renamer), op, r.rename_ident(renamer)),
+                r#type,
             }
         }
     }
@@ -580,6 +653,51 @@ mod impls {
                     index,
                     r#type: new_type,
                 },
+            }
+        }
+    }
+
+    impl RenameIdent for ArrayElem {
+        #[inline]
+        fn rename_ident<R>(self, renamer: &mut R) -> Self
+        where
+            Self: Sized,
+            R: FnMut(hir::Ident) -> Option<hir::Ident>,
+        {
+            match self {
+                ArrayElem::FirstAccess {
+                    array_name,
+                    index,
+                    r#type,
+                } => ArrayElem::FirstAccess {
+                    array_name: array_name.rename_ident(renamer),
+                    index: index.rename_ident(renamer),
+                    r#type,
+                },
+                ArrayElem::NestedAccess {
+                    array_elem,
+                    index,
+                    r#type,
+                } => ArrayElem::NestedAccess {
+                    array_elem: Box::new((*array_elem).rename_ident(renamer)),
+                    index: index.rename_ident(renamer),
+                    r#type,
+                },
+            }
+        }
+    }
+
+    impl RenameIdent for Ident {
+        #[inline]
+        fn rename_ident<R>(self, renamer: &mut R) -> Self
+        where
+            Self: Sized,
+            R: FnMut(hir::Ident) -> Option<hir::Ident>,
+        {
+            let Ident { ident, r#type } = self;
+            Self {
+                ident: renamer(ident.clone()).unwrap_or(ident),
+                r#type,
             }
         }
     }

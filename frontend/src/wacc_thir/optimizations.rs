@@ -1,9 +1,13 @@
 use crate::parsing::ast;
 use crate::wacc_hir::hir;
-use crate::wacc_thir::thir::{Expr, Func, Ident, LValue, RValue, Stat, StatBlock};
+use crate::wacc_thir::thir::{
+    Expr, Func, Ident, LValue, RValue, RenameIdent, Stat, StatBlock, Type,
+};
+use chumsky::container::Container;
+use std::collections::HashMap;
 use util::ext::{BoxedSliceExt, VecExt};
 
-const TAILREC_LOOP: &str = "outermost_tailrec_loop";
+const TAILREC_TEMP: &str = "tailrec_temp_variable";
 
 /// Detects early "terminator" statements such as `return` or `exit` and
 /// eliminates any subsequent unreachable code in the same block.
@@ -52,9 +56,14 @@ pub fn unreachable_code_elimination(stat_block: StatBlock) -> StatBlock {
     }))
 }
 
-pub fn tail_recursion_optimization<L>(mk_loop_label: L, func: Func) -> Result<Func, Func>
+#[allow(clippy::too_many_lines)]
+pub fn tail_recursion_optimization<I>(
+    outer_tailrec_loop_label: hir::LoopLabel,
+    mk_ident: &mut I,
+    func: Func,
+) -> Result<Func, Func>
 where
-    L: FnOnce(&'static str) -> hir::LoopLabel,
+    I: FnMut(&'static str, Type) -> Ident,
 {
     // look for any call-statements that are self-recursive, if none found
     // then no tail-recursive optimization is applicable
@@ -71,14 +80,18 @@ where
     // and replace all tail-recursive calls (and returns) with
     // 1) in-place function-parameter updates, and
     // 2) `nextloop` statements targeting this new outer-most loop
-    let loop_label = mk_loop_label(TAILREC_LOOP);
+    let loop_label = outer_tailrec_loop_label;
     #[allow(clippy::items_after_statements, clippy::expect_used)]
-    fn rewrite_tailrec_calls(
+    fn rewrite_tailrec_calls<I>(
         func_name: &ast::Ident,
         func_params: &[Ident],
         tailrec_loop_label: &hir::LoopLabel,
+        mk_ident: &mut I,
         stat_block: StatBlock,
-    ) -> StatBlock {
+    ) -> StatBlock
+    where
+        I: FnMut(&'static str, Type) -> Ident,
+    {
         // accumulate rewritten statements
         let mut accum = vec![];
 
@@ -117,11 +130,22 @@ where
             // at this point, the return value should be precisely equal to the identifier just defined
             assert_eq!(return_val, Expr::Ident(name));
 
+            // save old param values to temporaries, in order to avoid overriding
+            let mut temp_map = HashMap::with_capacity(func_params.len());
+            for param in func_params {
+                temp_map.insert(
+                    param.ident.clone(),
+                    mk_ident(TAILREC_TEMP, param.r#type.clone()).ident,
+                );
+            }
+
             // now, push one in-place parameter-update assignment statement, per parameter of function
             for (param, new_value) in func_params.iter().zip(args.into_iter()) {
+                let renamed_expr =
+                    new_value.rename_ident(&mut |ident| temp_map.get(&ident).cloned());
                 accum.push(Stat::Assignment {
                     lvalue: LValue::Ident(param.clone()),
-                    rvalue: RValue::Expr(new_value),
+                    rvalue: RValue::Expr(renamed_expr),
                 });
             }
 
@@ -131,8 +155,9 @@ where
         }
 
         // now apply the same transformation recursively to any nested stat-blocks
-        let recursive_transformation =
-            |body| rewrite_tailrec_calls(func_name, func_params, tailrec_loop_label, body);
+        let mut recursive_transformation = |body| {
+            rewrite_tailrec_calls(func_name, func_params, tailrec_loop_label, mk_ident, body)
+        };
         let accum = accum.map(|s| match s {
             Stat::IfThenElse {
                 if_cond,
@@ -153,7 +178,8 @@ where
     }
 
     // finally, stick the resulting transformed block into an outer-loop and return the result
-    let transformed = rewrite_tailrec_calls(&func.name, &func.params, &loop_label, func.body);
+    let transformed =
+        rewrite_tailrec_calls(&func.name, &func.params, &loop_label, mk_ident, func.body);
     let body = StatBlock::singleton(Stat::LoopDo {
         label: loop_label,
         body: transformed,
