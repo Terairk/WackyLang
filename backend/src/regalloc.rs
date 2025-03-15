@@ -56,6 +56,7 @@ fn allocate_registers(
             break;
         }
         let mut coalesced_regs = coalesce(&mut interference_graph, &instructions);
+
         if coalesced_regs.nothing_was_coalesced() {
             break;
         }
@@ -172,25 +173,40 @@ impl InterferenceGraph {
             return index;
         }
 
+        // println!("Adding node {:?}", id);
         let index = self.nodes.len();
         let mut node = Node::new(id.clone());
         node.update_spill_cost(spill_cost);
         self.nodes.push(node);
         self.id_to_index.insert(id.clone(), index);
+        // println!("graph is {:?}", self);
         index
     }
 
     /// Removes a node from the graph
-    pub fn remove_node(&mut self, id: &Operand) {
-        let index = self.get_node_index(id).unwrap();
-        self.nodes.remove(index);
-        self.id_to_index.remove(id);
-    }
+    pub fn remove_node(&mut self, id: &Operand) -> Result<(), String> {
+        if let Some(&index) = self.id_to_index.get(id) {
+            // Remove this node from all its neighbors' neighbor lists
+            let neighbors = self.nodes[index].neighbors.clone();
+            for &neighbor_idx in &neighbors {
+                self.nodes[neighbor_idx]
+                    .neighbors
+                    .retain(|&idx| idx != index);
+            }
 
-    pub fn remove_node_by_index(&mut self, index: usize) {
-        let operand = self.nodes[index].get_id().clone();
-        self.nodes.remove(index);
-        self.id_to_index.remove(&operand);
+            // Clear this node's own neighbor list
+            self.nodes[index].neighbors.clear();
+
+            // Remove from the id_to_index map to make it unreachable
+            self.id_to_index.remove(id);
+
+            // // Mark as pruned (optional, for clarity)
+            // self.nodes[index].pruned = true;
+
+            Ok(())
+        } else {
+            Err(format!("Node with ID {:?} not found", id))
+        }
     }
 
     /// Adds an interference edge between two nodes
@@ -273,6 +289,8 @@ impl InterferenceGraph {
     }
 
     pub fn are_neighbours(&self, id1: &Operand, id2: &Operand) -> bool {
+        // println!("graph is {:?}", self);
+        // println!("id1 is {:?}, id2 is {:?}", id1, id2);
         let index1 = self.get_node_index(id1).unwrap();
         let index2 = self.get_node_index(id2).unwrap();
         self.nodes[index1].neighbors.contains(&index2)
@@ -963,70 +981,63 @@ mod coalesce {
     // We can choose to use any union-find implementation but I wanna try use the ena-crate
     // for efficient union-find operations
     use AsmInstruction::Mov;
-    use ena::unify::{InPlaceUnificationTable, UnifyKey};
-    use std::hash::Hash;
 
-    // We need to implement UnifyKey for Operand
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub struct OperandKey(u32);
-
-    impl UnifyKey for OperandKey {
-        type Value = ();
-        fn index(&self) -> u32 {
-            self.0
-        }
-        fn from_index(u: u32) -> Self {
-            OperandKey(u)
-        }
-        fn tag() -> &'static str {
-            "OperandKey"
-        }
-    }
-
+    #[derive(Debug, Clone)]
     pub struct RegisterCoalescer {
-        table: InPlaceUnificationTable<OperandKey>,
-        operand_to_key: HashMap<Operand, OperandKey>,
-        key_to_operand: HashMap<OperandKey, Operand>,
-        next_key: u32,
+        // Maps operand to its parent
+        parent: HashMap<Operand, Operand>,
+        has_coalesced: bool,
     }
 
     impl RegisterCoalescer {
         pub fn new() -> Self {
             RegisterCoalescer {
-                table: InPlaceUnificationTable::new(),
-                operand_to_key: HashMap::new(),
-                key_to_operand: HashMap::new(),
-                next_key: 0,
+                parent: HashMap::new(),
+                has_coalesced: false,
             }
         }
 
-        fn get_or_create_key(&mut self, operand: &Operand) -> OperandKey {
-            if let Some(&key) = self.operand_to_key.get(operand) {
-                key
-            } else {
-                let key = OperandKey(self.next_key);
-                self.next_key += 1;
-                self.table.new_key(());
-                self.operand_to_key.insert(operand.clone(), key);
-                self.key_to_operand.insert(key, operand.clone());
-                key
+        // Find with path compression
+        pub fn find(&mut self, x: &Operand) -> Operand {
+            if !self.parent.contains_key(x) {
+                self.parent.insert(x.clone(), x.clone());
+                return x.clone();
             }
+
+            let parent = self.parent.get(x).unwrap().clone();
+            if parent == *x {
+                return x.clone();
+            }
+
+            let root = self.find(&parent);
+            self.parent.insert(x.clone(), root.clone());
+            root
         }
 
+        // Union with preference for hard registers
         pub fn union(&mut self, x: &Operand, y: &Operand) {
-            let x_key = self.get_or_create_key(x);
-            let y_key = self.get_or_create_key(y);
-            self.table.union(x_key, y_key);
-        }
+            let x_root = self.find(x);
+            let y_root = self.find(y);
 
-        pub fn find(&mut self, r: &Operand) -> Operand {
-            let r_key = self.get_or_create_key(r);
-            let rep_key = self.table.find(r_key);
-            self.key_to_operand.get(&rep_key).unwrap().clone()
+            if x_root == y_root {
+                return;
+            }
+
+            self.has_coalesced = true;
+
+            // Choose hard register as representative
+            if is_hard_reg_op(&x_root) {
+                self.parent.insert(y_root, x_root);
+            } else if is_hard_reg_op(&y_root) {
+                self.parent.insert(x_root, y_root);
+            } else {
+                // Both are pseudoregisters, arbitrary choice (can be refined)
+                self.parent.insert(y_root, x_root);
+            }
         }
 
         pub fn nothing_was_coalesced(&self) -> bool {
-            self.operand_to_key.len() == self.next_key as usize
+            !self.has_coalesced
         }
     }
 
@@ -1061,7 +1072,7 @@ mod coalesce {
                 _ => {}
             }
         }
-        return coalescer;
+        coalescer
     }
 
     fn update_graph(graph: &mut InterferenceGraph, to_merge: &Operand, to_keep: &Operand) {
@@ -1077,7 +1088,7 @@ mod coalesce {
         }
 
         // Remove the node from the graph
-        graph.nodes.remove(node_to_remove);
+        graph.remove_node(to_merge).unwrap();
     }
 
     fn conservative_coalescable(graph: &InterferenceGraph, src: &Operand, dst: &Operand) -> bool {
@@ -1097,6 +1108,8 @@ mod coalesce {
     fn briggs_test(graph: &InterferenceGraph, x: &Operand, y: &Operand) -> bool {
         // significant_neighbours are those whose degree is >= k
         let mut significant_neighbours = 0;
+        // println!("x is {:?}, y is {:?}", x, y);
+        // println!("graph is {:?}", graph);
 
         let x_node = graph.get_node_index(x).unwrap();
         let y_node = graph.get_node_index(y).unwrap();
@@ -1145,7 +1158,13 @@ mod coalesce {
     ) -> Vec<AsmInstruction> {
         instructions
             .into_iter()
-            .map(|instr| replace_ops(instr, |op| coalescer.find(&op)))
+            .map(|instr| {
+                replace_ops(instr, |op| {
+                    let new_op = coalescer.find(&op);
+                    // println!("replacing {:?} with {:?}", op, new_op);
+                    coalescer.find(&op)
+                })
+            })
             .filter(|instr| match instr {
                 Mov { src, dst, .. } => src != dst,
                 _ => true,
