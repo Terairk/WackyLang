@@ -82,6 +82,7 @@ struct Args {
     #[arg(long = "rm-dead-stores")]
     eliminate_dead_stores: bool,
 
+    /// Whether to perform register allocation
     #[arg(long = "reg-alloc")]
     reg_alloc: bool,
 
