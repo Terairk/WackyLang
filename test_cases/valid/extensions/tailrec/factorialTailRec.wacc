@@ -16,7 +16,7 @@ begin
     then
       return a
     else
-      int ret_val = call fac_go(n - 1, n * a) ;
+      int ret_val = call fac_go(n-1, n*a) ;
       return ret_val
     fi
   end

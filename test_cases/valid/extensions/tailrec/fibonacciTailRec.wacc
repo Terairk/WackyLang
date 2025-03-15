@@ -11,12 +11,17 @@
 # Program:
 
 begin
-  tailrec int fibonacci(int n, int a, int b) is
+  tailrec int fibonacci_go(int n, int a, int b) is
     if n <= 0 then
       return a
     fi;
-    int next = call fibonacci(n - 1, a + b, a);
+    int next = call fibonacci_go(n-1, a+b, a);
     return next
+  end
+
+  int fibonacci(int n) is
+    int ret_val = call fibonacci_go(n, 0, 1) ;
+    return ret_val
   end
 
   println "This program calculates the nth fibonacci number recursively." ;
@@ -26,6 +31,6 @@ begin
   print "The input n is " ;
   println n ;
   print "The nth fibonacci number is " ;
-  int result = call fibonacci(n, 0, 1) ;
+  int result = call fibonacci(n) ;
   println  result
 end

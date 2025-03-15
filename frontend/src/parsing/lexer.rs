@@ -97,12 +97,11 @@ where
     let ident = text::ident()
         .pipe((InternStr::from, Token::Ident))
         .span_tuple()
-        .map(MultiItem::Item)
         .labelled("<ident>")
         .as_context();
 
     // All integer literals
-    let int_liter = int_liter();
+    let int_liter = int_liter().span_tuple();
 
     // character parser
     let well_formed_character = choice((
@@ -175,7 +174,6 @@ where
             ),
         ))
         .span_tuple()
-        .map(MultiItem::Item)
         .labelled("<char-liter>")
         .as_context();
 
@@ -221,7 +219,6 @@ where
         ))
         .map(Token::StrLiter)
         .span_tuple()
-        .map(MultiItem::Item)
         .labelled("<str-liter>")
         .as_context();
 
@@ -231,8 +228,7 @@ where
         just('[').to(Token::Open(Delim::Bracket)),
         just(']').to(Token::Close(Delim::Bracket)),
     ))
-    .span_tuple()
-    .map(MultiItem::Item);
+    .span_tuple();
 
     // all other symbols parser
     let plus = just('+').to(Token::Plus);
@@ -263,8 +259,7 @@ where
         just(';').to(Token::Semicolon),
         just(',').to(Token::Comma),
     ))
-    .span_tuple()
-    .map(MultiItem::Item);
+    .span_tuple();
 
     let keywords = choice([
         text::keyword("begin").to(Token::Begin),
@@ -305,22 +300,37 @@ where
         text::keyword("true").to(Token::True),
         text::keyword("false").to(Token::False),
     ])
-    .span_tuple()
+    .span_tuple();
+
+    // create single-item token parser
+    let single_item_token = choice((
+        // parse literals before other symbols, as they have precedence over any other occurrences
+        // of symbols e.g. the literal +14343 should take precedence over the plus symbol '+'
+        int_liter.clone(),
+        char_liter,
+        str_liter,
+        // parse symbols
+        delim_symbols,
+        other_symbols,
+        // first parse keywords, only then parse identifiers as a fallback
+        keywords,
+        ident.clone(),
+    ))
     .map(MultiItem::Item);
 
-    // if integer literals are separated by plus/minus with no whitespace
+    // if integer literals (or identifiers) are separated by plus/minus with no whitespace
     // then this should be parsed as a separate disambiguation token
-    let spanned_int_liter = int_liter.clone().span_tuple();
+    let int_liter_or_ident = int_liter.clone().or(ident.clone());
     let plus_or_minus = plus.or(minus).span_tuple();
     let no_whitespace_plus_minus_int_liter = group((
-        spanned_int_liter.clone(),
+        int_liter_or_ident.clone(),
         comments.ignored(), // any amount of whitespace/comments should be ignored at this position
         plus_or_minus.clone(),
-        spanned_int_liter.clone(),
+        int_liter_or_ident.clone(),
     ))
     .map(|(lhs, (), op, rhs)| vec![lhs, op, rhs])
     .foldl(
-        group((plus_or_minus, spanned_int_liter)).repeated(),
+        group((plus_or_minus, int_liter_or_ident)).repeated(),
         |mut lhs, (op, rhs)| {
             lhs.push(op);
             lhs.push(rhs);
@@ -332,17 +342,8 @@ where
     let token = choice((
         // parse the exceptions to the "longest match" algorithm first
         no_whitespace_plus_minus_int_liter,
-        // parse literals before other symbols, as they have precedence over any other occurrences
-        // of symbols e.g. the literal +14343 should take precedence over the plus symbol '+'
-        int_liter.span_tuple().map(MultiItem::Item),
-        char_liter,
-        str_liter,
-        // parse symbols
-        delim_symbols,
-        other_symbols,
-        // first parse keywords, only then parse identifiers as a fallback
-        keywords,
-        ident,
+        // fallback to single item token
+        single_item_token,
     ));
 
     // tokens are padded by comments and whitespace
