@@ -15,8 +15,10 @@ use middle::thir_transform::lower_program;
 use regex::Regex;
 use std::fs;
 use std::fs::create_dir_all;
-use std::io::stdout;
+use std::io::{stdout, Write};
+use std::ops::Add;
 use std::path::{Path, PathBuf};
+use chumsky::container::Seq;
 use util::gen_flags::reset_flags_gbl;
 use util::opt_flags::OptimizationConfig;
 
@@ -271,9 +273,10 @@ pub fn compile_single_test(path: &Path) -> Result<String, String> {
 
 /// Extract expected output from the test file.
 fn extract_expected_output(source: &str) -> Vec<String> {
-    if source.contains("read") {
-        return Vec::new();
-    }
+    // if source.contains("read") {
+    //     println!("{source}");
+    //     return Vec::new();
+    // }
     let mut expected_output = Vec::new();
     let mut in_output_section = false;
     for line in source.lines() {
@@ -295,6 +298,25 @@ fn extract_expected_output(source: &str) -> Vec<String> {
     }
 
     expected_output
+}
+
+fn is_interactive(source: &str) -> bool {
+    let in_str = "# Input:";
+    let read_str = "read";
+    if source.contains(read_str) && !source.contains(in_str) {
+        true;
+    }
+    false
+}
+/// Extract input from the test file.
+fn extract_input(source: &str) -> Option<String> {
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("# Input: ") {
+            return Some(trimmed.to_owned().trim_start_matches("# Input: ").to_owned().add("\n"))
+        }
+    }
+    None
 }
 
 /// Replaces actual output runtime errors/addresses with appropriate blocks from expected output
@@ -326,9 +348,12 @@ pub fn compare_test_result(path: &Path) -> Result<String, String> {
         }
     };
 
+    let input = extract_input(&source);
     let expected_output = extract_expected_output(&source);
-
-    if expected_output.is_empty() {
+    println!("expected_output: {:?}", expected_output);
+    println!("input: {:?}", input);
+    println!("{:?}", path);
+    if is_interactive(&source) || expected_output.is_empty() {
         return Ok(NO_OUTPUT_STR.to_owned());
     }
 
@@ -360,12 +385,28 @@ pub fn compare_test_result(path: &Path) -> Result<String, String> {
     }
 
     // Step 2: Run the compiled program and capture output
-    let output = Command::new(&bin_path)
+    let mut child = Command::new(&bin_path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
+        .spawn()
+        .map_err(|e| format!("Failed to spawn process: {e}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(input.unwrap_or(String::new()).replace(" ", "\n").as_bytes())
+            .map_err(|e| format!("Failed to write to stdin: {e}"))?;
+    }
+    println!("!!!!");
+    let output = child
+        .wait_with_output()
         .map_err(|e| format!("Execution error: {e}"))?;
+    // let output = Command::new(&bin_path)
+    //     .stdin(Stdio::piped())
+    //     .stdout(Stdio::piped())
+    //     .stderr(Stdio::piped())
+    //     .output()
+    //     .map_err(|e| format!("Execution error: {e}"))?;
 
     let actual_output = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let transformed_actual_output = transform_actual_output_to_expected_form(actual_output);
