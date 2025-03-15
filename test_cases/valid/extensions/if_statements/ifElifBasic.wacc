@@ -1,0 +1,15 @@
+# basic if-elif statment
+
+# Output:
+# correct
+#
+
+# Program:
+
+begin
+  if (2 == 1) then
+    println "2 is equal to 1"
+  elif (1 == 1) then
+    println "correct"
+  fi
+end

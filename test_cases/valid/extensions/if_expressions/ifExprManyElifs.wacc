@@ -1,0 +1,18 @@
+# if expression with several elifs in one
+
+# Output:
+# 123
+# 456
+# 789
+#
+
+# Program:
+
+begin
+  int x = if (4 == 1) then 4 elif (3 == 1) then 3 elif (2 == 1) then 2 elif (1 == 1) then 123 else 0 fi;
+  int y = if (4 == 4) then 456 elif (3 == 1) then 3 elif (2 == 1) then 2 elif (1 == 1) then 1 else 0 fi;
+  int z = if (4 == 1) then 4 elif (3 == 1) then 3 elif (2 == 1) then 2 elif (0 == 1) then 0 else 789 fi;
+  println x;
+  println y;
+  println z
+end

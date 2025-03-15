@@ -1,0 +1,33 @@
+# extended if-elif test
+
+# Output:
+# negative
+# zero
+# small positive
+# medium positive
+# big positive
+#
+
+# Program:
+
+begin
+  bool size(int x) is
+    if x < 0 then
+      println "negative"
+    elif x == 0 then
+      println "zero"
+    elif x < 5 then
+      println "small positive"
+    elif x < 10 then
+      println "medium positive"
+    else
+      println "big positive"
+    fi;
+    return true
+  end
+  bool b = call size(-5);
+  b = call size(0);
+  b = call size(3);
+  b = call size(8);
+  b = call size(123)
+end

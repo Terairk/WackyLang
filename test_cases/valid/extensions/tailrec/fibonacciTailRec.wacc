@@ -1,0 +1,34 @@
+# tailrec Fibonacci function
+
+# Input: 30
+
+# Output:
+# This program calculates the nth fibonacci number recursively.
+# Please enter n (should not be too large): The input n is 30
+# The nth fibonacci number is 832040
+#
+
+# Program:
+
+begin
+  int fibonacci(int n, int a, int b) is
+    print a;
+    print " ";
+    println b;
+    if n <= 1 then
+      return a
+    fi;
+    int next = call fibonacci(n - 1, a + b, a);
+    return next
+  end
+
+  println "This program calculates the nth fibonacci number recursively." ;
+  print "Please enter n (should not be too large): " ;
+  int n = 30;
+  read n;
+  print "The input n is " ;
+  println n ;
+  print "The nth fibonacci number is " ;
+  int result = call fibonacci(n, 0, 1) ;
+  println  result
+end

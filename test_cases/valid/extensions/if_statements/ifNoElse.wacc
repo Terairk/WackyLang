@@ -1,0 +1,13 @@
+# basic if statment without else
+
+# Output:
+# correct
+#
+
+# Program:
+
+begin
+  if true then
+    println "correct"
+  fi
+end
