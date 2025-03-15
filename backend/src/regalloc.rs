@@ -967,7 +967,7 @@ fn replace_ops(
 }
 
 mod coalesce {
-    use crate::registers::{is_hard_reg, is_hard_reg_op};
+    use crate::registers::is_hard_reg_op;
 
     use super::*;
     // We can choose to use any union-find implementation but I wanna try use the ena-crate

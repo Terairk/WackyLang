@@ -7,12 +7,12 @@ use crate::regalloc::FunctionCallee;
 use crate::registers::{ARR_INDEX_REG, ARR_LOAD_RETURN, ARR_PTR_REG, RegisterSet};
 use AsmInstruction::{
     AllocateStack, Binary, Call, Cdq, Cmov, Cmp, Comment, DeallocateStack, Idiv, Jmp, JmpCC, Lea,
-    Mov, MovZeroExtend, Pop, Push, Ret, SetCC, Test, Unary as AsmUnary,
+    Mov, MovZeroExtend, Push, Ret, SetCC, Test, Unary as AsmUnary,
 };
 use AssemblyType::{Byte, Longword, Quadword};
 use CondCode::{E, G, GE, L, LE, NE};
 use Operand::{Data, Imm, Indexed, Memory, Pseudo, Reg};
-use Register::{AX, BP, CX, DI, DX, R8, R9, R12, SI, SP};
+use Register::{AX, BP, CX, DI, DX, R8, R9, SI, SP};
 use WackInstr::{
     AddPtr, Alloc, ArrayAccess, Binary as WackBinary, Copy, CopyToOffset, Exit, FreeChecked,
     FreeUnchecked, FunCall, Jump, JumpIfNotZero, JumpIfZero, Label, Load, NullPtrGuard, Print,
