@@ -1,0 +1,23 @@
+# tailrec counting upto maximum 32-bit signed integer function
+
+# Output:
+# This program recursively counts upto, and returns, the maximum 32-bit signed integer value of 2,147,483,647.
+# The maximum 32-bit signed integer value returned is 2147483647
+#
+
+# Program:
+
+begin
+  tailrec int return_2147483647(int n) is
+    if n == 2147483647 then
+      return n
+    fi;
+    int return_val = call return_2147483647(n+1);
+    return return_val
+  end
+
+  println "This program recursively counts upto, and returns, the maximum 32-bit signed integer value of 2,147,483,647." ;
+  print "The maximum 32-bit signed integer value returned is " ;
+  int result = call return_2147483647(-2147483648) ;
+  println result
+end
