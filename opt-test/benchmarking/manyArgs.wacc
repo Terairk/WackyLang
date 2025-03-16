@@ -1,0 +1,33 @@
+# a function with varied inputs
+# Compiles
+
+# Output:
+# a is 42
+# b is true
+# c is u
+# d is hello
+# e is #addrs#
+# f is #addrs#
+# answer is g
+#
+
+# Program:
+
+begin
+  char doSomething(int a, bool b, char c, string d, bool[] e, int[] f) is
+    int aa = a; 
+    bool bb = b;
+    char cc = c;
+    string dd = d;
+    bool[] ee = e;
+    int[] f = f;
+    return 'g'
+  end
+  int i = 10000000;
+  while (i > 0) do
+  bool[] bools = [ false, true ] ;
+  int[] ints = [ 1, 2 ] ;
+  char answer = call doSomething(42, true, 'u', "hello", bools, ints) ;
+  i = i - 1
+  done
+end

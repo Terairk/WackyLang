@@ -101,7 +101,7 @@ begin
         return x / n
     end
 
-    int i = 100;
+    int i = 10000;
     while (i > 0) do  
     # Main function
     int n1 = 10 ;

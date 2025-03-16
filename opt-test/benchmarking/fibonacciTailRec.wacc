@@ -1,10 +1,11 @@
 begin
-  tailrec int fibonacci_go(int n, int a, int b) is
+  int fibonacci_go(int n, int a, int b) is
     if n <= 0 then
       return a
-    fi;
-    int next = call fibonacci_go(n-1, a+b, a);
-    return next
+    else
+    	int next = call fibonacci_go(n-1, a+b, a);
+    	return next
+    fi
   end
 
   int fibonacci(int n) is
@@ -12,12 +13,13 @@ begin
     return ret_val
   end
 
-  int i = 100;
+  int i = 100000;
   while (i > 0) do 
-  int n = 35;
+  int n = 40;
   print "The 40th fibonacci number is " ;
   int result = call fibonacci(n) ;
   println  result;
   i = i - 1
-  done ;
+  done
 end
+
