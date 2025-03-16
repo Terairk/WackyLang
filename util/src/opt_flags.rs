@@ -20,6 +20,9 @@ pub struct OptimizationConfig {
     /// Coalesce registers
     reg_coalesce: bool,
 
+    /// Optimize tail recursion
+    tailrec: bool,
+
     /// Print the CFG
     print_cfg: bool,
 }
@@ -63,5 +66,10 @@ impl OptimizationConfig {
     #[inline]
     pub const fn has_reg_coalesce(&self) -> bool {
         self.reg_coalesce
+    }
+
+    #[inline]
+    pub const fn should_tailrec_optimize(&self) -> bool {
+        self.tailrec
     }
 }

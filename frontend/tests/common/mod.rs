@@ -1,9 +1,9 @@
+use frontend::StreamType;
 use frontend::parsing::lexer::lexing_phase;
 use frontend::parsing::parser::parsing_phase;
 use frontend::source::StrSourceId;
 use frontend::wacc_hir::ast_lowering_phase;
 use frontend::wacc_thir::hir_lowering_phase;
-use frontend::StreamType;
 use std::fs;
 use std::io::stdout;
 use std::path::{Path, PathBuf};
@@ -101,13 +101,14 @@ pub fn run_single_test(path: &Path) -> Result<String, String> {
         SEMANTIC_ERR_CODE,
         StreamType::Stderr,
         stdout,
+        true,
     );
 
     // If there are semantic errors, return an appropriate result
     match lowering_result {
         Err(_) => return Err(SEMANTIC_ERR_STR.to_owned()),
         _ => {}
-    };
+    }
 
     // If both syntax and semantic analysis succeed, return success
     Ok(format!("Test passed: {}", path.display()))

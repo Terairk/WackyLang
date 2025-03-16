@@ -90,6 +90,10 @@ struct Args {
     #[arg(long = "reg-coalesce")]
     reg_coalesce: bool,
 
+    /// Whether to optimize tail recursion
+    #[arg(long = "tailrec")]
+    tailrec: bool,
+
     /// Whether to print the CFG
     #[arg(long = "print-cfg")]
     print_cfg: bool,
@@ -125,6 +129,7 @@ impl Args {
             )
             .reg_alloc(self.optimize || self.reg_alloc || self.optimize_no_coalesce)
             .reg_coalesce(self.optimize || self.reg_coalesce)
+            .tailrec(self.optimize || self.tailrec || self.optimize_no_coalesce)
             .print_cfg(self.print_cfg)
             .build()
     }
@@ -245,6 +250,7 @@ fn main() -> ExitCode {
         SEMANTIC_ERR_CODE as i32,
         StreamType::Stderr,
         stdout,
+        optimization_config.should_tailrec_optimize(),
     );
 
     // If there are semantic errors, return an appropriate result

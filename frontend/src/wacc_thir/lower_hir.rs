@@ -1,15 +1,15 @@
+use crate::SemanticError;
 use crate::parsing::ast;
 use crate::source::{SourcedBoxedNode, SourcedNode, SourcedSpan};
 use crate::wacc_hir::hir::PairElemSelector;
 use crate::wacc_hir::lower_ast::HirFuncSymbolTable;
-use crate::wacc_hir::{hir, AstLoweringPhaseOutput};
+use crate::wacc_hir::{AstLoweringPhaseOutput, hir};
 use crate::wacc_thir::optimizations::{tail_recursion_optimization, unreachable_code_elimination};
 use crate::wacc_thir::thir::{
     ArrayElem, ArrayLiter, BinaryExpr, Expr, Func, Ident, LValue, Liter, NewPair, PairElem,
     Program, RValue, Stat, StatBlock, UnaryExpr,
 };
 use crate::wacc_thir::types::{BaseType, PairType, Type};
-use crate::SemanticError;
 use ariadne::Span as _;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
@@ -210,18 +210,24 @@ struct HirLoweringCtx {
     current_func_hir_return_type: Option<hir::Type>,
     hir_ident_symbol_table: IdentSymbolTable,
     ident_counter: usize,
+    should_tailrec_optimize: bool,
 }
 
 impl HirLoweringCtx {
     const TAILREC_LOOP: &'static str = "outermost_tailrec_loop";
 
-    fn new(func_symbol_table: HirFuncSymbolTable, ident_counter: usize) -> Self {
+    fn new(
+        func_symbol_table: HirFuncSymbolTable,
+        ident_counter: usize,
+        should_tailrec_optimize: bool,
+    ) -> Self {
         Self {
             errors: Vec::new(),
             func_symbol_table,
             current_func_hir_return_type: None,
             hir_ident_symbol_table: IdentSymbolTable(HashMap::new()),
             ident_counter,
+            should_tailrec_optimize,
         }
     }
 
@@ -416,6 +422,9 @@ impl HirLoweringCtx {
 
         // perform tail-call optimization. if function is `tailrec` and the optimization failed,
         // raise an error about it
+        if !self.should_tailrec_optimize {
+            return unoptimized;
+        }
         let optimized = match (
             tail_recursion_optimization(
                 self.make_new_loop_label(ast::Ident::from_str(Self::TAILREC_LOOP)),
@@ -452,7 +461,7 @@ impl HirLoweringCtx {
         let unoptimized = StatBlock(stat_block.0.map(|stat| self.lower_stat(stat.into_inner())));
 
         // apply optimizations
-        let optimized = unreachable_code_elimination(unoptimized);
+        let optimized = unreachable_code_elimination(unoptimized, self.should_tailrec_optimize);
         optimized
     }
 
@@ -1206,9 +1215,16 @@ impl HirLoweringCtx {
 
 #[inline]
 #[must_use]
-pub fn lower_hir(ast_lowering: AstLoweringPhaseOutput) -> HirLoweringResult {
+pub fn lower_hir(
+    ast_lowering: AstLoweringPhaseOutput,
+    should_tailrec_optimize: bool,
+) -> HirLoweringResult {
     // map program
-    let mut ctx = HirLoweringCtx::new(ast_lowering.func_symbol_table, ast_lowering.ident_counter);
+    let mut ctx = HirLoweringCtx::new(
+        ast_lowering.func_symbol_table,
+        ast_lowering.ident_counter,
+        should_tailrec_optimize,
+    );
     let thir_program = ctx.lower_program(ast_lowering.hir_program);
 
     // map function symbol table

@@ -13,7 +13,10 @@ const TAILREC_TEMP: &str = "tailrec_temp_variable";
 /// Performs basic unreachable code elimination that enliminates "unreachable blocks"
 /// Needed to perform tail recursion optimization.
 // More sophisticated unreachable code elimination is done in the WackyIR phase
-pub fn unreachable_code_elimination(stat_block: StatBlock) -> StatBlock {
+pub fn unreachable_code_elimination(stat_block: StatBlock, should_optimise: bool) -> StatBlock {
+    if !should_optimise {
+        return stat_block;
+    }
     // by default, the last statement should be a "terminator" statement
     let mut term_stat_ix = stat_block.0.len() - 1;
 
@@ -47,12 +50,12 @@ pub fn unreachable_code_elimination(stat_block: StatBlock) -> StatBlock {
             else_body,
         } => Stat::IfThenElse {
             if_cond,
-            then_body: unreachable_code_elimination(then_body),
-            else_body: unreachable_code_elimination(else_body),
+            then_body: unreachable_code_elimination(then_body, should_optimise),
+            else_body: unreachable_code_elimination(else_body, should_optimise),
         },
         Stat::LoopDo { label, body } => Stat::LoopDo {
             label,
-            body: unreachable_code_elimination(body),
+            body: unreachable_code_elimination(body, should_optimise),
         },
         _ => s,
     }))
@@ -284,7 +287,7 @@ pub mod tests {
         ])
         .unwrap();
         assert_eq!(
-            unreachable_code_elimination(before_stat_block),
+            unreachable_code_elimination(before_stat_block, true),
             after_stat_block
         );
     }
@@ -362,7 +365,7 @@ pub mod tests {
         ])
         .unwrap();
         assert_eq!(
-            unreachable_code_elimination(before_stat_block),
+            unreachable_code_elimination(before_stat_block, true),
             after_stat_block
         );
     }

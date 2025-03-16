@@ -53,6 +53,7 @@ pub fn hir_lowering_phase<S: AsRef<str>, W: Write + Clone>(
     hir_lowering_error_code: i32,
     stream_type: StreamType,
     output_stream: W,
+    should_tailrec_optimize: bool,
 ) -> Result<HirLoweringPhaseOutput, crate::wacc_hir::AstLoweringPhaseError> {
     let source = source.as_ref();
 
@@ -63,7 +64,7 @@ pub fn hir_lowering_phase<S: AsRef<str>, W: Write + Clone>(
         func_symbol_table,
         hir_ident_symbol_table,
         ident_counter,
-    } = lower_hir(ast_lowering);
+    } = lower_hir(ast_lowering, should_tailrec_optimize);
 
     // Done to appease the borrow checker while displaying errors
     if !errors.is_empty() {

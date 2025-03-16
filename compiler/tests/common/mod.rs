@@ -4,18 +4,18 @@ use backend::emission::AssemblyFormatter;
 use backend::predefined::generate_predefined;
 use backend::regalloc::allocate_registers_program;
 use backend::replace_pseudo::replace_pseudo_in_program;
+use frontend::StreamType;
 use frontend::parsing::lexer::lexing_phase;
 use frontend::parsing::parser::parsing_phase;
 use frontend::source::StrSourceId;
 use frontend::wacc_hir::ast_lowering_phase;
 use frontend::wacc_thir::hir_lowering_phase;
-use frontend::StreamType;
 use middle::optimizations::optimize;
 use middle::thir_transform::lower_program;
 use regex::Regex;
 use std::fs;
 use std::fs::create_dir_all;
-use std::io::{stdout, Write};
+use std::io::{Write, stdout};
 use std::ops::Add;
 use std::path::{Path, PathBuf};
 use util::gen_flags::reset_flags_gbl;
@@ -103,6 +103,7 @@ pub fn compile_single_test(path: &Path) -> Result<CompileSingleTestOutput, Strin
         .print_cfg(false)
         .reg_alloc(REG_ALLOC)
         .reg_coalesce(REG_COALESCE)
+        .tailrec(true)
         .build();
 
     // println!("Compiling: {}", path.display());
@@ -188,6 +189,7 @@ pub fn compile_single_test(path: &Path) -> Result<CompileSingleTestOutput, Strin
         SEMANTIC_ERR_CODE,
         StreamType::Stderr,
         stdout,
+        opt_config.should_tailrec_optimize(),
     );
 
     // If there are semantic errors, return an appropriate result
