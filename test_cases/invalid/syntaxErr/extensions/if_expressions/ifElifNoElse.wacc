@@ -1,0 +1,12 @@
+# if expression with several elifs in one, but no else
+# Output:
+# #syntax_error#
+
+# Exit:
+# 100
+
+# Program:
+
+begin
+  int x = if (4 == 1) then 4 elif (3 == 1) then 3 elif (2 == 1) then 2 elif (1 == 1) then 123 fi
+end
