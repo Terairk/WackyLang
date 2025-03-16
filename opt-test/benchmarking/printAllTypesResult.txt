@@ -1,0 +1,66 @@
+❯ perf stat ./compile opt-test/benchmarking/printAllTypesLong.wacc --O2
+Full: Successfully wrote to file printAllTypesLong.s
+
+ Performance counter stats for './compile opt-test/benchmarking/printAllTypesLong.wacc --O2':
+
+          1,212.84 msec task-clock:u                     #    0.797 CPUs utilized
+                 0      context-switches:u               #    0.000 /sec
+                 0      cpu-migrations:u                 #    0.000 /sec
+           368,019      page-faults:u                    #  303.436 K/sec
+     3,924,467,045      instructions:u                   #    1.77  insn per cycle
+                                                  #    0.03  stalled cycles per insn
+     2,213,133,507      cycles:u                         #    1.825 GHz
+       117,616,747      stalled-cycles-frontend:u        #    5.31% frontend cycles idle
+       650,064,047      branches:u                       #  535.985 M/sec
+         5,998,932      branch-misses:u                  #    0.92% of all branches
+
+       1.522101616 seconds time elapsed
+
+       0.487191000 seconds user
+       0.715195000 seconds sys
+
+llvm-mca: 1833.5 cycles to compute this program. This ignores function calls
+
+
+              3.31 msec task-clock:u                     #    0.874 CPUs utilized
+                 0      context-switches:u               #    0.000 /sec
+                 0      cpu-migrations:u                 #    0.000 /sec
+                65      page-faults:u                    #   19.608 K/sec
+         1,735,175      instructions:u                   #    1.27  insn per cycle
+                                                  #    0.34  stalled cycles per insn
+         1,369,677      cycles:u                         #    0.413 GHz
+           591,931      stalled-cycles-frontend:u        #   43.22% frontend cycles idle
+           362,361      branches:u                       #  109.312 M/sec
+            18,359      branch-misses:u                  #    5.07% of all branches
+
+       0.003794400 seconds time elapsed
+
+       0.002870000 seconds user
+       0.000949000 seconds sys
+
+===================================================================================
+REFERENCE COMPILER TIME
+
+❯ perf stat java -jar wacc-reference-cli.jar --optimise 1 --target x86-64 opt-test/benchmarking/printAllTypesLong.wacc
+Something went wrong (500):
+TookTooLong()
+Please report this to the Lab Organiser
+
+ Performance counter stats for 'java -jar wacc-reference-cli.jar --optimise 1 --target x86-64 opt-test/benchmarking/printAllTypesLong.wacc':
+
+          2,593.06 msec task-clock:u                     #    0.646 CPUs utilized
+                 0      context-switches:u               #    0.000 /sec
+                 0      cpu-migrations:u                 #    0.000 /sec
+            27,307      page-faults:u                    #   10.531 K/sec
+    11,853,367,412      instructions:u                   #    1.31  insn per cycle
+                                                  #    0.20  stalled cycles per insn
+     9,079,351,174      cycles:u                         #    3.501 GHz
+     2,390,368,424      stalled-cycles-frontend:u        #   26.33% frontend cycles idle
+     2,227,646,515      branches:u                       #  859.081 M/sec
+        89,958,165      branch-misses:u                  #    4.04% of all branches
+
+       4.013718074 seconds time elapsed
+
+       2.282606000 seconds user
+       0.253949000 seconds sys
+

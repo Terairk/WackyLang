@@ -18,4 +18,3 @@ util = { workspace = true }
 once_cell = { workspace = true }
 thiserror = { workspace = true }
 bitflags = { workspace = true }
-ena = "0.14.3"

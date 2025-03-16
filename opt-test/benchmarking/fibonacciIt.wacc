@@ -1,0 +1,18 @@
+# Benchmark against unoptimized
+
+begin
+  int i = 0 ;
+  int f0 = 0 ;
+  int f1 = 1 ;
+  int save = 0;
+  println "The first 30 fibonacci numbers are:" ;
+  while i < 30 do
+    print f0 ;
+    print ", " ;
+    save = f0 ;
+    f0 = f1 ;
+    f1 = save + f1 ;
+    i = i + 1
+  done ;
+  println "..."
+end

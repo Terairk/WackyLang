@@ -1,0 +1,79 @@
+Reference Compiler 
+❯ perf stat java -jar wacc-reference-cli.jar --optimise 1 --target x86-64 opt-test/benchmarking/printAllTypesMedium.wacc
+
+ Performance counter stats for 'java -jar wacc-reference-cli.jar --optimise 1 --target x86-64 opt-test/benchmarking/printAllTypesMedium.wacc':
+
+          2,526.20 msec task-clock:u                     #    0.358 CPUs utilized
+                 0      context-switches:u               #    0.000 /sec
+                 0      cpu-migrations:u                 #    0.000 /sec
+            29,251      page-faults:u                    #   11.579 K/sec
+    11,865,621,156      instructions:u                   #    1.32  insn per cycle
+                                                  #    0.20  stalled cycles per insn
+     8,977,186,908      cycles:u                         #    3.554 GHz
+     2,330,901,040      stalled-cycles-frontend:u        #   25.96% frontend cycles idle
+     2,230,621,239      branches:u                       #  882.994 M/sec
+        89,940,040      branch-misses:u                  #    4.03% of all branches
+
+       7.064935960 seconds time elapsed
+
+       2.275051000 seconds user
+       0.203169000 seconds sys
+
+LLVM-MCA: Total cycles for one iteration: 805.3
+
+              0.87 msec task-clock:u                     #    0.625 CPUs utilized
+                 0      context-switches:u               #    0.000 /sec
+                 0      cpu-migrations:u                 #    0.000 /sec
+                61      page-faults:u                    #   70.107 K/sec
+           308,077      instructions:u                   #    0.84  insn per cycle
+                                                  #    0.49  stalled cycles per insn
+           368,421      cycles:u                         #    0.423 GHz
+           151,023      stalled-cycles-frontend:u        #   40.99% frontend cycles idle
+            63,485      branches:u                       #   72.963 M/sec
+             4,640      branch-misses:u                  #    7.31% of all branches
+
+       0.001391174 seconds time elapsed
+
+       0.000000000 seconds user
+       0.001425000 seconds sys
+
+=======================================================================================
+OUR Compiler
+
+❯ perf stat ./compile opt-test/benchmarking/printAllTypesMedium.wacc --O2
+Full: Successfully wrote to file printAllTypesMedium.s
+
+ Performance counter stats for './compile opt-test/benchmarking/printAllTypesMedium.wacc --O2':
+
+             26.99 msec task-clock:u                     #    0.981 CPUs utilized
+                 0      context-switches:u               #    0.000 /sec
+                 0      cpu-migrations:u                 #    0.000 /sec
+             3,091      page-faults:u                    #  114.521 K/sec
+       211,668,183      instructions:u                   #    2.60  insn per cycle
+                                                  #    0.03  stalled cycles per insn
+        81,346,597      cycles:u                         #    3.014 GHz
+         7,198,451      stalled-cycles-frontend:u        #    8.85% frontend cycles idle
+        35,515,332      branches:u                       #    1.316 G/sec
+           390,318      branch-misses:u                  #    1.10% of all branches
+
+       0.027502744 seconds time elapsed
+
+       0.022231000 seconds user
+       0.005049000 seconds sys
+
+LLVM-MCA: Total cycles for one iteration: 212.8
+              0.80 msec task-clock:u                     #    0.605 CPUs utilized
+                 0      context-switches:u               #    0.000 /sec
+                 0      cpu-migrations:u                 #    0.000 /sec
+                59      page-faults:u                    #   73.519 K/sec
+           301,734      instructions:u                   #    0.92  insn per cycle
+                                                  #    0.45  stalled cycles per insn
+           328,704      cycles:u                         #    0.410 GHz
+           135,100      stalled-cycles-frontend:u        #   41.10% frontend cycles idle
+            62,260      branches:u                       #   77.581 M/sec
+             4,496      branch-misses:u                  #    7.22% of all branches
+
+       0.001327264 seconds time elapsed
+
+       0.000000000 seconds user
+       0.001351000 seconds sys

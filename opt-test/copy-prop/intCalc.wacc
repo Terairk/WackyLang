@@ -1,0 +1,11 @@
+
+begin
+  int x = 42 ;
+  int y = 30 ;
+  int z = x + y ;
+  int a = x; 
+  int b = y + a;
+  int c = b + z;
+  println z;
+  println c
+end
