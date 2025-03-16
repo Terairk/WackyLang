@@ -105,6 +105,10 @@ struct Args {
     /// Enable all optimizations except coalescing
     #[arg(long = "O1")]
     optimize_no_coalesce: bool,
+
+    /// Enable all non register related optimizations
+    #[arg(long = "O0")]
+    optimize_no_reg: bool,
 }
 
 impl Args {
@@ -118,18 +122,32 @@ impl Args {
                 self.optimize
                     || self.fold_constants
                     || self.optimize_no_coalesce
+                    || self.optimize_no_reg
                     || self.eliminate_dead_stores,
             )
-            .copy_propagation(self.optimize || self.copy_propagation || self.optimize_no_coalesce)
+            .copy_propagation(
+                self.optimize
+                    || self.optimize_no_reg
+                    || self.copy_propagation
+                    || self.optimize_no_coalesce,
+            )
             .eliminate_unreachable_code(
-                self.optimize || self.eliminate_unreachable_code || self.optimize_no_coalesce,
+                self.optimize
+                    || self.eliminate_unreachable_code
+                    || self.optimize_no_reg
+                    || self.optimize_no_coalesce,
             )
             .eliminate_dead_stores(
-                self.optimize || self.eliminate_dead_stores || self.optimize_no_coalesce,
+                self.optimize
+                    || self.eliminate_dead_stores
+                    || self.optimize_no_coalesce
+                    || self.optimize_no_reg,
             )
             .reg_alloc(self.optimize || self.reg_alloc || self.optimize_no_coalesce)
             .reg_coalesce(self.optimize || self.reg_coalesce)
-            .tailrec(self.optimize || self.tailrec || self.optimize_no_coalesce)
+            .tailrec(
+                self.optimize || self.tailrec || self.optimize_no_coalesce || self.optimize_no_reg,
+            )
             .print_cfg(self.print_cfg)
             .build()
     }

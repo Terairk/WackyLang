@@ -1,5 +1,6 @@
 # Benchmark against Reference Compiler O1 versus our O2 flag
 # Benchmark unoptimized versus Optimized
+# Confirmed compiles
 
 begin
   int i = 1000;
