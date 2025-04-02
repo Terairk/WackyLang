@@ -72,13 +72,13 @@ fn optimize_fun(
             cfg = eliminate_unreachable_code(cfg);
         }
 
-        // if config.should_print_cfg() {
-        //     let new_name = format!("{}_unreachable_{}", func_name, counter);
-        //     let cfg = make_cfg(cfg_to_instrs(cfg.clone()), new_name.as_str());
-        //     if let Ok(png_path) = cfg.print_graphviz() {
-        //         println!("Generated CFG visualization: {}", png_path);
-        //     }
-        // }
+        if config.should_print_cfg() {
+            let new_name = format!("{}_unreachable_{}", func_name, counter);
+            let cfg = make_cfg(cfg_to_instrs(cfg.clone()), new_name.as_str());
+            if let Ok(png_path) = cfg.print_graphviz(&mut counter) {
+                println!("Generated CFG visualization: {}", png_path);
+            }
+        }
 
         if config.has_copy_propagation() {
             cfg = copy_propagation(&cfg);
