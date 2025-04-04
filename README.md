@@ -12,7 +12,15 @@ or
 ```
 The --help option will give you the ability to peer into what the different IR's look like
 at various stages and the --print-cfg flag can even print out the CFG before & after various optimizations
-You can also enable various optimizations via -O0, -O1, -O2 etc. 
+You can also enable various optimizations via --O0, --O1, --O2 etc. 
+
+Example commands
+```bash
+cargo build
+./target/debug/compiler test_cases/valid/expressions/longSplitExpr2.wacc --O2 --print-cfg
+gcc -o exe -z noexecstack longSplitExpr2.s
+./exe
+```
 
 # Things that I want to Improve
 I'm building off the WACC Group project but there's some things that I'm not happy with or that could be improved. 
