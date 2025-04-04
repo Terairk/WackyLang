@@ -18,6 +18,13 @@ You can also enable various optimizations via -O0, -O1, -O2 etc.
 I'm building off the WACC Group project but there's some things that I'm not happy with or that could be improved. 
 I'll list them in order of priority. 
 
+### Compile Times
+Currently, the compile times are both extremely long for both incremental and a clean compile. 
+Further testing needs to be done but I suspect its to do with the way the frontend works with Chumsky or some other 
+trait bounds that take forever to solve. I'd like to look into this as any changes to the frontend freezes up my machine
+for 5-10 seconds when compiling which shouldn't happen. I suspect its due to the highly nested types in Chumsky so either I
+try to fix that or use another type of parser.
+
 ### SSA Optimizations 
 I want to include an SSA based IR so I can more easily do optimizations. I'm not sure if I want to use a Sea of Nodes (SoN)
 based SSA IR because V8 switched over to a CFG based IR however WackyLang is mostly effect-free (little side-effects) 
