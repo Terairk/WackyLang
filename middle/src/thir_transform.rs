@@ -1165,16 +1165,20 @@ pub(crate) mod thir_lowering_ctx {
 
             // evaluate right, and short circuit conditionally
             let (right_v, _right_v_ty) = self.lower_expr(expr2, instr); // TODO: do something with these types??
-            instr.push(Instr::JumpIfNotZero {
-                condition: right_v,
-                target: true_label.clone(),
-            });
-
-            // Both expressions evaluate to False so dst to False
             instr.push(Instr::Copy {
-                src: WackValue::Literal(WackLiteral::Bool(FALSE)),
+                src: right_v,
                 dst: dst.clone(),
             });
+            // instr.push(Instr::JumpIfNotZero {
+            //     condition: right_v,
+            //     target: true_label.clone(),
+            // });
+            //
+            // // Both expressions evaluate to False so dst to False
+            // instr.push(Instr::Copy {
+            //     src: WackValue::Literal(WackLiteral::Bool(FALSE)),
+            //     dst: dst.clone(),
+            // });
             // Jump over the true branch
             instr.push(Instr::Jump(end_label.clone()));
 
